@@ -14,7 +14,13 @@ void on_message(client* c, connection_hdl hdl, websocketpp::config::asio_client:
         if (j["type"] == "chat") {
             std::cout << j["sender"] << ": " << j["text"] << std::endl;
         } else if (j["type"] == "joined") {
-            std::cout << "[Joined channel: " << j["channel"] << "]" << std::endl;
+            std::cout << "[Joined channel: " << j["channel"] << "] as '" << j["username"] << "'" << std::endl;
+        } else if (j["type"] == "channels") {
+            std::cout << "[Channels]: ";
+            for (const auto& ch : j["channels"]) {
+                std::cout << ch << " ";
+            }
+            std::cout << std::endl;
         }
     } catch (...) {
         std::cout << "[Received] " << msg->get_payload() << std::endl;
@@ -24,6 +30,10 @@ void on_message(client* c, connection_hdl hdl, websocketpp::config::asio_client:
 int main() {
     client c;
     std::string uri = "ws://localhost:9001";
+
+    std::cout << "Enter user name: ";
+    std::string username;
+    std::getline(std::cin, username);
 
     std::cout << "Enter channel to join: ";
     std::string channel;
@@ -51,14 +61,19 @@ int main() {
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
         // Send join message
-        json join_msg = { {"type", "join"}, {"channel", channel} };
+        json join_msg = { {"type", "join"}, {"channel", channel}, {"username", username} };
         con->send(join_msg.dump());
 
         // Send chat messages from stdin
         std::string line;
         while (std::getline(std::cin, line)) {
-            json chat_msg = { {"type", "chat"}, {"text", line} };
-            con->send(chat_msg.dump());
+            if (line == "/list") {
+                json list_req = { {"type", "list"} };
+                con->send(list_req.dump());
+            } else {
+                json chat_msg = { {"type", "chat"}, {"text", line} };
+                con->send(chat_msg.dump());
+            }
         }
 
         t.join();
