@@ -61,4 +61,3 @@ This signaling layer will be reused for WebRTC setup later.
 - Sends/receives JSON messages
 - Joins room and chats
 
-

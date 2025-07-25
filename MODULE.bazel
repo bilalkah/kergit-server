@@ -1,0 +1,12 @@
+module(name = "serverless_communication")
+
+bazel_dep(name = "websocketpp", version = "0.8.2", dev_dependency = True)
+
+nlohmann_json_ext = use_extension("//third_party/nlohmann_json:extension.bzl", "nlohmann_json")
+use_repo(nlohmann_json_ext, "nlohmann_json")
+
+uwebsockets_ext = use_extension("//third_party/uwebsockets:extension.bzl", "uwebsockets")
+use_repo(uwebsockets_ext, "uwebsockets")
+
+usockets_ext = use_extension("//third_party/usockets:extension.bzl", "usockets")
+use_repo(usockets_ext, "usockets")
