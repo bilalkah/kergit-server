@@ -33,6 +33,9 @@ int main() {
                     if (!ws->getUserData()->channel.empty()) {
                         auto &old_set = channels[ws->getUserData()->channel];
                         old_set.erase(ws);
+                        if (old_set.empty()) {
+                            channels.erase(ws->getUserData()->channel);
+                        }
                     }
                     ws->getUserData()->channel = channel;
                     ws->getUserData()->username = username;
@@ -62,6 +65,9 @@ int main() {
                     }
                     resp["channels"] = channel_names;
                     ws->send(resp.dump(), opCode);
+                } else if (j["type"] == "ping") {
+                    json resp = { {"type", "pong"}, {"timestamp", j["timestamp"]} };
+                    ws->send(resp.dump(), opCode);
                 }
             } catch (const std::exception &e) {
                 std::cerr << "[ERROR] Invalid message: " << e.what() << std::endl;
@@ -71,6 +77,9 @@ int main() {
             std::string channel = ws->getUserData()->channel;
             if (!channel.empty()) {
                 channels[channel].erase(ws);
+                if (channels[channel].empty()) {
+                    channels.erase(channel);
+                }
             }
             std::cout << "Client disconnected! id=" << ws->getUserData()->client_id << std::endl;
         }
