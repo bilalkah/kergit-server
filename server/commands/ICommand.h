@@ -9,5 +9,5 @@ using json = nlohmann::json;
 class ICommand {
 public:
     virtual ~ICommand() = default;
-    virtual void execute(json& j, User& user, ChatServer& server, uWS::WebSocket<false, true, struct PerSocketData>* ws) = 0;
+    virtual void execute(json& j, User& user, ChatServerState& server, uWS::WebSocket<false, true, struct PerSocketData>* ws) = 0;
 }; 

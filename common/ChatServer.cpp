@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <ctime>
 
-bool ChatServer::createChannel(const std::string& name, const std::string& owner_id) {
+bool ChatServerState::createChannel(const std::string& name, const std::string& owner_id) {
     if (channels.find(name) != channels.end()) return false;  // already exists
     Channel ch;
     ch.name = name;
@@ -13,7 +13,7 @@ bool ChatServer::createChannel(const std::string& name, const std::string& owner
     return true;
 }
 
-bool ChatServer::destroyChannel(const std::string& name, const std::string& requester_id) {
+bool ChatServerState::destroyChannel(const std::string& name, const std::string& requester_id) {
     auto it = channels.find(name);
     if (it == channels.end()) return false;
     if (it->second.owner_id != requester_id) return false;  // only owner can destroy
@@ -21,7 +21,7 @@ bool ChatServer::destroyChannel(const std::string& name, const std::string& requ
     return true;
 }
 
-bool ChatServer::joinChannel(const std::string& user_id, const std::string& channel_name) {
+bool ChatServerState::joinChannel(const std::string& user_id, const std::string& channel_name) {
     auto ch_it = channels.find(channel_name);
     auto user_it = users.find(user_id);
     if (ch_it == channels.end() || user_it == users.end()) return false;
@@ -35,7 +35,7 @@ bool ChatServer::joinChannel(const std::string& user_id, const std::string& chan
     return true;
 }
 
-bool ChatServer::leaveChannel(const std::string& user_id) {
+bool ChatServerState::leaveChannel(const std::string& user_id) {
     auto user_it = users.find(user_id);
     if (user_it == users.end()) return false;
     std::string channel = user_it->second.current_channel;
@@ -47,7 +47,7 @@ bool ChatServer::leaveChannel(const std::string& user_id) {
     return true;
 }
 
-bool ChatServer::sendMessage(const std::string& user_id, const std::string& text) {
+bool ChatServerState::sendMessage(const std::string& user_id, const std::string& text) {
     auto user_it = users.find(user_id);
     if (user_it == users.end()) return false;
     std::string channel = user_it->second.current_channel;
@@ -62,7 +62,7 @@ bool ChatServer::sendMessage(const std::string& user_id, const std::string& text
     return true;
 }
 
-std::vector<std::string> ChatServer::listChannels() const {
+std::vector<std::string> ChatServerState::listChannels() const {
     std::vector<std::string> names;
     for (const auto& kv : channels) {
         names.push_back(kv.first);
@@ -70,7 +70,7 @@ std::vector<std::string> ChatServer::listChannels() const {
     return names;
 }
 
-std::vector<Message> ChatServer::getChannelHistory(const std::string& channel_name) const {
+std::vector<Message> ChatServerState::getChannelHistory(const std::string& channel_name) const {
     auto it = channels.find(channel_name);
     if (it == channels.end()) return {};
     return it->second.history;

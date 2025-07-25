@@ -1,6 +1,7 @@
 module(name = "serverless_communication")
 
 bazel_dep(name = "websocketpp", version = "0.8.2", dev_dependency = True)
+bazel_dep(name = "googletest", version = "1.17.0")
 
 nlohmann_json_ext = use_extension("//third_party/nlohmann_json:extension.bzl", "nlohmann_json")
 use_repo(nlohmann_json_ext, "nlohmann_json")

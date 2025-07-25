@@ -1,10 +1,12 @@
 #pragma once
 #include <unordered_map>
 #include <string>
+#include <vector>
 #include "User.h"
 #include "Channel.h"
+#include "Message.h"
 
-class ChatServer {
+class ChatServerState {
 public:
     std::unordered_map<std::string, Channel> channels; // channel name -> Channel
     std::unordered_map<std::string, User> users;       // user id -> User

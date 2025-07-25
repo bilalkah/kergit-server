@@ -1,0 +1,77 @@
+#pragma once
+
+#include <websocketpp/config/asio_no_tls_client.hpp>
+#include <websocketpp/client.hpp>
+#include <nlohmann/json.hpp>
+#include <string>
+#include <vector>
+#include <functional>
+#include <thread>
+#include <atomic>
+#include <mutex>
+#include <condition_variable>
+
+using websocketpp::connection_hdl;
+typedef websocketpp::client<websocketpp::config::asio_client> client;
+using json = nlohmann::json;
+
+class ChatClientApp {
+public:
+    ChatClientApp(const std::string& server_uri = "ws://localhost:9001");
+    ~ChatClientApp();
+
+    // Connection management
+    bool connect();
+    void disconnect();
+    bool is_connected() const { return connected; }
+    void reset();
+
+    // Chat operations
+    bool join_channel(const std::string& channel, const std::string& username = "");
+    bool leave_channel();
+    bool send_message(const std::string& text);
+    bool list_channels();
+    bool list_users();
+    bool ping();
+
+    // Message handling
+    void set_message_handler(std::function<void(const json&)> handler);
+    void set_connection_handler(std::function<void(bool)> handler);
+    
+    // Getters
+    const std::string& get_username() const { return username; }
+    const std::string& get_current_channel() const { return current_channel; }
+    const std::vector<std::string>& get_last_channels() const { return last_channels; }
+
+    // Wait utilities (for testing)
+    bool wait_for_message(const std::string& type, int timeout_ms = 5000);
+    bool wait_for_connection(int timeout_ms = 5000);
+
+private:
+    void on_message(websocketpp::connection_hdl hdl, websocketpp::config::asio_client::message_type::ptr msg);
+    void on_open(websocketpp::connection_hdl hdl);
+    void on_close(websocketpp::connection_hdl hdl);
+    void on_fail(websocketpp::connection_hdl hdl);
+
+    std::string server_uri;
+    std::string username;
+    std::string current_channel;
+    std::vector<std::string> last_channels;
+    
+    client ws_client;
+    websocketpp::connection_hdl connection;
+    std::thread client_thread;
+    
+    std::atomic<bool> connected{false};
+    std::atomic<bool> should_stop{false};
+    
+    std::function<void(const json&)> message_handler;
+    std::function<void(bool)> connection_handler;
+    
+    std::mutex messages_mutex;
+    std::condition_variable message_cv;
+    std::vector<json> received_messages;
+    
+    std::mutex connection_mutex;
+    std::condition_variable connection_cv;
+}; 
