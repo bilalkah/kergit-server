@@ -1,87 +1,70 @@
 #include "App.h"
 #include <iostream>
-#include <unordered_map>
-#include <unordered_set>
 #include <string>
+#include <unordered_map>
 #include <nlohmann/json.hpp>
+#include "common/User.h"
+#include "common/Channel.h"
+#include "common/Message.h"
+#include "common/ChatServer.h"
+#include "server/commands/AllCommands.h"
 
 using json = nlohmann::json;
 
 struct PerSocketData {
-    std::string channel;
-    std::string client_id;
-    std::string username;
+    std::string user_id;
 };
 
-// channel name -> set of WebSocket pointers
-std::unordered_map<std::string, std::unordered_set<uWS::WebSocket<false, true, PerSocketData>*>> channels;
+// Map WebSocket pointer to user id
+std::unordered_map<uWS::WebSocket<false, true, PerSocketData>*, std::string> ws_to_user;
+
+ChatServer chatServer;
+
+std::unordered_map<std::string, std::unique_ptr<ICommand>> command_map;
+
+void setup_commands(const std::unordered_map<uWS::WebSocket<false, true, PerSocketData>*, std::string>& ws_to_user) {
+    command_map["join"] = std::make_unique<JoinCommand>();
+    command_map["chat"] = std::make_unique<ChatCommand>(ws_to_user);
+    command_map["list"] = std::make_unique<ListCommand>();
+    command_map["ping"] = std::make_unique<PingCommand>();
+}
 
 int main() {
+    std::unordered_map<uWS::WebSocket<false, true, PerSocketData>*, std::string> ws_to_user;
+    setup_commands(ws_to_user);
     uWS::App().ws<PerSocketData>("/*", {
-        .open = [](auto *ws) {
-            // Assign a unique client id (address as string)
-            ws->getUserData()->client_id = std::to_string(reinterpret_cast<uintptr_t>(ws));
-            std::cout << "Client connected! id=" << ws->getUserData()->client_id << std::endl;
+        .open = [&ws_to_user](auto *ws) {
+            std::string user_id = std::to_string(reinterpret_cast<uintptr_t>(ws));
+            ws->getUserData()->user_id = user_id;
+            User user;
+            user.id = user_id;
+            user.username = user_id;
+            chatServer.users[user_id] = user;
+            ws_to_user[ws] = user_id;
+            std::cout << "Client connected! id=" << user_id << std::endl;
         },
         .message = [](auto *ws, std::string_view message, uWS::OpCode opCode) {
             try {
                 auto j = json::parse(message);
-                if (j["type"] == "join") {
-                    std::string channel = j["channel"];
-                    std::string username = j.value("username", ws->getUserData()->client_id);
-                    // Remove from previous channel if any
-                    if (!ws->getUserData()->channel.empty()) {
-                        auto &old_set = channels[ws->getUserData()->channel];
-                        old_set.erase(ws);
-                        if (old_set.empty()) {
-                            channels.erase(ws->getUserData()->channel);
-                        }
-                    }
-                    ws->getUserData()->channel = channel;
-                    ws->getUserData()->username = username;
-                    channels[channel].insert(ws);
-                    // Notify client joined
-                    json resp = { {"type", "joined"}, {"channel", channel}, {"username", username} };
-                    ws->send(resp.dump(), opCode);
-                } else if (j["type"] == "chat") {
-                    std::string channel = ws->getUserData()->channel;
-                    if (!channel.empty()) {
-                        json resp = {
-                            {"type", "chat"},
-                            {"sender", ws->getUserData()->username},
-                            {"text", j["text"]}
-                        };
-                        std::string msg = resp.dump();
-                        for (auto *client : channels[channel]) {
-                            client->send(msg, opCode);
-                        }
-                    }
-                } else if (j["type"] == "list") {
-                    // Send list of channels to this client
-                    json resp = { {"type", "channels"} };
-                    std::vector<std::string> channel_names;
-                    for (const auto &kv : channels) {
-                        if (!kv.second.empty()) channel_names.push_back(kv.first);
-                    }
-                    resp["channels"] = channel_names;
-                    ws->send(resp.dump(), opCode);
-                } else if (j["type"] == "ping") {
-                    json resp = { {"type", "pong"}, {"timestamp", j["timestamp"]} };
-                    ws->send(resp.dump(), opCode);
+                std::string user_id = ws->getUserData()->user_id;
+                auto& user = chatServer.users[user_id];
+                std::string type = j["type"];
+                auto it = command_map.find(type);
+                if (it != command_map.end()) {
+                    it->second->execute(j, user, chatServer, ws);
+                } else {
+                    std::cerr << "[ERROR] Unknown command type: " << type << std::endl;
                 }
             } catch (const std::exception &e) {
                 std::cerr << "[ERROR] Invalid message: " << e.what() << std::endl;
             }
         },
-        .close = [](auto *ws, int /*code*/, std::string_view /*message*/) {
-            std::string channel = ws->getUserData()->channel;
-            if (!channel.empty()) {
-                channels[channel].erase(ws);
-                if (channels[channel].empty()) {
-                    channels.erase(channel);
-                }
-            }
-            std::cout << "Client disconnected! id=" << ws->getUserData()->client_id << std::endl;
+        .close = [&ws_to_user](auto *ws, int /*code*/, std::string_view /*message*/) {
+            std::string user_id = ws->getUserData()->user_id;
+            chatServer.leaveChannel(user_id);
+            chatServer.users.erase(user_id);
+            ws_to_user.erase(ws);
+            std::cout << "Client disconnected! id=" << user_id << std::endl;
         }
     }).listen(9001, [](auto *token) {
         if (token) {
