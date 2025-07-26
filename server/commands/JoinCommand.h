@@ -36,14 +36,14 @@ class JoinCommand : public ICommand {
             resp["type"] = "joined";
             resp["channel"] = channel;
             resp["username"] = username;
-            ws->send(resp.dump());
+            ws->send(resp.dump(), uWS::OpCode::TEXT);
 
             // Send current users list to the joining user
             json users_resp;
             users_resp["type"] = "users";
             users_resp["channel"] = channel;
             users_resp["users"] = current_users;
-            ws->send(users_resp.dump());
+            ws->send(users_resp.dump(), uWS::OpCode::TEXT);
 
             // Send channel history
             auto history = server.getChannelHistory(channel);
@@ -53,7 +53,7 @@ class JoinCommand : public ICommand {
                 hist_msg["sender"] = msg.sender;
                 hist_msg["text"] = msg.text;
                 hist_msg["timestamp"] = msg.timestamp;
-                ws->send(hist_msg.dump());
+                ws->send(hist_msg.dump(), uWS::OpCode::TEXT);
             }
 
             // Notify other users in the channel that someone joined
@@ -66,7 +66,7 @@ class JoinCommand : public ICommand {
                 if (uid != user.id) {  // Don't send to the joining user
                     for (const auto& [ws_ptr, ws_uid] : ws_to_user) {
                         if (ws_uid == uid) {
-                            ws_ptr->send(join_msg);
+                            ws_ptr->send(join_msg, uWS::OpCode::TEXT);
                         }
                     }
                 }
@@ -86,7 +86,7 @@ class JoinCommand : public ICommand {
                     if (uid != user.id) {  // Don't send to the leaving user
                         for (const auto& [ws_ptr, ws_uid] : ws_to_user) {
                             if (ws_uid == uid) {
-                                ws_ptr->send(leave_msg);
+                                ws_ptr->send(leave_msg, uWS::OpCode::TEXT);
                             }
                         }
                     }

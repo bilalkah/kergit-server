@@ -15,6 +15,50 @@ ChatClientApp::ChatClientApp(const std::string& server_uri) : server_uri(server_
     ws_client.set_open_handler(std::bind(&ChatClientApp::on_open, this, std::placeholders::_1));
     ws_client.set_close_handler(std::bind(&ChatClientApp::on_close, this, std::placeholders::_1));
     ws_client.set_fail_handler(std::bind(&ChatClientApp::on_fail, this, std::placeholders::_1));
+
+    // Set up WebRTC manager callbacks
+    webrtc_manager.setOnCallStateChange([](WebRTCState state) {
+        std::cout << "[VOICE] Call state changed: " << static_cast<int>(state) << std::endl;
+    });
+
+    webrtc_manager.setOnOffer([this](const std::string& sdp) {
+        // Send offer through signaling server
+        json offer_msg;
+        offer_msg["type"] = "webrtc_signal";
+        offer_msg["signal_type"] = "offer";
+        offer_msg["sdp"] = sdp;
+        offer_msg["call_id"] = current_call_id;
+
+        if (connected) {
+            ws_client.send(connection, offer_msg.dump(), websocketpp::frame::opcode::text);
+        }
+    });
+
+    webrtc_manager.setOnAnswer([this](const std::string& sdp) {
+        // Send answer through signaling server
+        json answer_msg;
+        answer_msg["type"] = "webrtc_signal";
+        answer_msg["signal_type"] = "answer";
+        answer_msg["sdp"] = sdp;
+        answer_msg["call_id"] = current_call_id;
+
+        if (connected) {
+            ws_client.send(connection, answer_msg.dump(), websocketpp::frame::opcode::text);
+        }
+    });
+
+    webrtc_manager.setOnIceCandidate([this](const std::string& candidate) {
+        // Send ICE candidate through signaling server
+        json ice_msg;
+        ice_msg["type"] = "webrtc_signal";
+        ice_msg["signal_type"] = "ice_candidate";
+        ice_msg["candidate"] = candidate;
+        ice_msg["call_id"] = current_call_id;
+
+        if (connected) {
+            ws_client.send(connection, ice_msg.dump(), websocketpp::frame::opcode::text);
+        }
+    });
 }
 
 ChatClientApp::~ChatClientApp() {
@@ -238,6 +282,14 @@ void ChatClientApp::on_message(websocketpp::connection_hdl hdl,
             }
         }
 
+        // Handle voice call messages
+        if (j["type"] == "call_incoming" || j["type"] == "call_accepted" ||
+            j["type"] == "call_rejected" || j["type"] == "call_ended") {
+            handle_voice_call_message(j);
+        } else if (j["type"] == "webrtc_signal") {
+            handle_webrtc_signal(j);
+        }
+
         if (message_handler && !should_stop && connected) {
             message_handler(j);
         }
@@ -269,5 +321,168 @@ void ChatClientApp::on_fail(websocketpp::connection_hdl hdl) {
     connected = false;
     if (connection_handler && !should_stop) {
         connection_handler(false);
+    }
+}
+
+// Voice call operations
+bool ChatClientApp::initiate_voice_call(const std::string& target_user) {
+    if (!connected) {
+        std::cout << "[VOICE] Not connected to server" << std::endl;
+        return false;
+    }
+
+    if (is_in_voice_call()) {
+        std::cout << "[VOICE] Already in a call" << std::endl;
+        return false;
+    }
+
+    // Generate a call ID
+    current_call_id = "call_" + std::to_string(std::time(nullptr));
+
+    // Send call request to server
+    json call_request;
+    call_request["type"] = "call_request";
+    call_request["target_user"] = target_user;
+    call_request["media_type"] = "voice";
+    call_request["call_id"] = current_call_id;
+
+    ws_client.send(connection, call_request.dump(), websocketpp::frame::opcode::text);
+
+    std::cout << "[VOICE] Initiating voice call to " << target_user << std::endl;
+    return true;
+}
+
+bool ChatClientApp::accept_voice_call(const std::string& call_id) {
+    if (!connected) {
+        std::cout << "[VOICE] Not connected to server" << std::endl;
+        return false;
+    }
+
+    current_call_id = call_id;
+
+    // Send call accept to server
+    json call_accept;
+    call_accept["type"] = "call_accept";
+    call_accept["call_id"] = call_id;
+
+    ws_client.send(connection, call_accept.dump(), websocketpp::frame::opcode::text);
+
+    std::cout << "[VOICE] Accepting call " << call_id << std::endl;
+    return true;
+}
+
+bool ChatClientApp::reject_voice_call(const std::string& call_id) {
+    if (!connected) {
+        std::cout << "[VOICE] Not connected to server" << std::endl;
+        return false;
+    }
+
+    // Send call reject to server
+    json call_reject;
+    call_reject["type"] = "call_reject";
+    call_reject["call_id"] = call_id;
+
+    ws_client.send(connection, call_reject.dump(), websocketpp::frame::opcode::text);
+
+    std::cout << "[VOICE] Rejecting call " << call_id << std::endl;
+    return true;
+}
+
+bool ChatClientApp::end_voice_call(const std::string& call_id) {
+    if (!connected) {
+        std::cout << "[VOICE] Not connected to server" << std::endl;
+        return false;
+    }
+
+    // Send call end to server
+    json call_end;
+    call_end["type"] = "call_end";
+    call_end["call_id"] = call_id;
+
+    ws_client.send(connection, call_end.dump(), websocketpp::frame::opcode::text);
+
+    // End the call locally
+    webrtc_manager.endCall(call_id);
+    current_call_id.clear();
+
+    std::cout << "[VOICE] Ending call " << call_id << std::endl;
+    return true;
+}
+
+bool ChatClientApp::is_in_voice_call() const { return webrtc_manager.isInCall(); }
+
+WebRTCState ChatClientApp::get_voice_call_state() const { return webrtc_manager.getState(); }
+
+void ChatClientApp::set_voice_call_handler(
+    std::function<void(const std::string&, const std::string&)> handler) {
+    voice_call_handler = handler;
+}
+
+void ChatClientApp::handle_voice_call_message(const json& message) {
+    std::string msg_type = message["type"];
+
+    if (msg_type == "call_incoming") {
+        std::string from_user = message["from_user"];
+        std::string call_id = message["call_id"];
+        std::string media_type = message["media_type"];
+
+        std::cout << "[VOICE] Incoming " << media_type << " call from " << from_user
+                  << " (ID: " << call_id << ")" << std::endl;
+        std::cout << "[VOICE] Type /accept " << call_id << " to accept or /reject " << call_id
+                  << " to reject" << std::endl;
+
+        if (voice_call_handler) {
+            voice_call_handler("incoming", from_user);
+        }
+    } else if (msg_type == "call_accepted") {
+        std::string call_id = message["call_id"];
+        std::string accepted_by = message["accepted_by"];
+
+        std::cout << "[VOICE] Call " << call_id << " accepted by " << accepted_by << std::endl;
+
+        // Start WebRTC connection
+        webrtc_manager.acceptCall(call_id);
+
+    } else if (msg_type == "call_rejected") {
+        std::string call_id = message["call_id"];
+        std::string rejected_by = message["rejected_by"];
+
+        std::cout << "[VOICE] Call " << call_id << " rejected by " << rejected_by << std::endl;
+
+        // Clean up local call state
+        webrtc_manager.rejectCall(call_id);
+        current_call_id.clear();
+
+    } else if (msg_type == "call_ended") {
+        std::string call_id = message["call_id"];
+        std::string ended_by = message["ended_by"];
+
+        std::cout << "[VOICE] Call " << call_id << " ended by " << ended_by << std::endl;
+
+        // End the call locally
+        webrtc_manager.endCall(call_id);
+        current_call_id.clear();
+    }
+}
+
+void ChatClientApp::handle_webrtc_signal(const json& message) {
+    std::string signal_type = message["signal_type"];
+    std::string call_id = message["call_id"];
+    std::string from_user = message["from_user"];
+
+    if (signal_type == "offer") {
+        std::string sdp = message["sdp"];
+        std::cout << "[VOICE] Received WebRTC offer from " << from_user << std::endl;
+        webrtc_manager.handleOffer(call_id, sdp);
+
+    } else if (signal_type == "answer") {
+        std::string sdp = message["sdp"];
+        std::cout << "[VOICE] Received WebRTC answer from " << from_user << std::endl;
+        webrtc_manager.handleAnswer(call_id, sdp);
+
+    } else if (signal_type == "ice_candidate") {
+        std::string candidate = message["candidate"];
+        std::cout << "[VOICE] Received ICE candidate from " << from_user << std::endl;
+        webrtc_manager.handleIceCandidate(call_id, candidate);
     }
 }

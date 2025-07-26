@@ -10,7 +10,7 @@ class UsersCommand : public ICommand {
             json resp;
             resp["type"] = "error";
             resp["message"] = "Not in any channel";
-            ws->send(resp.dump());
+            ws->send(resp.dump(), uWS::OpCode::TEXT);
             return;
         }
 
@@ -19,7 +19,7 @@ class UsersCommand : public ICommand {
             json resp;
             resp["type"] = "error";
             resp["message"] = "Channel not found";
-            ws->send(resp.dump());
+            ws->send(resp.dump(), uWS::OpCode::TEXT);
             return;
         }
 
@@ -35,6 +35,6 @@ class UsersCommand : public ICommand {
         resp["type"] = "users";
         resp["channel"] = channel;
         resp["users"] = usernames;
-        ws->send(resp.dump());
+        ws->send(resp.dump(), uWS::OpCode::TEXT);
     }
 };

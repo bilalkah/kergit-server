@@ -9,6 +9,6 @@ class ListCommand : public ICommand {
         json resp;
         resp["type"] = "channels";
         resp["channels"] = names;
-        ws->send(resp.dump());
+        ws->send(resp.dump(), uWS::OpCode::TEXT);
     }
 };
