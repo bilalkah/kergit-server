@@ -1,3 +1,5 @@
+load("@rules_cc//cc:defs.bzl", "cc_test")
+
 cc_test(
     name = "chat_integration_test",
     timeout = "long",

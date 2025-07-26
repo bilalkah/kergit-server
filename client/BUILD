@@ -1,3 +1,5 @@
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
+
 cc_library(
     name = "chat_client_lib",
     srcs = ["ChatClient.cpp"],
