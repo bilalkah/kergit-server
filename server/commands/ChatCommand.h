@@ -30,7 +30,7 @@ class ChatCommand : public ICommand {
             for (const auto& uid : ch.user_ids) {
                 for (const auto& [ws_ptr, ws_uid] : ws_to_user) {
                     if (ws_uid == uid) {
-                        ws_ptr->send(msg);
+                        ws_ptr->send(msg, uWS::OpCode::TEXT);
                     }
                 }
             }

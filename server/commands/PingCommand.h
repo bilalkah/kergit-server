@@ -8,6 +8,6 @@ class PingCommand : public ICommand {
         json resp;
         resp["type"] = "pong";
         resp["timestamp"] = j["timestamp"];
-        ws->send(resp.dump());
+        ws->send(resp.dump(), uWS::OpCode::TEXT);
     }
 };

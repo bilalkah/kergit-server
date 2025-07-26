@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Connection Test</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f7fafc;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .status {
+            padding: 12px;
+            border-radius: 6px;
+            margin: 10px 0;
+            font-weight: 500;
+        }
+        .status.connected {
+            background: #c6f6d5;
+            color: #22543d;
+            border: 1px solid #9ae6b4;
+        }
+        .status.disconnected {
+            background: #fed7d7;
+            color: #742a2a;
+            border: 1px solid #feb2b2;
+        }
+        .status.connecting {
+            background: #fef5e7;
+            color: #744210;
+            border: 1px solid #fbd38d;
+        }
+        .log {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 20px;
+            border-radius: 8px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 14px;
+            max-height: 400px;
+            overflow-y: auto;
+            margin: 20px 0;
+        }
+        .log-entry {
+            margin: 5px 0;
+            padding: 5px 0;
+            border-bottom: 1px solid #4a5568;
+        }
+        .log-entry:last-child {
+            border-bottom: none;
+        }
+        .timestamp {
+            color: #a0aec0;
+            font-size: 12px;
+        }
+        .message {
+            color: #e2e8f0;
+        }
+        .error {
+            color: #f56565;
+        }
+        .success {
+            color: #48bb78;
+        }
+        .warning {
+            color: #ed8936;
+        }
+        input, button {
+            padding: 10px;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            font-size: 14px;
+            margin: 5px;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            cursor: pointer;
+            border: none;
+        }
+        button:hover {
+            background: #5a67d8;
+        }
+        button:disabled {
+            background: #a0aec0;
+            cursor: not-allowed;
+        }
+        .controls {
+            margin: 20px 0;
+            padding: 20px;
+            background: #f7fafc;
+            border-radius: 8px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+        }
+        .test-section h3 {
+            margin-top: 0;
+            color: #2d3748;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔗 WebSocket Connection Test</h1>
+        <p>This page tests the connection to your C++ chat server and verifies that the WebSocket communication is working correctly.</p>
+
+        <div id="connection-status" class="status disconnected">
+            Status: Disconnected
+        </div>
+
+        <div class="controls">
+            <h3>Connection Settings</h3>
+            <input type="text" id="server-url" placeholder="Server URL" value="ws://localhost:9001" style="width: 300px;">
+            <button id="connect-btn" onclick="connect()">Connect</button>
+            <button id="disconnect-btn" onclick="disconnect()" disabled>Disconnect</button>
+        </div>
+
+        <div class="test-section">
+            <h3>🧪 Test Messages</h3>
+            <p>Send test messages to verify the server communication:</p>
+            
+            <div>
+                <input type="text" id="username" placeholder="Username" value="testuser">
+                <input type="text" id="channel" placeholder="Channel" value="test">
+                <button onclick="joinChannel()" id="join-btn" disabled>Join Channel</button>
+            </div>
+            
+            <div style="margin-top: 10px;">
+                <input type="text" id="message-text" placeholder="Message text" value="Hello from web client!" style="width: 300px;">
+                <button onclick="sendMessage()" id="send-btn" disabled>Send Message</button>
+            </div>
+            
+            <div style="margin-top: 10px;">
+                <button onclick="listChannels()" id="list-btn" disabled>List Channels</button>
+                <button onclick="listUsers()" id="users-btn" disabled>List Users</button>
+                <button onclick="ping()" id="ping-btn" disabled>Ping Server</button>
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h3>📞 Voice Call Test</h3>
+            <p>Test voice call functionality:</p>
+            
+            <div>
+                <input type="text" id="call-target" placeholder="Target user" value="testuser2">
+                <button onclick="startCall()" id="call-btn" disabled>Start Call</button>
+                <button onclick="endCall()" id="end-call-btn" disabled>End Call</button>
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h3>📊 Connection Log</h3>
+            <div id="log" class="log">
+                <div class="log-entry">
+                    <span class="timestamp">[Ready]</span>
+                    <span class="message">WebSocket test page loaded. Click "Connect" to start testing.</span>
+                </div>
+            </div>
+            <button onclick="clearLog()">Clear Log</button>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let isConnected = false;
+        let currentChannel = '';
+
+        function log(message, type = 'message') {
+            const logDiv = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            
+            const timestamp = new Date().toLocaleTimeString();
+            const timestampSpan = document.createElement('span');
+            timestampSpan.className = 'timestamp';
+            timestampSpan.textContent = `[${timestamp}] `;
+            
+            const messageSpan = document.createElement('span');
+            messageSpan.className = `message ${type}`;
+            messageSpan.textContent = message;
+            
+            entry.appendChild(timestampSpan);
+            entry.appendChild(messageSpan);
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+        }
+
+        function updateStatus(status, text) {
+            const statusDiv = document.getElementById('connection-status');
+            statusDiv.className = `status ${status}`;
+            statusDiv.textContent = `Status: ${text}`;
+        }
+
+        function updateButtons() {
+            const connectBtn = document.getElementById('connect-btn');
+            const disconnectBtn = document.getElementById('disconnect-btn');
+            const joinBtn = document.getElementById('join-btn');
+            const sendBtn = document.getElementById('send-btn');
+            const listBtn = document.getElementById('list-btn');
+            const usersBtn = document.getElementById('users-btn');
+            const pingBtn = document.getElementById('ping-btn');
+            const callBtn = document.getElementById('call-btn');
+            const endCallBtn = document.getElementById('end-call-btn');
+
+            if (isConnected) {
+                connectBtn.disabled = true;
+                disconnectBtn.disabled = false;
+                joinBtn.disabled = false;
+                sendBtn.disabled = false;
+                listBtn.disabled = false;
+                usersBtn.disabled = false;
+                pingBtn.disabled = false;
+                callBtn.disabled = false;
+                endCallBtn.disabled = false;
+            } else {
+                connectBtn.disabled = false;
+                disconnectBtn.disabled = true;
+                joinBtn.disabled = true;
+                sendBtn.disabled = true;
+                listBtn.disabled = true;
+                usersBtn.disabled = true;
+                pingBtn.disabled = true;
+                callBtn.disabled = true;
+                endCallBtn.disabled = true;
+            }
+        }
+
+        function connect() {
+            const serverUrl = document.getElementById('server-url').value;
+            
+            if (!serverUrl) {
+                log('Please enter a server URL', 'error');
+                return;
+            }
+
+            log(`Connecting to ${serverUrl}...`, 'warning');
+            updateStatus('connecting', 'Connecting...');
+
+            try {
+                ws = new WebSocket(serverUrl);
+
+                ws.onopen = function() {
+                    isConnected = true;
+                    updateStatus('connected', 'Connected');
+                    log('✅ WebSocket connection established', 'success');
+                    updateButtons();
+                };
+
+                ws.onmessage = function(event) {
+                    try {
+                        const data = JSON.parse(event.data);
+                        log(`📨 Received: ${JSON.stringify(data)}`, 'message');
+                    } catch (e) {
+                        log(`📨 Received raw: ${event.data}`, 'message');
+                    }
+                };
+
+                ws.onclose = function() {
+                    isConnected = false;
+                    updateStatus('disconnected', 'Disconnected');
+                    log('❌ WebSocket connection closed', 'error');
+                    updateButtons();
+                };
+
+                ws.onerror = function(error) {
+                    log(`❌ WebSocket error: ${error}`, 'error');
+                    updateStatus('disconnected', 'Connection Error');
+                };
+
+            } catch (error) {
+                log(`❌ Failed to create WebSocket: ${error}`, 'error');
+                updateStatus('disconnected', 'Connection Failed');
+            }
+        }
+
+        function disconnect() {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+            isConnected = false;
+            updateStatus('disconnected', 'Disconnected');
+            log('🔌 Manually disconnected', 'warning');
+            updateButtons();
+        }
+
+        function sendMessage(type, data) {
+            if (!isConnected || !ws) {
+                log('❌ Not connected to server', 'error');
+                return;
+            }
+
+            const message = { type, ...data };
+            ws.send(JSON.stringify(message));
+            log(`📤 Sent: ${JSON.stringify(message)}`, 'message');
+        }
+
+        function joinChannel() {
+            const username = document.getElementById('username').value;
+            const channel = document.getElementById('channel').value;
+            
+            if (!username || !channel) {
+                log('❌ Please enter username and channel', 'error');
+                return;
+            }
+
+            currentChannel = channel;
+            sendMessage('join', { channel, username });
+        }
+
+        function sendMessage() {
+            const text = document.getElementById('message-text').value;
+            
+            if (!text) {
+                log('❌ Please enter a message', 'error');
+                return;
+            }
+
+            if (!currentChannel) {
+                log('❌ Please join a channel first', 'error');
+                return;
+            }
+
+            sendMessage('chat', { text });
+        }
+
+        function listChannels() {
+            sendMessage('list', {});
+        }
+
+        function listUsers() {
+            sendMessage('users', {});
+        }
+
+        function ping() {
+            sendMessage('ping', { timestamp: Date.now() });
+        }
+
+        function startCall() {
+            const targetUser = document.getElementById('call-target').value;
+            
+            if (!targetUser) {
+                log('❌ Please enter a target user', 'error');
+                return;
+            }
+
+            sendMessage('call_request', { 
+                target_user: targetUser, 
+                media_type: 'voice' 
+            });
+        }
+
+        function endCall() {
+            sendMessage('call_end', { call_id: 'test_call' });
+        }
+
+        // Initialize
+        updateButtons();
+        log('🚀 WebSocket test page ready', 'success');
+    </script>
+</body>
+</html> 

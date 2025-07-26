@@ -15,6 +15,10 @@ use_repo(uwebsockets_ext, "uwebsockets")
 usockets_ext = use_extension("//third_party/usockets:extension.bzl", "usockets")
 use_repo(usockets_ext, "usockets")
 
+# WebRTC extension for voice calls
+webrtc_ext = use_extension("//third_party/webrtc:extension.bzl", "webrtc")
+use_repo(webrtc_ext, "webrtc_simple")
+
 # Hedron Compile Commands Extractor for intellisense support in VSCode.
 bazel_dep(name = "hedron_compile_commands", dev_dependency = True)
 git_override(

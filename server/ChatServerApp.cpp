@@ -58,6 +58,17 @@ void ChatServerApp::setup_commands() {
     command_map["list"] = std::make_unique<ListCommand>();
     command_map["ping"] = std::make_unique<PingCommand>();
     command_map["users"] = std::make_unique<UsersCommand>();
+
+    // Future WebRTC commands (stubs)
+    command_map["call_request"] = std::make_unique<CallRequestCommand>(ws_to_user);
+    command_map["call_accept"] = std::make_unique<CallAcceptCommand>(ws_to_user);
+    command_map["call_reject"] = std::make_unique<CallAcceptCommand>(ws_to_user);  // Reuse for now
+    command_map["call_end"] = std::make_unique<CallAcceptCommand>(ws_to_user);     // Reuse for now
+    command_map["webrtc_signal"] = std::make_unique<WebRTCSignalCommand>(ws_to_user);
+    command_map["screen_share_start"] =
+        std::make_unique<CallAcceptCommand>(ws_to_user);  // Reuse for now
+    command_map["screen_share_stop"] =
+        std::make_unique<CallAcceptCommand>(ws_to_user);  // Reuse for now
 }
 
 void ChatServerApp::run_server() {
@@ -138,7 +149,7 @@ void ChatServerApp::run_server() {
                                           while (ws_it != ws_to_user.end()) {
                                               if (ws_it->second == uid) {
                                                   try {
-                                                      ws_it->first->send(disconnect_msg);
+                                                      ws_it->first->send(disconnect_msg, uWS::OpCode::TEXT);
                                                   } catch (const std::exception &e) {
                                                       // Ignore send errors during disconnect
                                                   }
