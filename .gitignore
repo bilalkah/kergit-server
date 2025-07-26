@@ -1,12 +1,44 @@
-build/**
-.vscode/**
-.cache/**
-venv/**
+# Bazel build outputs
+bazel-bin/
+bazel-out/
+bazel-serverless-communication/
+bazel-testlogs/
+*.runfiles/
 
-
-bazel-bin
-bazel-out
-bazel-serverless-communication
-bazel-testlogs
-
+# Bazel configuration and lock files
 MODULE.bazel.lock
+.bazelrc.user
+
+# Build directories
+build/
+dist/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Development tools
+compile_commands.json
+.cache/
+.clangd/
+
+# Python virtual environments
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp

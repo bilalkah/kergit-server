@@ -1,8 +1,9 @@
 #include "ChatClientApp.h"
-#include <iostream>
-#include <string>
-#include <sstream>
+
 #include <chrono>
+#include <iostream>
+#include <sstream>
+#include <string>
 
 using namespace std::chrono;
 
@@ -29,7 +30,7 @@ void print_help(bool connected = true) {
 int main() {
     ChatClientApp client;
     bool in_channel = false;
-    
+
     std::cout << "Enter user name: ";
     std::string username;
     std::getline(std::cin, username);
@@ -44,7 +45,8 @@ int main() {
             std::cout << timestamp_str << j["sender"] << ": " << j["text"] << std::endl;
         } else if (j["type"] == "joined") {
             if (!j["channel"].empty()) {
-                std::cout << "[Joined channel: " << j["channel"] << "] as '" << j["username"] << "'" << std::endl;
+                std::cout << "[Joined channel: " << j["channel"] << "] as '" << j["username"] << "'"
+                          << std::endl;
                 in_channel = true;
             } else {
                 in_channel = false;
@@ -92,16 +94,16 @@ int main() {
     std::string line;
     while (std::getline(std::cin, line)) {
         if (line.empty()) continue;
-        
+
         if (line[0] == '/') {
             std::istringstream iss(line);
             std::string cmd;
             iss >> cmd;
-            
+
             if (cmd == "/send") {
-                if (!client.is_connected() || !in_channel) { 
-                    std::cout << "Not in a channel. Use /connect <channel> first." << std::endl; 
-                    continue; 
+                if (!client.is_connected() || !in_channel) {
+                    std::cout << "Not in a channel. Use /connect <channel> first." << std::endl;
+                    continue;
                 }
                 std::string msg;
                 std::getline(iss, msg);
@@ -112,9 +114,9 @@ int main() {
             } else if (cmd == "/list") {
                 client.list_channels();
             } else if (cmd == "/users") {
-                if (!client.is_connected() || !in_channel) { 
-                    std::cout << "Not in a channel. Use /connect <channel> first." << std::endl; 
-                    continue; 
+                if (!client.is_connected() || !in_channel) {
+                    std::cout << "Not in a channel. Use /connect <channel> first." << std::endl;
+                    continue;
                 }
                 client.list_users();
             } else if (cmd == "/connect") {
@@ -123,8 +125,11 @@ int main() {
                 if (!new_channel.empty()) {
                     // Check if channel exists in last_channels
                     const auto& channels = client.get_last_channels();
-                    if (std::find(channels.begin(), channels.end(), new_channel) == channels.end()) {
-                        std::cout << "[Warning] Channel '" << new_channel << "' does not exist. Use /list to see available channels." << std::endl;
+                    if (std::find(channels.begin(), channels.end(), new_channel) ==
+                        channels.end()) {
+                        std::cout << "[Warning] Channel '" << new_channel
+                                  << "' does not exist. Use /list to see available channels."
+                                  << std::endl;
                         continue;
                     }
                     client.join_channel(new_channel, username);
@@ -137,8 +142,11 @@ int main() {
                 if (!new_channel.empty()) {
                     // Check if channel already exists
                     const auto& channels = client.get_last_channels();
-                    if (std::find(channels.begin(), channels.end(), new_channel) != channels.end()) {
-                        std::cout << "[Warning] Channel '" << new_channel << "' already exists. Use /connect <channel> to join." << std::endl;
+                    if (std::find(channels.begin(), channels.end(), new_channel) !=
+                        channels.end()) {
+                        std::cout << "[Warning] Channel '" << new_channel
+                                  << "' already exists. Use /connect <channel> to join."
+                                  << std::endl;
                         continue;
                     }
                     client.join_channel(new_channel, username);
@@ -146,21 +154,22 @@ int main() {
                     std::cout << "Usage: /create <channel>" << std::endl;
                 }
             } else if (cmd == "/disconnect") {
-                if (!client.is_connected()) { 
-                    std::cout << "Already disconnected from server." << std::endl; 
-                    continue; 
+                if (!client.is_connected()) {
+                    std::cout << "Already disconnected from server." << std::endl;
+                    continue;
                 }
-                if (!in_channel) { 
-                    std::cout << "Not in a channel." << std::endl; 
-                    continue; 
+                if (!in_channel) {
+                    std::cout << "Not in a channel." << std::endl;
+                    continue;
                 }
                 client.leave_channel();
                 in_channel = false;
-                std::cout << "[Left the channel. Use /connect <channel> to join another.]" << std::endl;
+                std::cout << "[Left the channel. Use /connect <channel> to join another.]"
+                          << std::endl;
             } else if (cmd == "/ping") {
-                if (!client.is_connected()) { 
-                    std::cout << "Not connected." << std::endl; 
-                    continue; 
+                if (!client.is_connected()) {
+                    std::cout << "Not connected." << std::endl;
+                    continue;
                 }
                 client.ping();
             } else if (cmd == "/help") {
@@ -171,14 +180,14 @@ int main() {
                 std::cout << "Unknown command. Type /help for help." << std::endl;
             }
         } else {
-            if (!client.is_connected() || !in_channel) { 
-                std::cout << "Not in a channel. Use /connect <channel> first." << std::endl; 
-                continue; 
+            if (!client.is_connected() || !in_channel) {
+                std::cout << "Not in a channel. Use /connect <channel> first." << std::endl;
+                continue;
             }
             client.send_message(line);
         }
     }
-    
+
     std::cout << "Quitting..." << std::endl;
     return 0;
-} 
+}

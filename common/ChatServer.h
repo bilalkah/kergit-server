@@ -1,15 +1,16 @@
 #pragma once
-#include <unordered_map>
-#include <string>
-#include <vector>
-#include "User.h"
 #include "Channel.h"
 #include "Message.h"
+#include "User.h"
+
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 class ChatServerState {
-public:
-    std::unordered_map<std::string, Channel> channels; // channel name -> Channel
-    std::unordered_map<std::string, User> users;       // user id -> User
+   public:
+    std::unordered_map<std::string, Channel> channels;  // channel name -> Channel
+    std::unordered_map<std::string, User> users;        // user id -> User
 
     // Core methods (stubs)
     bool createChannel(const std::string& name, const std::string& owner_id);
@@ -20,4 +21,4 @@ public:
     std::vector<std::string> listChannels() const;
     std::vector<Message> getChannelHistory(const std::string& channel_name) const;
     // ... more methods as needed
-}; 
+};

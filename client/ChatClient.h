@@ -1,15 +1,15 @@
 #pragma once
 
-#include <string>
 #include <functional>
-#include <nlohmann/json.hpp>
-#include <vector>
 #include <memory>
+#include <nlohmann/json.hpp>
+#include <string>
+#include <vector>
 
 using json = nlohmann::json;
 
 class ChatClient {
-public:
+   public:
     ChatClient(const std::string& server_uri = "ws://localhost:9001");
     ~ChatClient();
 
@@ -30,7 +30,7 @@ public:
     // Message handling
     void set_message_handler(std::function<void(const json&)> handler);
     void set_connection_handler(std::function<void(bool)> handler);
-    
+
     // Getters
     std::string get_username() const;
     std::string get_current_channel() const;
@@ -40,7 +40,7 @@ public:
     bool wait_for_message(const std::string& type, int timeout_ms = 5000);
     bool wait_for_connection(int timeout_ms = 5000);
 
-private:
+   private:
     class Impl;
     std::unique_ptr<Impl> pImpl;
-}; 
+};

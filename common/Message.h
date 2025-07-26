@@ -1,10 +1,10 @@
 #pragma once
-#include <string>
 #include <ctime>
+#include <string>
 
 class Message {
-public:
+   public:
     std::string sender;
     std::string text;
     std::time_t timestamp;
-}; 
+};

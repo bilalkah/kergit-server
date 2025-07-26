@@ -1,55 +1,64 @@
 cc_library(
     name = "server_commands",
     hdrs = [
+        "commands/AllCommands.h",
+        "commands/ChatCommand.h",
         "commands/ICommand.h",
         "commands/JoinCommand.h",
-        "commands/ChatCommand.h",
         "commands/ListCommand.h",
         "commands/PingCommand.h",
         "commands/UsersCommand.h",
-        "commands/AllCommands.h",
     ],
     includes = ["."],
     visibility = ["//visibility:public"],
-    deps = ["//common:common", "@uwebsockets//:uwebsockets"],
+    deps = [
+        "//common",
+        "@uwebsockets",
+    ],
 )
 
 cc_library(
     name = "chat_server_app_lib",
     srcs = ["ChatServerApp.cpp"],
     hdrs = ["ChatServerApp.h"],
+    copts = ["-std=c++17"],
+    linkopts = [
+        "-lpthread",
+        "-lz",
+    ],
+    visibility = ["//visibility:public"],
     deps = [
         ":server_commands",
-        "//common:common",
-        "@uwebsockets//:uwebsockets",
-        "@nlohmann_json//:nlohmann_json",
+        "//common",
+        "@nlohmann_json",
+        "@uwebsockets",
     ],
-    copts = ["-std=c++17"],
-    linkopts = ["-lpthread", "-lz"],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "chat_server_lib",
     srcs = ["ChatServer.cpp"],
     hdrs = ["ChatServer.h"],
+    copts = ["-std=c++17"],
+    visibility = ["//visibility:public"],
     deps = [
         ":chat_server_app_lib",
     ],
-    copts = ["-std=c++17"],
-    visibility = ["//visibility:public"],
 )
 
 cc_binary(
     name = "server",
     srcs = ["server.cpp"],
+    copts = ["-std=c++17"],
+    linkopts = [
+        "-lpthread",
+        "-lz",
+    ],
     deps = [
         ":chat_server_app_lib",
-        "@nlohmann_json//:nlohmann_json",
-        "@uwebsockets//:uwebsockets",
-        "//common:common",
         ":server_commands",
+        "//common",
+        "@nlohmann_json",
+        "@uwebsockets",
     ],
-    copts = ["-std=c++17"],
-    linkopts = ["-lpthread", "-lz"],
 )

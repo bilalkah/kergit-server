@@ -1,11 +1,11 @@
 #pragma once
 
-#include <string>
 #include <functional>
 #include <memory>
+#include <string>
 
 class ChatServer {
-public:
+   public:
     ChatServer(int port = 9001);
     ~ChatServer();
 
@@ -19,7 +19,7 @@ public:
     void set_connection_handler(std::function<void(const std::string&)> handler);
     void set_disconnection_handler(std::function<void(const std::string&)> handler);
 
-private:
+   private:
     class Impl;
     std::unique_ptr<Impl> pImpl;
-}; 
+};

@@ -1,7 +1,7 @@
 #pragma once
+#include "ChatCommand.h"
 #include "ICommand.h"
 #include "JoinCommand.h"
-#include "ChatCommand.h"
 #include "ListCommand.h"
 #include "PingCommand.h"
-#include "UsersCommand.h" 
+#include "UsersCommand.h"
