@@ -1,6 +1,0 @@
-module(
-    name = "websocketpp",
-    version = "0.8.2",
-)
-
-bazel_dep(name = "rules_cc") 

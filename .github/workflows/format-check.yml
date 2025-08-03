@@ -1,0 +1,91 @@
+name: Format Check
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  format-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Set up Bazel
+      uses: bazelbuild/setup-bazelisk@v3
+      
+    - name: Install clang-format
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y clang-format
+        
+    - name: Install buildifier
+      run: |
+        curl -L https://github.com/bazelbuild/buildtools/releases/latest/download/buildifier-linux-amd64 -o buildifier-linux-amd64
+        chmod +x buildifier-linux-amd64
+        sudo mv buildifier-linux-amd64 /usr/local/bin/buildifier-linux-amd64
+      
+    - name: List files that would be formatted
+      run: |
+        echo "=== Files that would be formatted ===" 
+        bazel run //:list_format_files
+        
+    - name: Check for formatting issues
+      run: |
+        echo "=== Checking for formatting issues ==="
+        
+        # Store the current git state (before formatting)
+        git add -A
+        git status --porcelain > /tmp/git_status_before.txt
+        
+        # Run formatting
+        echo "Running format target..."
+        bazel run //:format
+        
+        # Check what changed after formatting
+        git status --porcelain > /tmp/git_status_after.txt
+        
+        # Get list of modified files
+        modified_files=$(git diff --name-only)
+        
+        if [[ -n "$modified_files" ]]; then
+          echo "❌ FORMATTING ISSUES DETECTED"
+          echo ""
+          echo "The following files need formatting:"
+          echo "$modified_files"
+          echo ""
+          echo "Detailed changes needed:"
+          git diff
+          echo ""
+          echo "To fix these issues locally, run:"
+          echo "  bazel run //:format"
+          echo ""
+          echo "Files that need formatting:"
+          echo "$modified_files" | while read -r file; do
+            echo "  - $file"
+          done
+          exit 1
+        else
+          echo "✅ All files are properly formatted!"
+          echo "No formatting changes needed."
+          exit 0
+        fi
+        
+    - name: Verify no changes were made
+      if: always()
+      run: |
+        echo "=== Final git status ==="
+        git status
+        echo ""
+        if [[ -n "$(git diff --name-only)" ]]; then
+          echo "=== Files that were modified by formatting ==="
+          git diff --name-only
+          echo ""
+          echo "=== Summary of formatting changes ==="
+          git diff --stat
+        else
+          echo "✅ Repository is clean - no formatting changes were needed"
+        fi

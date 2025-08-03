@@ -4,9 +4,10 @@ cc_library(
     name = "common",
     srcs = [
         "ChatServer.cpp",
+        "Message.cpp",
+        "User.cpp",
     ],
     hdrs = [
-        "Call.h",
         "Channel.h",
         "ChatServer.h",
         "Message.h",

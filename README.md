@@ -18,28 +18,37 @@
 
 A modular, cross-platform real-time communication system supporting chat, voice calls, video calls, and screen sharing.
 
-## Current Status: Iteration 1 - Chat + Signaling Foundation ✅
+## Current Status: Security Foundation Phase 🔐
 
-**Implemented Features:**
-- ✅ Multi-user chat with channels
+**Current Priority: Establishing Secure Foundation**
+- 🔄 Implementing user authentication and session management
+- 🔄 Adding WebSocket Secure (WSS) transport layer
+- 🔄 Creating message validation and integrity checks
+- 🔄 Adding rate limiting and DoS protection
+- 🔄 Implementing access control and authorization
+
+**Previous Implemented Features:**
+- ✅ Multi-user chat with channels (basic functionality)
 - ✅ Real-time messaging via WebSocket
-- ✅ User presence and room management
+- ✅ User presence and room management  
 - ✅ Extensible command system
 - ✅ Clean C++ architecture with PIMPL pattern
 
-**Architecture Extensions (Stubs):**
-- 🔄 WebRTC call management (voice/video)
-- 🔄 Screen sharing support
-- 🔄 Call state management
-- 🔄 WebRTC signaling integration
+**Security Enhancements (In Progress):**
+- 🔄 User authentication and secure sessions
+- 🔄 Message validation and HMAC signatures
+- 🔄 Rate limiting and connection security
+- 🔄 WebSocket Secure (WSS) implementation
+- 🔄 Access control and authorization system
 
 ## Project Iteration Table
 |Iteration|	Goal|	Features|	Tools|	Status|
 |---|---|---|---|---|
-|1	|Chat App + Signaling Foundation	|Text chat, multi-user rooms, WebRTC stubs	|C++ (uWebSockets), WebSocket	|✅ **COMPLETE**|
-|2	|Add Voice Calling (1:1)	|Peer-to-peer voice calls	|WebRTC (C++), existing signaling	|🔄 **READY**|
-|3	|Add Video Calling (1:1)	|Video stream via WebRTC	|Same as above	|🔄 **READY**|
-|4	|Add Screen Sharing	|Share display during calls	|WebRTC + OS-specific API	|🔄 **READY**|
+|0.5	|**Security Foundation**	|Authentication, message validation, encryption, rate limiting	|JWT, HMAC, WSS, bcrypt	|🔄 **IN PROGRESS**|
+|1	|Secure Messaging Platform	|Secure text chat, user authentication, message integrity	|C++ (uWebSockets), WebSocket Secure	|🔄 **REFACTORING**|
+|2	|Add Voice Calling (1:1)	|Peer-to-peer voice calls with secure signaling	|WebRTC (C++), secure signaling	|� **READY**|
+|3	|Add Video Calling (1:1)	|Video stream via WebRTC	|Same as above	|� **READY**|
+|4	|Add Screen Sharing	|Share display during calls	|WebRTC + OS-specific API	|� **READY**|
 |5	|Add TURN Server	|Relay if P2P fails	|coturn	|📋 **PLANNED**|
 |6	|Add SFU (Optional)	|Efficient multi-user calls	|mediasoup, Janus	|📋 **PLANNED**|
 |7	|Make Mobile-Ready	|Push notifications, TURN priority	|Platform SDKs (iOS/Android)	|📋 **PLANNED**|
@@ -108,6 +117,39 @@ Client A -> Server: {"type": "webrtc_signal", "signal_type": "offer", "sdp": "..
 Server -> Client B: {"type": "webrtc_signal", "signal_type": "offer", "sdp": "..."}
 Client A <--WebRTC--> Client B (Direct P2P media)
 ```
+
+## 🔐 Security Foundation
+
+### Critical Security Issues Addressed
+
+Your request to establish a solid foundation highlighted several critical security gaps:
+
+1. **No Authentication**: Anyone could connect without verification
+2. **No Message Validation**: Messages accepted without security checks
+3. **Insecure Transport**: No WSS (WebSocket Secure) implementation
+4. **No Rate Limiting**: Vulnerable to DoS attacks
+5. **No Session Management**: No proper user session tracking
+6. **No Message Integrity**: Missing HMAC/checksums for authentication
+
+### Security Implementation Plan
+
+**Phase 0.5: Security Foundation (CURRENT)**
+- 🔄 User authentication and registration system
+- 🔄 WebSocket Secure (WSS) transport layer
+- 🔄 Message validation and schema checking
+- 🔄 HMAC signatures for message integrity
+- 🔄 Rate limiting and connection controls
+- 🔄 Session management and access control
+
+**Security Features Being Added:**
+- ✅ Password hashing with salt (bcrypt-style)
+- 🔄 JWT-based session tokens
+- 🔄 Origin validation for CSRF protection
+- 🔄 Message sequence numbering (replay protection)
+- 🔄 Content filtering and input sanitization
+- 🔄 Security audit logging
+
+For detailed security implementation, see [SECURITY_FOUNDATION.md](SECURITY_FOUNDATION.md).
 
 ## Key Technologies
 

@@ -1,0 +1,123 @@
+name: Build Check
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Set up Bazel
+      uses: bazelbuild/setup-bazelisk@v3
+      
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          clang \
+          libc++-dev \
+          libc++abi-dev \
+          zlib1g-dev \
+          libssl-dev \
+          pkg-config
+        
+    - name: List all targets
+      run: |
+        echo "=== Discovering all targets ==="
+        echo "Command: bazel query //..."
+        echo ""
+        bazel query //... --output=label | sort || {
+          echo "❌ Failed to query targets"
+          echo "This might indicate a Bazel configuration issue"
+          exit 1
+        }
+        echo ""
+        echo "=== Target count ==="
+        target_count=$(bazel query //... --output=label | wc -l)
+        echo "Total targets found: $target_count"
+        
+    - name: Build all targets
+      run: |
+        echo "=== Building all targets ==="
+        echo "Command: bazel build //..."
+        echo ""
+        
+        # Run the build with verbose output and capture exit code
+        set +e  # Don't exit on error immediately
+        bazel build //... --verbose_failures --show_progress
+        build_exit_code=$?
+        set -e  # Re-enable exit on error
+        
+        if [[ $build_exit_code -eq 0 ]]; then
+          echo ""
+          echo "✅ ALL TARGETS BUILT SUCCESSFULLY!"
+          echo ""
+          echo "=== Build Summary ==="
+          bazel info workspace 2>/dev/null || echo "Workspace info not available"
+          echo ""
+          echo "=== Successfully built targets ==="
+          bazel query //... --output=label | sort
+          echo ""
+          echo "Total targets built: $(bazel query //... --output=label | wc -l)"
+          exit 0
+        else
+          echo ""
+          echo "❌ BUILD FAILED!"
+          echo ""
+          echo "Build command failed with exit code: $build_exit_code"
+          echo ""
+          echo "=== Troubleshooting ==="
+          echo "To reproduce this failure locally, run:"
+          echo "  bazel build //..."
+          echo "  bazel build //... --verbose_failures  # for more details"
+          echo ""
+          echo "To build and test individual targets:"
+          echo "  bazel query //... --output=label | head -5  # see first few targets"
+          echo "  bazel build //path/to/specific:target"
+          echo "  bazel test //path/to/specific:target_test"
+          echo ""
+          exit $build_exit_code
+        fi
+        
+    - name: Show build artifacts
+      if: success()
+      run: |
+        echo "=== Build Artifacts ==="
+        echo "Bazel output directory:"
+        ls -la bazel-bin/ 2>/dev/null || echo "No bazel-bin directory found"
+        echo ""
+        echo "=== Disk usage ==="
+        du -sh bazel-* 2>/dev/null || echo "No bazel directories found"
+        
+    - name: Build failure analysis
+      if: failure()
+      run: |
+        echo "=== Build Failure Analysis ==="
+        echo ""
+        echo "=== Checking for common issues ==="
+        
+        # Check if it's a dependency issue
+        echo "Checking external dependencies..."
+        bazel query //external:* --output=label 2>/dev/null | head -10 || echo "Could not query external dependencies"
+        
+        echo ""
+        echo "=== Recent Bazel logs ==="
+        find ~/.cache/bazel -name "*.log" -mtime -1 2>/dev/null | head -5 | while read logfile; do
+          echo "--- $logfile ---"
+          tail -20 "$logfile" 2>/dev/null || echo "Could not read log file"
+          echo ""
+        done || echo "No recent Bazel logs found"
+        
+        echo ""
+        echo "=== System Information ==="
+        echo "OS: $(uname -a)"
+        echo "Available memory: $(free -h | grep Mem || echo 'unknown')"
+        echo "Available disk: $(df -h . | tail -1 || echo 'unknown')"
