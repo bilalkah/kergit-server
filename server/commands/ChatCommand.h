@@ -16,7 +16,7 @@ class ChatCommand : public ICommand {
             auto& ch = server.channels[channel];
 
             // Get the timestamp from the last message in history
-            std::time_t timestamp = std::time(nullptr);
+            auto timestamp = std::chrono::system_clock::now();
             if (!ch.history.empty()) {
                 timestamp = ch.history.back().timestamp;
             }
@@ -25,7 +25,10 @@ class ChatCommand : public ICommand {
             resp["type"] = "chat";
             resp["sender"] = user.username;
             resp["text"] = text;
-            resp["timestamp"] = timestamp;
+            // Convert chrono time_point to epoch seconds for JSON
+            auto epoch = timestamp.time_since_epoch();
+            auto seconds = std::chrono::duration_cast<std::chrono::seconds>(epoch);
+            resp["timestamp"] = seconds.count();
             std::string msg = resp.dump();
             for (const auto& uid : ch.user_ids) {
                 for (const auto& [ws_ptr, ws_uid] : ws_to_user) {

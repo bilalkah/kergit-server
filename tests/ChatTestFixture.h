@@ -1,6 +1,6 @@
 #pragma once
 
-#include "client/ChatClient.h"
+#include "clients/cli/ChatClient.h"
 #include "server/ChatServer.h"
 
 #include <atomic>

@@ -9,7 +9,7 @@ class JoinCommand : public ICommand {
 
     void execute(json& j, User& user, ChatServerState& server,
                  uWS::WebSocket<false, true, struct PerSocketData>* ws) override {
-        std::string channel = j["channel"];
+        std::string channel = j.value("channel", "");
         std::string username = j.value("username", user.id);
         user.username = username;
 
@@ -52,7 +52,10 @@ class JoinCommand : public ICommand {
                 hist_msg["type"] = "chat";
                 hist_msg["sender"] = msg.sender;
                 hist_msg["text"] = msg.text;
-                hist_msg["timestamp"] = msg.timestamp;
+                // Convert chrono time_point to epoch seconds for JSON
+                auto epoch = msg.timestamp.time_since_epoch();
+                auto seconds = std::chrono::duration_cast<std::chrono::seconds>(epoch);
+                hist_msg["timestamp"] = seconds.count();
                 ws->send(hist_msg.dump(), uWS::OpCode::TEXT);
             }
 

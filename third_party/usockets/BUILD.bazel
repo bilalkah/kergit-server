@@ -1,18 +1,5 @@
-cc_library(
+alias(
     name = "usockets",
-    srcs = glob([
-        "src/*.c",
-        "src/eventing/*.c",
-        "src/io_uring/*.c",
-        "src/crypto/*.c"
-    ]),
-    hdrs = glob([
-        "src/*.h",
-        "src/internal/*.h",
-        "src/internal/eventing/*.h",
-        "src/internal/networking/*.h"
-    ]),
-    includes = ["src", "src/internal", "src/internal/eventing", "src/internal/networking"],
-    copts = ["-DLIBUS_NO_SSL"],
+    actual = "@usockets//:usockets",
     visibility = ["//visibility:public"],
-) 
+)

@@ -1,18 +1,5 @@
-cc_library(
+alias(
     name = "uwebsockets",
-    srcs = [
-        "capi/libuwebsockets.cpp"
-    ],
-    hdrs = glob([
-        "src/*.h",
-        "capi/libuwebsockets.h"
-    ]) + ["@usockets//:usockets"],
-    includes = ["src", "capi", "@usockets//:src", "."],
-    copts = [
-        "-DLIBUS_NO_SSL",
-        "-std=c++17",
-    ],
-    linkopts = ["-lpthread", "-lz"],
+    actual = "@uwebsockets//:uwebsockets",
     visibility = ["//visibility:public"],
-    deps = ["@usockets//:usockets"],
 )
