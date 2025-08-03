@@ -2,22 +2,22 @@ load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
 
 cc_library(
     name = "server_commands",
+    srcs = ["commands/AuthenticateCommand.cpp"],
     hdrs = [
         "commands/AllCommands.h",
-        "commands/CallAcceptCommand.h",
-        "commands/CallRequestCommand.h",
+        "commands/AuthenticateCommand.h",
         "commands/ChatCommand.h",
         "commands/ICommand.h",
         "commands/JoinCommand.h",
         "commands/ListCommand.h",
         "commands/PingCommand.h",
         "commands/UsersCommand.h",
-        "commands/WebRTCSignalCommand.h",
     ],
     includes = ["."],
     visibility = ["//visibility:public"],
     deps = [
         "//common",
+        "@nlohmann_json",
         "@uwebsockets",
     ],
 )

@@ -6,10 +6,10 @@ py_binary(
     name = "web_server",
     srcs = ["server.py"],
     data = [
-        "index.html",
         "app.js",
-        "styles.css",
         "debug.html",
+        "index.html",
+        "styles.css",
         "test_connection.html",
     ],
     main = "server.py",
@@ -18,10 +18,10 @@ py_binary(
 filegroup(
     name = "static_files",
     srcs = [
-        "index.html",
         "app.js",
-        "styles.css",
         "debug.html",
+        "index.html",
+        "styles.css",
         "test_connection.html",
     ],
 )

@@ -5,9 +5,16 @@ def _nlohmann_json_impl(ctx):
         name = "nlohmann_json",
         url = "https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz",
         strip_prefix = "json",
-        build_file = "//third_party/nlohmann_json:BUILD.bazel",
+        build_file_content = """
+cc_library(
+    name = "nlohmann_json",
+    hdrs = glob(["single_include/nlohmann/**/*.hpp"]),
+    includes = ["single_include"],
+    visibility = ["//visibility:public"],
+)
+"""
     )
 
 nlohmann_json = module_extension(
     implementation = _nlohmann_json_impl,
-) 
+)

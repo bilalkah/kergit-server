@@ -11,9 +11,6 @@
 #include <websocketpp/client.hpp>
 #include <websocketpp/config/asio_no_tls_client.hpp>
 
-// Include WebRTC manager for voice calls
-#include "WebRTCManager.h"
-
 using websocketpp::connection_hdl;
 typedef websocketpp::client<websocketpp::config::asio_client> client;
 using json = nlohmann::json;
@@ -37,14 +34,6 @@ class ChatClientApp {
     bool list_users();
     bool ping();
 
-    // Voice call operations
-    bool initiate_voice_call(const std::string& target_user);
-    bool accept_voice_call(const std::string& call_id);
-    bool reject_voice_call(const std::string& call_id);
-    bool end_voice_call(const std::string& call_id);
-    bool is_in_voice_call() const;
-    WebRTCState get_voice_call_state() const;
-
     // Message handling
     void set_message_handler(std::function<void(const json&)> handler);
     void set_connection_handler(std::function<void(bool)> handler);
@@ -66,10 +55,6 @@ class ChatClientApp {
     void on_open(websocketpp::connection_hdl hdl);
     void on_close(websocketpp::connection_hdl hdl);
     void on_fail(websocketpp::connection_hdl hdl);
-
-    // Voice call message handling
-    void handle_voice_call_message(const json& message);
-    void handle_webrtc_signal(const json& message);
 
     std::string server_uri;
     std::string username;
@@ -93,8 +78,4 @@ class ChatClientApp {
 
     std::mutex connection_mutex;
     std::condition_variable connection_cv;
-
-    // WebRTC voice call manager
-    WebRTCManager webrtc_manager;
-    std::string current_call_id;
 };

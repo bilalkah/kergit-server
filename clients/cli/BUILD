@@ -1,18 +1,6 @@
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
 
 cc_library(
-    name = "webrtc_manager_lib",
-    srcs = ["WebRTCManager.cpp"],
-    hdrs = ["WebRTCManager.h"],
-    copts = ["-std=c++17"],
-    linkopts = ["-lpthread"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//third_party/webrtc:webrtc_simple",
-    ],
-)
-
-cc_library(
     name = "chat_client_lib",
     srcs = ["ChatClient.cpp"],
     hdrs = ["ChatClient.h"],
@@ -37,7 +25,6 @@ cc_library(
     strip_include_prefix = "",
     visibility = ["//visibility:public"],
     deps = [
-        ":webrtc_manager_lib",
         "@nlohmann_json",
         "@websocketpp",
     ],
@@ -50,7 +37,6 @@ cc_binary(
     linkopts = ["-lpthread"],
     deps = [
         ":chat_client_app_lib",
-        ":webrtc_manager_lib",
         "@nlohmann_json",
         "@websocketpp",
     ],

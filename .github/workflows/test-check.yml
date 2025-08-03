@@ -1,0 +1,214 @@
+name: Test Check
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Set up Bazel
+      uses: bazelbuild/setup-bazelisk@v3
+      
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          clang \
+          libc++-dev \
+          libc++abi-dev \
+          zlib1g-dev \
+          libssl-dev \
+          pkg-config \
+          python3 \
+          python3-pip
+          
+    - name: Install Python dependencies
+      run: |
+        # Check if there are Python test requirements
+        if [[ -f "tests/requirements.txt" ]]; then
+          echo "Installing Python test dependencies..."
+          pip3 install -r tests/requirements.txt
+        else
+          echo "No Python requirements.txt found, skipping Python dependencies"
+        fi
+        
+    - name: Discover test targets
+      run: |
+        echo "=== Discovering test targets ==="
+        echo "Command: bazel query 'tests(//...)'"
+        echo ""
+        
+        # Find all test targets
+        test_targets=$(bazel query 'tests(//...)' --output=label 2>/dev/null | sort || true)
+        
+        if [[ -n "$test_targets" ]]; then
+          echo "Test targets found:"
+          echo "$test_targets"
+          echo ""
+          echo "Total test targets: $(echo "$test_targets" | wc -l)"
+          
+          # Show test target details
+          echo ""
+          echo "=== Test target details ==="
+          for target in $test_targets; do
+            echo "Target: $target"
+            bazel query "kind(.*_test, $target)" --output=label 2>/dev/null || echo "  Could not get target details"
+          done
+        else
+          echo "ℹ️  No test targets found using tests(//...) query"
+          echo "Checking for any targets with test-like patterns..."
+          
+          # Fallback: look for targets with test patterns
+          potential_tests=$(bazel query //... --output=label | grep -E '(_test|_Test|test_|Test)' | sort || true)
+          if [[ -n "$potential_tests" ]]; then
+            echo "Potential test targets found:"
+            echo "$potential_tests"
+          else
+            echo "No targets with test patterns found"
+          fi
+        fi
+        
+        echo ""
+        echo "=== Checking specific known test locations ==="
+        bazel query //tests/... --output=label 2>/dev/null | sort || echo "No targets in //tests/... found"
+        
+    - name: Run all tests
+      run: |
+        echo "=== Running all tests ==="
+        echo "Command: bazel test //..."
+        echo ""
+        
+        # Check if there are any test targets first
+        test_targets=$(bazel query 'tests(//...)' --output=label 2>/dev/null || true)
+        
+        if [[ -z "$test_targets" ]]; then
+          echo "ℹ️  No test targets found to run"
+          echo "This is not necessarily an error - the project might not have tests yet"
+          echo ""
+          echo "To add tests to your project:"
+          echo "  1. Create test files with '_test' suffix"
+          echo "  2. Add cc_test targets to BUILD files"
+          echo "  3. Example:"
+          echo "     cc_test("
+          echo "         name = \"my_test\","
+          echo "         srcs = [\"my_test.cpp\"],"
+          echo "         deps = [\"@googletest//:gtest_main\"],"
+          echo "     )"
+          echo ""
+          echo "✅ TEST CHECK PASSED (no tests to run)"
+          exit 0
+        fi
+        
+        echo "Found $(echo "$test_targets" | wc -l) test targets to run"
+        echo ""
+        
+        # Run the tests with verbose output and capture exit code
+        set +e  # Don't exit on error immediately
+        bazel test //... \
+          --test_output=errors \
+          --verbose_failures \
+          --test_summary=detailed \
+          --test_verbose_timeout_warnings \
+          --cache_test_results=no
+        test_exit_code=$?
+        set -e  # Re-enable exit on error
+        
+        echo ""
+        if [[ $test_exit_code -eq 0 ]]; then
+          echo "✅ ALL TESTS PASSED!"
+          echo ""
+          echo "=== Test Summary ==="
+          echo "Successfully ran tests for:"
+          echo "$test_targets"
+          echo ""
+          echo "Total test targets passed: $(echo "$test_targets" | wc -l)"
+        else
+          echo "❌ TESTS FAILED!"
+          echo ""
+          echo "Test command failed with exit code: $test_exit_code"
+          echo ""
+          echo "=== Troubleshooting ==="
+          echo "To reproduce test failures locally, run:"
+          echo "  bazel test //..."
+          echo "  bazel test //... --test_output=all  # for full test output"
+          echo "  bazel test //path/to/specific:test_target  # run individual test"
+          echo ""
+          echo "To see detailed test results:"
+          echo "  bazel test //... --test_summary=detailed"
+          echo "  cat bazel-testlogs/path/to/test/test.log  # view specific test log"
+        fi
+        
+        exit $test_exit_code
+        
+    - name: Show test results
+      if: always()
+      run: |
+        echo "=== Test Results Summary ==="
+        
+        # Show test logs directory structure
+        if [[ -d "bazel-testlogs" ]]; then
+          echo "Test logs available in bazel-testlogs:"
+          find bazel-testlogs -name "*.log" 2>/dev/null | head -10 | while read logfile; do
+            echo "  - $logfile"
+          done
+          
+          echo ""
+          echo "=== Recent test outputs ==="
+          find bazel-testlogs -name "test.log" -newer bazel-testlogs 2>/dev/null | head -3 | while read logfile; do
+            echo "--- $logfile ---"
+            tail -20 "$logfile" 2>/dev/null | head -10 || echo "Could not read log file"
+            echo ""
+          done
+        else
+          echo "No test logs directory found"
+        fi
+        
+        echo ""
+        echo "=== Test artifacts disk usage ==="
+        du -sh bazel-testlogs 2>/dev/null || echo "No test artifacts found"
+        
+    - name: Test failure analysis
+      if: failure()
+      run: |
+        echo "=== Test Failure Analysis ==="
+        echo ""
+        
+        # Show failed test logs
+        if [[ -d "bazel-testlogs" ]]; then
+          echo "=== Failed test logs ==="
+          find bazel-testlogs -name "*.log" -newer bazel-testlogs 2>/dev/null | while read logfile; do
+            if grep -q "FAILED\|ERROR\|TIMEOUT" "$logfile" 2>/dev/null; then
+              echo "--- FAILED: $logfile ---"
+              tail -30 "$logfile" 2>/dev/null || echo "Could not read log file"
+              echo ""
+            fi
+          done
+        fi
+        
+        echo ""
+        echo "=== Common test failure causes ==="
+        echo "1. Missing test dependencies"
+        echo "2. Incorrect test setup/teardown"
+        echo "3. Race conditions in concurrent tests"
+        echo "4. Environment-specific issues"
+        echo "5. Timeout issues with slow tests"
+        echo ""
+        echo "=== Debugging tips ==="
+        echo "- Run individual tests: bazel test //path/to:specific_test"
+        echo "- Use --test_output=all for full output"
+        echo "- Check test logs in bazel-testlogs/"
+        echo "- Add --test_timeout=300 for slow tests"
+        echo ""
+        echo "=== System Information ==="
+        echo "OS: $(uname -a)"
+        echo "Available memory: $(free -h | grep Mem || echo 'unknown')"
+        echo "Available disk: $(df -h . | tail -1 || echo 'unknown')"

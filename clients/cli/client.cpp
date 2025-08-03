@@ -21,11 +21,6 @@ void print_help(bool connected = true) {
               << "/connect <channel> - Connect to an existing channel\n"
               << "/create <channel>  - Create and join a new channel\n"
               << "/disconnect      - Leave the channel (stay connected to server)\n"
-              << "/call <user>     - Start a voice call with user\n"
-              << "/accept <call_id> - Accept incoming voice call\n"
-              << "/reject <call_id> - Reject incoming voice call\n"
-              << "/endcall         - End current voice call\n"
-              << "/callstatus      - Show voice call status\n"
               << "/quit           - Quit the app immediately\n"
               << "/ping           - Measure ping to server\n"
               << "/help           - Show this help message\n";
@@ -171,66 +166,6 @@ int main() {
                 in_channel = false;
                 std::cout << "[Left the channel. Use /connect <channel> to join another.]"
                           << std::endl;
-            } else if (cmd == "/call") {
-                if (!client.is_connected()) {
-                    std::cout << "Not connected." << std::endl;
-                    continue;
-                }
-                std::string target_user;
-                iss >> target_user;
-                if (!target_user.empty()) {
-                    client.initiate_voice_call(target_user);
-                } else {
-                    std::cout << "Usage: /call <username>" << std::endl;
-                }
-            } else if (cmd == "/accept") {
-                if (!client.is_connected()) {
-                    std::cout << "Not connected." << std::endl;
-                    continue;
-                }
-                std::string call_id;
-                iss >> call_id;
-                if (!call_id.empty()) {
-                    client.accept_voice_call(call_id);
-                } else {
-                    std::cout << "Usage: /accept <call_id>" << std::endl;
-                }
-            } else if (cmd == "/reject") {
-                if (!client.is_connected()) {
-                    std::cout << "Not connected." << std::endl;
-                    continue;
-                }
-                std::string call_id;
-                iss >> call_id;
-                if (!call_id.empty()) {
-                    client.reject_voice_call(call_id);
-                } else {
-                    std::cout << "Usage: /reject <call_id>" << std::endl;
-                }
-            } else if (cmd == "/endcall") {
-                if (!client.is_connected()) {
-                    std::cout << "Not connected." << std::endl;
-                    continue;
-                }
-                if (client.is_in_voice_call()) {
-                    // Get the current call ID (you might need to store this)
-                    client.end_voice_call("current_call");  // This is simplified
-                } else {
-                    std::cout << "Not in a voice call." << std::endl;
-                }
-            } else if (cmd == "/callstatus") {
-                if (!client.is_connected()) {
-                    std::cout << "Not connected." << std::endl;
-                    continue;
-                }
-                std::cout << "Voice call status: ";
-                if (client.is_in_voice_call()) {
-                    std::cout << "In call (State: "
-                              << static_cast<int>(client.get_voice_call_state()) << ")"
-                              << std::endl;
-                } else {
-                    std::cout << "No active call" << std::endl;
-                }
             } else if (cmd == "/ping") {
                 if (!client.is_connected()) {
                     std::cout << "Not connected." << std::endl;

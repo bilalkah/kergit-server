@@ -1,6 +1,5 @@
-cc_library(
+alias(
     name = "nlohmann_json",
-    hdrs = glob(["single_include/nlohmann/**/*.hpp"]),
-    includes = ["single_include"],
+    actual = "@nlohmann_json//:nlohmann_json",
     visibility = ["//visibility:public"],
-) 
+)
