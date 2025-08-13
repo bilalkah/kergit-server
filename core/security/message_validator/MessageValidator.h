@@ -76,4 +76,4 @@ class MessageValidator {
     bool contains_pattern(const std::string& text, const std::unordered_set<std::string>& patterns);
 };
 
-} // namespace security
+}  // namespace security
