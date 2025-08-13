@@ -1,8 +1,8 @@
 #pragma once
-#include "Authentication.h"
-#include "HMACValidator.h"
-#include "MessageValidator.h"
-#include "RateLimiter.h"
+#include "core/security/authentication/Authentication.h"
+#include "core/security/hmac_validator/HMACValidator.h"
+#include "core/security/message_validator/MessageValidator.h"
+#include "core/security/rate_limiter/RateLimiter.h"
 
 #include <memory>
 #include <string>

@@ -2,15 +2,19 @@
 
 load("@rules_python//python:defs.bzl", "py_binary")
 
+# Export server.py for Docker build
+exports_files(["server.py"])
+
 py_binary(
     name = "web_server",
     srcs = ["server.py"],
     data = [
-        "app.js",
-        "debug.html",
         "index.html",
         "styles.css",
+        "debug.html",
         "test_connection.html",
+        "src/app.js",
+        "src/main.js",
     ],
     main = "server.py",
 )
@@ -18,10 +22,11 @@ py_binary(
 filegroup(
     name = "static_files",
     srcs = [
-        "app.js",
-        "debug.html",
         "index.html",
         "styles.css",
+        "debug.html",
         "test_connection.html",
+        "src/app.js",
+        "src/main.js",
     ],
 )

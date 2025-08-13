@@ -1,11 +1,17 @@
 """Bazel module configuration for serverless communication project."""
+
 module(name = "serverless_communication")
 
 bazel_dep(name = "rules_python", version = "1.5.1")
 bazel_dep(name = "rules_cc", version = "0.1.4")
 bazel_dep(name = "rules_shell", version = "0.5.0")
+
 bazel_dep(name = "websocketpp", version = "0.8.2", dev_dependency = True)
+
 bazel_dep(name = "googletest", version = "1.17.0")
+
+libpqxx_ext = use_extension("//third_party/libpqxx:extension.bzl", "libpqxx")
+use_repo(libpqxx_ext, "libpqxx")
 
 nlohmann_json_ext = use_extension("//third_party/nlohmann_json:extension.bzl", "nlohmann_json")
 use_repo(nlohmann_json_ext, "nlohmann_json")
@@ -16,7 +22,6 @@ use_repo(uwebsockets_ext, "uwebsockets")
 usockets_ext = use_extension("//third_party/usockets:extension.bzl", "usockets")
 use_repo(usockets_ext, "usockets")
 
-# WebRTC extension for voice calls
 webrtc_ext = use_extension("//third_party/webrtc:extension.bzl", "webrtc")
 use_repo(webrtc_ext, "webrtc_simple")
 
@@ -24,8 +29,15 @@ use_repo(webrtc_ext, "webrtc_simple")
 bazel_dep(name = "hedron_compile_commands", dev_dependency = True)
 git_override(
     module_name = "hedron_compile_commands",
-    remote = "https://github.com/hedronvision/bazel-compile-commands-extractor.git",
     commit = "4f28899228fb3ad0126897876f147ca15026151e",
+    remote = "https://github.com/hedronvision/bazel-compile-commands-extractor.git",
     # Replace the commit hash (above) with the latest (https://github.com/hedronvision/bazel-compile-commands-extractor/commits/main).
     # Even better, set up Renovate and let it do the work for you (see "Suggestion: Updates" in the README).
+)
+
+bazel_dep(name = "rules_foreign_cc", dev_dependency = True)
+git_override(
+    module_name = "rules_foreign_cc",
+    commit = "66b9b3242ca791e2147b8789e82c708ee8bc4f1a",
+    remote = "https://github.com/bazel-contrib/rules_foreign_cc.git",
 )

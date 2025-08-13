@@ -1,5 +1,6 @@
 #pragma once
 #include "ICommand.h"
+#include "server/MessageFilters.h"
 
 class JoinCommand : public ICommand {
    public:
@@ -36,14 +37,14 @@ class JoinCommand : public ICommand {
             resp["type"] = "joined";
             resp["channel"] = channel;
             resp["username"] = username;
-            ws->send(resp.dump(), uWS::OpCode::TEXT);
+            send_json(ws, resp, uWS::OpCode::TEXT);
 
             // Send current users list to the joining user
             json users_resp;
             users_resp["type"] = "users";
             users_resp["channel"] = channel;
             users_resp["users"] = current_users;
-            ws->send(users_resp.dump(), uWS::OpCode::TEXT);
+            send_json(ws, users_resp, uWS::OpCode::TEXT);
 
             // Send channel history
             auto history = server.getChannelHistory(channel);
@@ -56,7 +57,7 @@ class JoinCommand : public ICommand {
                 auto epoch = msg.timestamp.time_since_epoch();
                 auto seconds = std::chrono::duration_cast<std::chrono::seconds>(epoch);
                 hist_msg["timestamp"] = seconds.count();
-                ws->send(hist_msg.dump(), uWS::OpCode::TEXT);
+                send_json(ws, hist_msg, uWS::OpCode::TEXT);
             }
 
             // Notify other users in the channel that someone joined
@@ -64,12 +65,12 @@ class JoinCommand : public ICommand {
             join_notification["type"] = "user_joined";
             join_notification["username"] = username;
             join_notification["channel"] = channel;
-            std::string join_msg = join_notification.dump();
             for (const auto& uid : ch.user_ids) {
                 if (uid != user.id) {  // Don't send to the joining user
                     for (const auto& [ws_ptr, ws_uid] : ws_to_user) {
                         if (ws_uid == uid) {
-                            ws_ptr->send(join_msg, uWS::OpCode::TEXT);
+                            json out = join_notification;
+                            send_json(ws_ptr, out, uWS::OpCode::TEXT);
                         }
                     }
                 }
@@ -84,12 +85,12 @@ class JoinCommand : public ICommand {
                 leave_notification["type"] = "user_left";
                 leave_notification["username"] = username;
                 leave_notification["channel"] = old_channel;
-                std::string leave_msg = leave_notification.dump();
                 for (const auto& uid : ch.user_ids) {
                     if (uid != user.id) {  // Don't send to the leaving user
                         for (const auto& [ws_ptr, ws_uid] : ws_to_user) {
                             if (ws_uid == uid) {
-                                ws_ptr->send(leave_msg, uWS::OpCode::TEXT);
+                                json out = leave_notification;
+                                send_json(ws_ptr, out, uWS::OpCode::TEXT);
                             }
                         }
                     }

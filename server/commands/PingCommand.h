@@ -1,5 +1,6 @@
 #pragma once
 #include "ICommand.h"
+#include "server/MessageFilters.h"
 
 class PingCommand : public ICommand {
    public:
@@ -8,6 +9,6 @@ class PingCommand : public ICommand {
         json resp;
         resp["type"] = "pong";
         resp["timestamp"] = j["timestamp"];
-        ws->send(resp.dump(), uWS::OpCode::TEXT);
+        send_json(ws, resp, uWS::OpCode::TEXT);
     }
 };

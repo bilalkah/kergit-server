@@ -19,6 +19,20 @@ cc_library(
         "//common",
         "@nlohmann_json",
         "@uwebsockets",
+        ":message_filters",
+        "//core/database:chatdb_lib",
+    ],
+)
+
+cc_library(
+    name = "message_filters",
+    srcs = ["MessageFilters.cpp"],
+    hdrs = ["MessageFilters.h"],
+    copts = ["-std=c++17"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@nlohmann_json",
+        "@uwebsockets",
     ],
 )
 
@@ -37,6 +51,8 @@ cc_library(
         "//common",
         "@nlohmann_json",
         "@uwebsockets",
+        ":message_filters",
+        "//core/database:chatdb_lib",
     ],
 )
 
@@ -65,5 +81,7 @@ cc_binary(
         "//common",
         "@nlohmann_json",
         "@uwebsockets",
+        ":message_filters",
+        "//core/database:chatdb_lib",
     ],
 )
