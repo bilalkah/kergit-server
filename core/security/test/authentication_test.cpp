@@ -1,10 +1,10 @@
 #include "core/security/authentication/Authentication.h"
 
+#include <atomic>
+#include <chrono>
 #include <gtest/gtest.h>
 #include <memory>
 #include <thread>
-#include <chrono>
-#include <atomic>
 
 class AuthenticationTest : public ::testing::Test {
    protected:
@@ -68,7 +68,7 @@ TEST_F(AuthenticationTest, PasswordSecurity) {
     // Test salt generation
     std::string salt1 = auth->generate_salt();
     std::string salt2 = auth->generate_salt();
-    EXPECT_NE(salt1, salt2);  // Salts should be unique
+    EXPECT_NE(salt1, salt2);       // Salts should be unique
     EXPECT_GE(salt1.length(), 8);  // Salt should have reasonable length
 }
 
@@ -142,8 +142,9 @@ TEST_F(AuthenticationTest, SecurityEdgeCases) {
 // Test concurrent access
 TEST_F(AuthenticationTest, ConcurrentAccess) {
     // Register a new user for testing concurrent access
-    ASSERT_TRUE(auth->register_user("concurrent_user", "concurrent@example.com", "concurrent_pass"));
-    
+    ASSERT_TRUE(
+        auth->register_user("concurrent_user", "concurrent@example.com", "concurrent_pass"));
+
     // Test concurrent authentication
     std::vector<std::thread> auth_threads;
     std::atomic<int> success_count(0);

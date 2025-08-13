@@ -9,12 +9,12 @@ py_binary(
     name = "web_server",
     srcs = ["server.py"],
     data = [
-        "index.html",
-        "styles.css",
         "debug.html",
-        "test_connection.html",
+        "index.html",
         "src/app.js",
         "src/main.js",
+        "styles.css",
+        "test_connection.html",
     ],
     main = "server.py",
 )
@@ -22,11 +22,11 @@ py_binary(
 filegroup(
     name = "static_files",
     srcs = [
-        "index.html",
-        "styles.css",
         "debug.html",
-        "test_connection.html",
+        "index.html",
         "src/app.js",
         "src/main.js",
+        "styles.css",
+        "test_connection.html",
     ],
 )

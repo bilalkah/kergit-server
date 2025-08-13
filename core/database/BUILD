@@ -1,5 +1,5 @@
-load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
 
 # file group for core/database/sql/database_schema.sql
 filegroup(
@@ -16,8 +16,8 @@ cc_binary(
     ],
     deps = [
         "//common",
-        "@nlohmann_json",
         "@libpqxx",
+        "@nlohmann_json",
     ],
 )
 
@@ -25,12 +25,12 @@ cc_library(
     name = "chatdb_lib",
     srcs = ["src/chatdb.cpp"],
     hdrs = ["src/chatdb.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "//common",
         "@libpqxx",
         "@nlohmann_json",
     ],
-    visibility = ["//visibility:public"],
 )
 
 cc_test(
@@ -42,4 +42,3 @@ cc_test(
         "@googletest//:gtest_main",
     ],
 )
-

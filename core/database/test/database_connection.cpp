@@ -13,8 +13,7 @@ class ChatDBTest : public ::testing::Test {
 
     virtual void SetUp() override {
         // Connect to your test db here, adjust connection string accordingly
-        db = new ChatDB(
-            "dbname=chat_db user=chat_user host=localhost port=5432");
+        db = new ChatDB("dbname=chat_db user=chat_user host=localhost port=5432");
 
         // Clean tables before each test to start fresh
         pqxx::work txn(db->getConnection());

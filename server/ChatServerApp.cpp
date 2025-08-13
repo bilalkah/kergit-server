@@ -1,4 +1,5 @@
 #include "ChatServerApp.h"
+
 #include "MessageFilters.h"
 
 #include <iostream>
@@ -106,8 +107,8 @@ void ChatServerApp::run_server() {
                         apply_incoming_filter(j);
                         std::string connection_id = ws->getUserData()->user_id;
                         std::string type = j["type"];
-                        std::cerr << "[SERVER] Message from " << connection_id << ", type=" << type << ": " << message << std::endl;
-
+                        std::cerr << "[SERVER] Message from " << connection_id << ", type=" << type
+                                  << ": " << message << std::endl;
 
                         auto user_it = chatServer.users.find(connection_id);
                         auto &user = user_it->second;
@@ -153,12 +154,12 @@ void ChatServerApp::run_server() {
                                     auto ws_it = ws_to_user.begin();
                                     while (ws_it != ws_to_user.end()) {
                                         if (ws_it->second == uid) {
-                                           try {
-                                               json msg = disconnect_notification;
-                                               send_json(ws_it->first, msg, uWS::OpCode::TEXT);
-                                           } catch (const std::exception &e) {
-                                               // Ignore send errors during disconnect
-                                           }
+                                            try {
+                                                json msg = disconnect_notification;
+                                                send_json(ws_it->first, msg, uWS::OpCode::TEXT);
+                                            } catch (const std::exception &e) {
+                                                // Ignore send errors during disconnect
+                                            }
                                             break;
                                         }
                                         ++ws_it;

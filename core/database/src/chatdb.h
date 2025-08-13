@@ -1,10 +1,10 @@
 #ifndef CHATDB_H
 #define CHATDB_H
 
+#include <optional>
 #include <pqxx/pqxx>
 #include <string>
 #include <vector>
-#include <optional>
 
 struct DbMessage {
     int id;
@@ -27,7 +27,7 @@ struct ChannelInfo {
 };
 
 class ChatDB {
-public:
+   public:
     explicit ChatDB(const std::string& conninfo);
 
     int createHub(const std::string& hubName, int ownerId);
@@ -43,7 +43,8 @@ public:
     // New: Users
     std::optional<int> findUserIdByUsername(const std::string& username);
     std::optional<std::string> findPasswordHashByUsername(const std::string& username);
-    int createUser(const std::string& username, const std::string& passwordHash, const std::string& email);
+    int createUser(const std::string& username, const std::string& passwordHash,
+                   const std::string& email);
 
     // New: Hubs and channels for a user
     std::vector<HubInfo> getUserHubs(int userId);
@@ -52,8 +53,8 @@ public:
     // New: Ensure defaults
     int ensurePersonalHubWithGeneral(int userId, const std::string& hubName = "Personal Hub");
 
-private:
+   private:
     pqxx::connection conn_;
 };
 
-#endif // CHATDB_H
+#endif  // CHATDB_H

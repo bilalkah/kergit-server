@@ -1,6 +1,6 @@
-#include <pqxx/connection>
-#include <gtest/gtest.h>
 #include <exception>
+#include <gtest/gtest.h>
+#include <pqxx/connection>
 
 // A simple test to check if pqxx::connection can be constructed.
 TEST(LibpqxxConnectionTest, CanConstructConnection) {
