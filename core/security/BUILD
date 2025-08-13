@@ -22,17 +22,17 @@ cc_library(
     name = "hmac_validator_lib",
     srcs = ["hmac_validator/HMACValidator.cpp"],
     hdrs = ["hmac_validator/HMACValidator.h"],
-    visibility = ["//visibility:public"],
     linkopts = ["-lcrypto"],  # OpenSSL crypto library
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "jwt_manager_lib",
     srcs = ["jwt_manager/JWTManager.cpp"],
     hdrs = ["jwt_manager/JWTManager.h"],
+    linkopts = ["-lcrypto"],  # OpenSSL crypto library
     visibility = ["//visibility:public"],
     deps = ["@nlohmann_json"],
-    linkopts = ["-lcrypto"],  # OpenSSL crypto library
 )
 
 cc_library(

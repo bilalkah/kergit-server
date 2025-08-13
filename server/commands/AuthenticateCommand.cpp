@@ -1,9 +1,10 @@
 #include "AuthenticateCommand.h"
+
 #include "server/MessageFilters.h"
 
 #include <functional>
-#include <sstream>
 #include <iostream>
+#include <sstream>
 
 void AuthenticateCommand::execute(json& message, User& user, ChatServerState& server_state,
                                   uWS::WebSocket<false, true, struct PerSocketData>* ws) {
@@ -57,7 +58,8 @@ bool AuthenticateCommand::handle_login(const json& message, User& user,
         authenticated_user.id = connection_id;
         authenticated_user.username = username;
         server_state.users[connection_id] = authenticated_user;
-        std::cerr << "[AUTH] Login success: username=" << username << ", conn_id=" << connection_id << std::endl;
+        std::cerr << "[AUTH] Login success: username=" << username << ", conn_id=" << connection_id
+                  << std::endl;
 
         send_auth_response(ws, true, connection_id);
 
@@ -81,7 +83,8 @@ bool AuthenticateCommand::handle_register(const json& message, User& user,
     std::string username = message.value("username", "");
     std::string password = message.value("password", "");
     std::string email = message.value("email", "");
-    std::cerr << "[AUTH] Register attempt: username=" << username << ", email=" << email << std::endl;
+    std::cerr << "[AUTH] Register attempt: username=" << username << ", email=" << email
+              << std::endl;
 
     if (username.empty() || password.empty()) {
         send_auth_response(ws, false, "", "Username and password required");
@@ -109,7 +112,8 @@ bool AuthenticateCommand::handle_register(const json& message, User& user,
 
         // Create user
         int newUserId = db->createUser(username, hash_password(password), email);
-        std::cerr << "[AUTH] Registration success: username=" << username << ", user_id=" << newUserId << std::endl;
+        std::cerr << "[AUTH] Registration success: username=" << username
+                  << ", user_id=" << newUserId << std::endl;
 
         // Ensure personal hub with general channel
         db->ensurePersonalHubWithGeneral(newUserId);
@@ -125,7 +129,8 @@ bool AuthenticateCommand::handle_register(const json& message, User& user,
         send_init_state(ws, newUserId);
     } catch (const std::exception& e) {
         std::cerr << "[AUTH] DB error during registration: " << e.what() << std::endl;
-        send_auth_response(ws, false, "", std::string("Database error during registration: ") + e.what());
+        send_auth_response(ws, false, "",
+                           std::string("Database error during registration: ") + e.what());
         return false;
     }
 
@@ -149,14 +154,15 @@ void AuthenticateCommand::send_auth_response(uWS::WebSocket<false, true, struct 
     send_json(ws, response, uWS::OpCode::TEXT);
 }
 
-void AuthenticateCommand::send_init_state(uWS::WebSocket<false, true, struct PerSocketData>* ws, int userId) {
+void AuthenticateCommand::send_init_state(uWS::WebSocket<false, true, struct PerSocketData>* ws,
+                                          int userId) {
     if (!db) return;
     // Hubs
     auto hubs = db->getUserHubs(userId);
     json hubsMsg;
     hubsMsg["type"] = "hubs";
     json hubsArr = json::array();
-    for (const auto &h : hubs) {
+    for (const auto& h : hubs) {
         json hobj;
         hobj["id"] = h.id;
         hobj["name"] = h.name;
@@ -166,13 +172,13 @@ void AuthenticateCommand::send_init_state(uWS::WebSocket<false, true, struct Per
     send_json(ws, hubsMsg, uWS::OpCode::TEXT);
 
     // For each hub, send channels
-    for (const auto &h : hubs) {
+    for (const auto& h : hubs) {
         auto chans = db->getHubChannels(h.id);
         json chansMsg;
         chansMsg["type"] = "channels_for_hub";
         chansMsg["hub_id"] = h.id;
         json carr = json::array();
-        for (const auto &c : chans) {
+        for (const auto& c : chans) {
             json cobj;
             cobj["id"] = c.id;
             cobj["name"] = c.name;

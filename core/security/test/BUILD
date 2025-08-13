@@ -12,7 +12,7 @@ cc_test(
 )
 
 cc_test(
-    name = "hmac_validator_test", 
+    name = "hmac_validator_test",
     size = "medium",
     srcs = ["hmac_validator_test.cpp"],
     copts = ["-std=c++17"],
@@ -24,7 +24,7 @@ cc_test(
 
 cc_test(
     name = "jwt_manager_test",
-    size = "medium", 
+    size = "medium",
     srcs = ["jwt_manager_test.cpp"],
     copts = ["-std=c++17"],
     deps = [
@@ -36,7 +36,7 @@ cc_test(
 cc_test(
     name = "rate_limiter_test",
     size = "medium",
-    srcs = ["rate_limiter_test.cpp"], 
+    srcs = ["rate_limiter_test.cpp"],
     copts = ["-std=c++17"],
     deps = [
         "//core/security:rate_limiter_lib",
@@ -48,12 +48,10 @@ cc_test(
     name = "message_validator_test",
     size = "medium",
     srcs = ["message_validator_test.cpp"],
-    copts = ["-std=c++17"], 
+    copts = ["-std=c++17"],
     deps = [
         "//core/security:message_validator_lib",
         "@googletest//:gtest_main",
         "@nlohmann_json",
     ],
 )
-
-

@@ -1,9 +1,9 @@
 #include "core/security/jwt_manager/JWTManager.h"
 
+#include <chrono>
 #include <gtest/gtest.h>
 #include <memory>
 #include <thread>
-#include <chrono>
 
 class JWTManagerTest : public ::testing::Test {
    protected:
@@ -17,19 +17,16 @@ class JWTManagerTest : public ::testing::Test {
     std::string secret_key;
     std::unique_ptr<JWTManager> jwt_manager;
 
-    JWTClaims create_test_claims(const std::string& user_id = "user123", 
-                                const std::string& username = "testuser",
-                                const std::string& role = "user",
-                                int expiry_minutes = 60) {
+    JWTClaims create_test_claims(const std::string& user_id = "user123",
+                                 const std::string& username = "testuser",
+                                 const std::string& role = "user", int expiry_minutes = 60) {
         auto now = std::chrono::system_clock::now();
-        return JWTClaims{
-            user_id,
-            username,
-            role,
-            now,
-            now + std::chrono::minutes(expiry_minutes),
-            "session_" + user_id
-        };
+        return JWTClaims{user_id,
+                         username,
+                         role,
+                         now,
+                         now + std::chrono::minutes(expiry_minutes),
+                         "session_" + user_id};
     }
 };
 
@@ -81,26 +78,29 @@ TEST_F(JWTManagerTest, TokenDecoding) {
     EXPECT_EQ(decoded_claims.username, original_claims.username);
     EXPECT_EQ(decoded_claims.role, original_claims.role);
     EXPECT_EQ(decoded_claims.session_id, original_claims.session_id);
-    
+
     // Times should be close (within a few seconds)
-    auto time_diff = std::chrono::duration_cast<std::chrono::seconds>(
-        decoded_claims.issued_at - original_claims.issued_at).count();
+    auto time_diff = std::chrono::duration_cast<std::chrono::seconds>(decoded_claims.issued_at -
+                                                                      original_claims.issued_at)
+                         .count();
     EXPECT_LE(std::abs(time_diff), 2);
 }
 
 // Test token expiration
 TEST_F(JWTManagerTest, TokenExpiration) {
     // Generate token with very short expiry
-    JWTClaims short_claims = create_test_claims("user789", "testuser789", "user", 0);  // 0 minutes = immediate expiry
+    JWTClaims short_claims =
+        create_test_claims("user789", "testuser789", "user", 0);  // 0 minutes = immediate expiry
     std::string short_token = jwt_manager->generate_token(short_claims);
-    
+
     // Should be expired immediately (or very soon)
     EXPECT_TRUE(jwt_manager->is_token_expired(short_token));
-    
+
     // Generate token with reasonable expiry
-    JWTClaims valid_claims = create_test_claims("user790", "testuser790", "user", 60);  // 60 minutes
+    JWTClaims valid_claims =
+        create_test_claims("user790", "testuser790", "user", 60);  // 60 minutes
     std::string valid_token = jwt_manager->generate_token(valid_claims);
-    
+
     // Should not be expired
     EXPECT_FALSE(jwt_manager->is_token_expired(valid_token));
 }
@@ -119,7 +119,7 @@ TEST_F(JWTManagerTest, TokenRevocation) {
     // Token should still verify signature but might fail validation
     // (depends on implementation details)
     EXPECT_TRUE(jwt_manager->verify_token(token));  // Signature still valid
-    
+
     // Try to revoke already revoked token
     EXPECT_TRUE(jwt_manager->revoke_token(token));  // Should handle gracefully
 }
@@ -152,7 +152,7 @@ TEST_F(JWTManagerTest, EdgeCases) {
     JWTClaims empty_user_claims = create_test_claims("", "testuser", "user");
     std::string empty_user_token = jwt_manager->generate_token(empty_user_claims);
     // Should handle gracefully (either generate or return empty)
-    
+
     // Empty username
     JWTClaims empty_username_claims = create_test_claims("user505", "", "user");
     std::string empty_username_token = jwt_manager->generate_token(empty_username_claims);
@@ -164,7 +164,7 @@ TEST_F(JWTManagerTest, EdgeCases) {
     JWTClaims long_user_claims = create_test_claims(long_user_id, "testuser", "user");
     std::string long_user_token = jwt_manager->generate_token(long_user_claims);
     EXPECT_FALSE(long_user_token.empty());
-    
+
     JWTClaims decoded_long = jwt_manager->decode_token(long_user_token);
     EXPECT_EQ(decoded_long.user_id, long_user_id);
 
@@ -174,7 +174,7 @@ TEST_F(JWTManagerTest, EdgeCases) {
         JWTClaims role_claims = create_test_claims("user606", "testuser606", role);
         std::string role_token = jwt_manager->generate_token(role_claims);
         EXPECT_FALSE(role_token.empty());
-        
+
         JWTClaims decoded_role = jwt_manager->decode_token(role_token);
         EXPECT_EQ(decoded_role.role, role);
     }
@@ -189,9 +189,8 @@ TEST_F(JWTManagerTest, ThreadSafety) {
     // Generate tokens concurrently
     for (int i = 0; i < 10; ++i) {
         threads.emplace_back([this, i, &tokens]() {
-            JWTClaims claims = create_test_claims("user" + std::to_string(i), 
-                                                 "testuser" + std::to_string(i), 
-                                                 "user");
+            JWTClaims claims = create_test_claims("user" + std::to_string(i),
+                                                  "testuser" + std::to_string(i), "user");
             tokens[i] = jwt_manager->generate_token(claims);
         });
     }
@@ -226,13 +225,13 @@ TEST_F(JWTManagerTest, InvalidInputs) {
     JWTClaims invalid_claims = jwt_manager->decode_token("invalid.token");
     EXPECT_TRUE(invalid_claims.user_id.empty());
     EXPECT_TRUE(invalid_claims.username.empty());
-    
+
     // Test operations on empty tokens
     EXPECT_FALSE(jwt_manager->verify_token(""));
     EXPECT_FALSE(jwt_manager->is_token_valid(""));
     EXPECT_TRUE(jwt_manager->is_token_expired(""));
     EXPECT_FALSE(jwt_manager->revoke_token(""));
-    
+
     // Test malformed tokens
     EXPECT_FALSE(jwt_manager->verify_token("not.a.jwt"));
     EXPECT_FALSE(jwt_manager->verify_token("too.many.dots.here.invalid"));

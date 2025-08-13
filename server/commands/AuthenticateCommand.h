@@ -13,7 +13,7 @@ class AuthenticateCommand : public ICommand {
                  uWS::WebSocket<false, true, struct PerSocketData>* ws) override;
 
    private:
-    ChatDB* db; // not owned
+    ChatDB* db;  // not owned
 
     bool handle_login(const json& message, User& user, ChatServerState& server_state,
                       uWS::WebSocket<false, true, struct PerSocketData>* ws);

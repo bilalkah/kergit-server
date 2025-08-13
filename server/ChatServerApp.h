@@ -2,8 +2,8 @@
 
 #include "App.h"
 #include "common/ChatServer.h"
-#include "server/commands/AllCommands.h"
 #include "core/database/src/chatdb.h"
+#include "server/commands/AllCommands.h"
 
 #include <atomic>
 #include <functional>

@@ -1,15 +1,13 @@
 #include "core/security/rate_limiter/RateLimiter.h"
 
+#include <chrono>
 #include <gtest/gtest.h>
 #include <memory>
 #include <thread>
-#include <chrono>
 
 class RateLimiterTest : public ::testing::Test {
    protected:
-    void SetUp() override {
-        rate_limiter = std::make_unique<RateLimiter>();
-    }
+    void SetUp() override { rate_limiter = std::make_unique<RateLimiter>(); }
 
     void TearDown() override { rate_limiter.reset(); }
 
@@ -71,17 +69,17 @@ TEST_F(RateLimiterTest, DifferentClients) {
 
     // Client 2 should still be allowed
     EXPECT_TRUE(rate_limiter->is_request_allowed(client2));
-    
+
     // Different users for messages
     std::string user1 = "user1";
     std::string user2 = "user2";
-    
+
     // User 1 uses up message limit
     for (int i = 0; i < 60; ++i) {
         EXPECT_TRUE(rate_limiter->is_message_allowed(user1));
     }
     EXPECT_FALSE(rate_limiter->is_message_allowed(user1));
-    
+
     // User 2 should still be allowed
     EXPECT_TRUE(rate_limiter->is_message_allowed(user2));
 }
@@ -93,9 +91,9 @@ TEST_F(RateLimiterTest, RateLimitConfiguration) {
     std::string ip_address = "192.168.1.200";
 
     // Set custom rate limits
-    rate_limiter->set_request_rate_limit(30);      // 30 requests per minute
-    rate_limiter->set_message_rate_limit(20);      // 20 messages per minute
-    rate_limiter->set_connection_rate_limit(5);    // 5 connections per minute
+    rate_limiter->set_request_rate_limit(30);    // 30 requests per minute
+    rate_limiter->set_message_rate_limit(20);    // 20 messages per minute
+    rate_limiter->set_connection_rate_limit(5);  // 5 connections per minute
 
     // Test request rate limit
     for (int i = 0; i < 30; ++i) {
@@ -251,14 +249,14 @@ TEST_F(RateLimiterTest, ConcurrentDifferentClients) {
         threads.emplace_back([this, i, &total_allowed]() {
             std::string client_id = "client_" + std::to_string(i);
             int client_allowed = 0;
-            
+
             // Each client should be able to make up to 120 requests
             for (int j = 0; j < 130; ++j) {  // Try more than limit
                 if (rate_limiter->is_request_allowed(client_id)) {
                     client_allowed++;
                 }
             }
-            
+
             total_allowed += client_allowed;
         });
     }
@@ -274,16 +272,16 @@ TEST_F(RateLimiterTest, ConcurrentDifferentClients) {
 // Test performance under load
 TEST_F(RateLimiterTest, PerformanceUnderLoad) {
     auto start = std::chrono::high_resolution_clock::now();
-    
+
     // Make many requests quickly
     for (int i = 0; i < 1000; ++i) {
         std::string client_id = "perf_client_" + std::to_string(i % 100);  // 100 different clients
         rate_limiter->is_request_allowed(client_id);
     }
-    
+
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-    
+
     // Should complete within reasonable time (adjust threshold as needed)
     EXPECT_LT(duration.count(), 1000);  // Less than 1 second for 1000 operations
 }
