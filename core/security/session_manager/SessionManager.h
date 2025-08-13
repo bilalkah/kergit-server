@@ -1,6 +1,6 @@
 #pragma once
-#include "Authentication.h"
-#include "JWTManager.h"
+#include "core/security/authentication/Authentication.h"
+#include "core/security/jwt_manager/JWTManager.h"
 
 #include <chrono>
 #include <memory>

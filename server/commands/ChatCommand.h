@@ -1,5 +1,6 @@
 #pragma once
 #include "ICommand.h"
+#include "server/MessageFilters.h"
 
 #include <unordered_map>
 
@@ -29,11 +30,11 @@ class ChatCommand : public ICommand {
             auto epoch = timestamp.time_since_epoch();
             auto seconds = std::chrono::duration_cast<std::chrono::seconds>(epoch);
             resp["timestamp"] = seconds.count();
-            std::string msg = resp.dump();
             for (const auto& uid : ch.user_ids) {
                 for (const auto& [ws_ptr, ws_uid] : ws_to_user) {
                     if (ws_uid == uid) {
-                        ws_ptr->send(msg, uWS::OpCode::TEXT);
+                        json out = resp;
+                        send_json(ws_ptr, out, uWS::OpCode::TEXT);
                     }
                 }
             }
