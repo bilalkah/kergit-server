@@ -16,11 +16,11 @@ cc_library(
     includes = ["."],
     visibility = ["//visibility:public"],
     deps = [
-        ":message_filters",
         "//common",
-        "//core/database:chatdb_lib",
         "@nlohmann_json",
         "@uwebsockets",
+        ":message_filters",
+        "//core/database:chatdb_lib",
     ],
 )
 
@@ -47,12 +47,15 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":message_filters",
         ":server_commands",
         "//common",
-        "//core/database:chatdb_lib",
         "@nlohmann_json",
         "@uwebsockets",
+        ":message_filters",
+        "//core/database:chatdb_lib",
+        "//core/security:message_validator_lib",
+        "//core/security:rate_limiter_lib",
+        "//core/security:hmac_validator_lib",
     ],
 )
 
@@ -77,11 +80,11 @@ cc_binary(
     ],
     deps = [
         ":chat_server_app_lib",
-        ":message_filters",
         ":server_commands",
         "//common",
-        "//core/database:chatdb_lib",
         "@nlohmann_json",
         "@uwebsockets",
+        ":message_filters",
+        "//core/database:chatdb_lib",
     ],
 )

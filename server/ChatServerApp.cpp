@@ -1,8 +1,12 @@
 #include "ChatServerApp.h"
-
 #include "MessageFilters.h"
 
 #include <iostream>
+
+// Security modules
+#include "core/security/message_validator/MessageValidator.h"
+#include "core/security/rate_limiter/RateLimiter.h"
+#include "core/security/hmac_validator/HMACValidator.h"
 
 using json = nlohmann::json;
 
@@ -71,6 +75,52 @@ void ChatServerApp::setup_commands() {
     command_map["list"] = std::make_unique<ListCommand>();
     command_map["ping"] = std::make_unique<PingCommand>();
     command_map["users"] = std::make_unique<UsersCommand>();
+
+    // Security filters: message validation, optional HMAC, and rate limiting
+    static security::MessageValidator validator;
+    static RateLimiter rateLimiter;
+    static HMACValidator hmacValidator("dev_hmac_secret");
+    rateLimiter.set_message_rate_limit(120);  // 120 messages/min per user/connection
+
+    set_incoming_filter([&](json &msg) {
+        // Allow auth to pass basic checks (no signature expected)
+        std::string type = msg.value("type", "");
+        std::string cid = msg.value("__cid", "");
+
+        // Rate limit per connection id
+        if (!cid.empty() && !rateLimiter.is_message_allowed(cid)) {
+            msg["__invalid"] = true;
+            msg["__error_message"] = "Rate limit exceeded";
+            msg["type"] = "error";
+            msg["message"] = "Rate limit exceeded";
+            return;
+        }
+
+        // Validate message format/content (skip for auth)
+        if (type != "auth") {
+            auto res = validator.validate_message(msg);
+            if (!res.is_valid) {
+                msg["__invalid"] = true;
+                msg["__error_message"] = res.error_message;
+                msg["type"] = "error";
+                msg["message"] = res.error_message;
+                return;
+            }
+
+            // Optional HMAC verification if client provided signature and id
+            if (msg.contains("signature") && msg["signature"].is_string() && msg.contains("id") && msg["id"].is_string()) {
+                std::string signature = msg["signature"].get<std::string>();
+                std::string message_id = msg["id"].get<std::string>();
+                if (!hmacValidator.verify_message_signature(message_id, signature)) {
+                    msg["__invalid"] = true;
+                    msg["__error_message"] = "Invalid signature";
+                    msg["type"] = "error";
+                    msg["message"] = "Invalid signature";
+                    return;
+                }
+            }
+        }
+    });
 }
 
 void ChatServerApp::run_server() {
@@ -103,12 +153,22 @@ void ChatServerApp::run_server() {
                     if (!running) return;  // Don't process if server is shutting down
 
                     try {
-                        auto j = json::parse(message);
-                        apply_incoming_filter(j);
                         std::string connection_id = ws->getUserData()->user_id;
-                        std::string type = j["type"];
-                        std::cerr << "[SERVER] Message from " << connection_id << ", type=" << type
-                                  << ": " << message << std::endl;
+                        auto j = json::parse(message);
+                        // Provide connection id to filter
+                        j["__cid"] = connection_id;
+                        apply_incoming_filter(j);
+                        std::string type = j.value("type", "");
+                        std::cerr << "[SERVER] Message from " << connection_id << ", type=" << type << ": " << message << std::endl;
+
+                        // If filter marked invalid, send structured error and drop
+                        if (j.contains("__invalid") && j["__invalid"].is_boolean() && j["__invalid"].get<bool>()) {
+                            json err;
+                            err["type"] = "error";
+                            err["message"] = j.value("__error_message", std::string("Invalid message"));
+                            send_json(ws, err, uWS::OpCode::TEXT);
+                            return;
+                        }
 
                         auto user_it = chatServer.users.find(connection_id);
                         auto &user = user_it->second;
@@ -154,12 +214,12 @@ void ChatServerApp::run_server() {
                                     auto ws_it = ws_to_user.begin();
                                     while (ws_it != ws_to_user.end()) {
                                         if (ws_it->second == uid) {
-                                            try {
-                                                json msg = disconnect_notification;
-                                                send_json(ws_it->first, msg, uWS::OpCode::TEXT);
-                                            } catch (const std::exception &e) {
-                                                // Ignore send errors during disconnect
-                                            }
+                                           try {
+                                               json msg = disconnect_notification;
+                                               send_json(ws_it->first, msg, uWS::OpCode::TEXT);
+                                           } catch (const std::exception &e) {
+                                               // Ignore send errors during disconnect
+                                           }
                                             break;
                                         }
                                         ++ws_it;
