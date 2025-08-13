@@ -1,5 +1,6 @@
 #pragma once
 #include "ICommand.h"
+#include "server/MessageFilters.h"
 
 class ListCommand : public ICommand {
    public:
@@ -9,6 +10,6 @@ class ListCommand : public ICommand {
         json resp;
         resp["type"] = "channels";
         resp["channels"] = names;
-        ws->send(resp.dump(), uWS::OpCode::TEXT);
+        send_json(ws, resp, uWS::OpCode::TEXT);
     }
 };

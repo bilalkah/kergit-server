@@ -1,0 +1,8 @@
+# dummy
+
+alias(
+    name = "libpqxx",
+    actual = "@libpqxx_src//:libpqxx_build",
+    visibility = ["//visibility:public"],
+)
+

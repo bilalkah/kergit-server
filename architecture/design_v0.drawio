@@ -1,0 +1,58 @@
+<mxfile host="app.diagrams.net" agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36" version="28.0.9">
+  <diagram name="Page-1" id="ok5q8rovvZzdb_xal84X">
+    <mxGraphModel dx="884" dy="1362" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="lCsPXiPN5Hx3XEog6ndX-4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="lCsPXiPN5Hx3XEog6ndX-2" target="lCsPXiPN5Hx3XEog6ndX-3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="lCsPXiPN5Hx3XEog6ndX-2" value="Connect to website" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="240" y="80" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="lCsPXiPN5Hx3XEog6ndX-6" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="lCsPXiPN5Hx3XEog6ndX-3" target="lCsPXiPN5Hx3XEog6ndX-5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="lCsPXiPN5Hx3XEog6ndX-9" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="lCsPXiPN5Hx3XEog6ndX-3" target="lCsPXiPN5Hx3XEog6ndX-8">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="lCsPXiPN5Hx3XEog6ndX-3" value="Two options&lt;div&gt;1- Sign up&lt;/div&gt;&lt;div&gt;2- Sign in&lt;/div&gt;" style="whiteSpace=wrap;html=1;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="240" y="220" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="lCsPXiPN5Hx3XEog6ndX-13" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="lCsPXiPN5Hx3XEog6ndX-5" target="lCsPXiPN5Hx3XEog6ndX-11">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="lCsPXiPN5Hx3XEog6ndX-5" value="Get the following information&lt;div&gt;1- name and surname&lt;/div&gt;&lt;div&gt;2- email&lt;/div&gt;&lt;div&gt;3- username&lt;/div&gt;&lt;div&gt;4- password&lt;/div&gt;" style="whiteSpace=wrap;html=1;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="400" y="360" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="lCsPXiPN5Hx3XEog6ndX-7" value="Sign up" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="400" y="220" width="60" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="lCsPXiPN5Hx3XEog6ndX-12" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="lCsPXiPN5Hx3XEog6ndX-8" target="lCsPXiPN5Hx3XEog6ndX-11">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="lCsPXiPN5Hx3XEog6ndX-8" value="Get the following information&lt;div&gt;1- username&lt;/div&gt;&lt;div&gt;2- password&lt;/div&gt;" style="whiteSpace=wrap;html=1;rounded=1;" vertex="1" parent="1">
+          <mxGeometry x="80" y="360" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="lCsPXiPN5Hx3XEog6ndX-10" value="sign in" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="140" y="220" width="60" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="lCsPXiPN5Hx3XEog6ndX-15" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="lCsPXiPN5Hx3XEog6ndX-11" target="lCsPXiPN5Hx3XEog6ndX-14">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="lCsPXiPN5Hx3XEog6ndX-11" value="Login" style="rhombus;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="260" y="480" width="80" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="lCsPXiPN5Hx3XEog6ndX-17" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="lCsPXiPN5Hx3XEog6ndX-14" target="lCsPXiPN5Hx3XEog6ndX-16">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="lCsPXiPN5Hx3XEog6ndX-14" value="Get users assigned hub and channels&lt;div&gt;retrieve message histories and list friend and people online in hubs&lt;/div&gt;" style="whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="235" y="620" width="130" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="lCsPXiPN5Hx3XEog6ndX-16" value="Then user can message in any chat he/she selects" style="whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="240" y="820" width="120" height="60" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

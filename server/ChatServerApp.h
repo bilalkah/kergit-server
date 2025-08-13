@@ -3,6 +3,7 @@
 #include "App.h"
 #include "common/ChatServer.h"
 #include "server/commands/AllCommands.h"
+#include "core/database/src/chatdb.h"
 
 #include <atomic>
 #include <functional>
@@ -53,4 +54,7 @@ class ChatServerApp {
 
     // uWS server instance for proper shutdown
     std::unique_ptr<uWS::App> app;
+
+    // Database
+    std::unique_ptr<ChatDB> db;
 };

@@ -18,21 +18,34 @@
                     <p>Connect with friends in real-time</p>
                 </div>
                 <form id="login-form" class="login-form">
+                    <div id="auth-error" style="display:none;color:#d9534f;background:#fdecea;padding:8px;border-radius:6px;margin-bottom:10px"></div>
                     <div class="input-group">
                         <i class="fas fa-user"></i>
                         <input type="text" id="username" placeholder="Enter your username" required>
+                    </div>
+                    <div class="input-group auth-email hidden">
+                        <i class="fas fa-envelope"></i>
+                        <input type="email" id="email" placeholder="Email (sign up only)">
+                    </div>
+                    <div class="input-group">
+                        <i class="fas fa-lock"></i>
+                        <input type="password" id="password" placeholder="Password">
                     </div>
                     <div class="input-group">
                         <i class="fas fa-server"></i>
                         <input type="text" id="server-url" placeholder="Server URL" value="ws://localhost:9001">
                     </div>
-                    <button type="submit" class="login-btn">
+                    <button type="button" id="auth-submit-btn" class="login-btn">
                         <i class="fas fa-sign-in-alt"></i>
-                        Connect
+                        <span id="auth-submit-text">Sign In</span>
                     </button>
+                    <div class="auth-toggle" style="text-align:center;margin-top:10px;">
+                        <span id="toggle-to-signup">Don't have an account? <a href="#" id="switch-to-signup">Sign up</a></span>
+                        <span id="toggle-to-signin" class="hidden">Have an account? <a href="#" id="switch-to-signin">Sign in</a></span>
+                    </div>
                 </form>
                 <div class="login-footer">
-                    <p>No account needed - just pick a username!</p>
+                    <p>Create an account or sign in to continue.</p>
                 </div>
             </div>
         </div>
@@ -213,6 +226,6 @@
         </div>
     </div>
 
-    <script src="app.js"></script>
+    <script type="module" src="src/main.js"></script>
 </body>
 </html> 

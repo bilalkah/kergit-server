@@ -1,6 +1,6 @@
 #pragma once
 #include "ICommand.h"
-#include "security/Authentication.h"
+#include "core/security/authentication/Authentication.h"
 
 class LoginCommand : public ICommand {
    public:

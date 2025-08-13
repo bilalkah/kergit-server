@@ -1,4 +1,5 @@
 #include "ChatServerApp.h"
+#include "MessageFilters.h"
 
 #include <iostream>
 
@@ -53,7 +54,17 @@ void ChatServerApp::stop() {
 }
 
 void ChatServerApp::setup_commands() {
-    command_map["auth"] = std::make_unique<AuthenticateCommand>();
+    // Initialize DB connection
+    try {
+        // Use local Postgres by default; can be overridden later to use env/config
+        std::string conninfo = "postgresql://chat_user:12345678@localhost/chat_db";
+        db = std::make_unique<ChatDB>(conninfo);
+        std::cerr << "[SERVER] Connected to DB" << std::endl;
+    } catch (const std::exception &e) {
+        std::cerr << "[WARN] Failed to connect to DB: " << e.what() << "\n";
+    }
+
+    command_map["auth"] = std::make_unique<AuthenticateCommand>(db.get());
     command_map["join"] = std::make_unique<JoinCommand>(ws_to_user);
     command_map["chat"] = std::make_unique<ChatCommand>(ws_to_user);
     command_map["list"] = std::make_unique<ListCommand>();
@@ -72,12 +83,15 @@ void ChatServerApp::run_server() {
                     std::string connection_id = std::to_string(reinterpret_cast<uintptr_t>(ws));
                     ws->getUserData()->user_id = connection_id;
                     ws_to_user[ws] = connection_id;
+                    std::cerr << "[SERVER] Connection opened: " << connection_id << std::endl;
 
-                    // Send authentication required message
-                    json auth_required;
-                    auth_required["type"] = "auth_required";
-                    auth_required["message"] = "Authentication required. Please login or register.";
-                    ws->send(auth_required.dump(), uWS::OpCode::TEXT);
+                    // Ensure a placeholder User exists for this connection to avoid dereferencing
+                    // an invalid iterator on first message
+                    if (chatServer.users.find(connection_id) == chatServer.users.end()) {
+                        User new_user;
+                        new_user.id = connection_id;
+                        chatServer.users[connection_id] = new_user;
+                    }
 
                     if (connection_handler) {
                         connection_handler(connection_id);
@@ -89,32 +103,13 @@ void ChatServerApp::run_server() {
 
                     try {
                         auto j = json::parse(message);
+                        apply_incoming_filter(j);
                         std::string connection_id = ws->getUserData()->user_id;
                         std::string type = j["type"];
+                        std::cerr << "[SERVER] Message from " << connection_id << ", type=" << type << ": " << message << std::endl;
 
-                        // Only allow auth commands for unauthenticated connections
-                        if (type == "auth") {
-                            auto it = command_map.find(type);
-                            if (it != command_map.end()) {
-                                // Create a temporary user for auth command
-                                User temp_user;
-                                temp_user.id = connection_id;
-                                it->second->execute(j, temp_user, chatServer, ws);
-                            }
-                            return;
-                        }
 
-                        // For all other commands, require authenticated user
                         auto user_it = chatServer.users.find(connection_id);
-                        if (user_it == chatServer.users.end()) {
-                            // User not authenticated, send error
-                            json error_msg;
-                            error_msg["type"] = "error";
-                            error_msg["message"] = "Authentication required. Please login first.";
-                            ws->send(error_msg.dump(), uWS::OpCode::TEXT);
-                            return;
-                        }
-
                         auto &user = user_it->second;
                         auto it = command_map.find(type);
                         if (it != command_map.end()) {
@@ -131,6 +126,7 @@ void ChatServerApp::run_server() {
                     if (!running) return;  // Don't process if server is shutting down
 
                     std::string user_id = ws->getUserData()->user_id;
+                    std::cerr << "[SERVER] Connection closed: " << user_id << std::endl;
                     auto user_it = chatServer.users.find(user_id);
                     if (user_it != chatServer.users.end()) {
                         std::string username = user_it->second.username;
@@ -144,10 +140,7 @@ void ChatServerApp::run_server() {
                                 disconnect_notification["type"] = "user_disconnected";
                                 disconnect_notification["username"] = username;
                                 disconnect_notification["channel"] = channel;
-                                std::string disconnect_msg = disconnect_notification.dump();
-
-                                // Create a copy of the user IDs to avoid iterator
-                                // invalidation
+                                // Create a copy of the user IDs to avoid iterator invalidation
                                 std::vector<std::string> user_ids_copy;
                                 for (const auto &uid : ch_it->second.user_ids) {
                                     if (uid != user_id) {
@@ -160,12 +153,12 @@ void ChatServerApp::run_server() {
                                     auto ws_it = ws_to_user.begin();
                                     while (ws_it != ws_to_user.end()) {
                                         if (ws_it->second == uid) {
-                                            try {
-                                                ws_it->first->send(disconnect_msg,
-                                                                   uWS::OpCode::TEXT);
-                                            } catch (const std::exception &e) {
-                                                // Ignore send errors during disconnect
-                                            }
+                                           try {
+                                               json msg = disconnect_notification;
+                                               send_json(ws_it->first, msg, uWS::OpCode::TEXT);
+                                           } catch (const std::exception &e) {
+                                               // Ignore send errors during disconnect
+                                           }
                                             break;
                                         }
                                         ++ws_it;
@@ -188,6 +181,8 @@ void ChatServerApp::run_server() {
                 [this](auto *token) {
                     if (!token) {
                         running = false;
+                    } else {
+                        std::cerr << "[SERVER] Listening on port " << port << std::endl;
                     }
                 })
         .run();
