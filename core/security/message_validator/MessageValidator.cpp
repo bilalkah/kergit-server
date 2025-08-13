@@ -3,9 +3,9 @@
 #include <algorithm>
 #include <regex>
 
-using security::MessageValidator;
-using security::MessageValidationResult;
 using security::MessageType;
+using security::MessageValidationResult;
+using security::MessageValidator;
 
 MessageValidator::MessageValidator() {
     load_profanity_filter();

@@ -1,12 +1,13 @@
 #include "ChatServerApp.h"
+
 #include "MessageFilters.h"
 
 #include <iostream>
 
 // Security modules
+#include "core/security/hmac_validator/HMACValidator.h"
 #include "core/security/message_validator/MessageValidator.h"
 #include "core/security/rate_limiter/RateLimiter.h"
-#include "core/security/hmac_validator/HMACValidator.h"
 
 using json = nlohmann::json;
 
@@ -108,7 +109,8 @@ void ChatServerApp::setup_commands() {
             }
 
             // Optional HMAC verification if client provided signature and id
-            if (msg.contains("signature") && msg["signature"].is_string() && msg.contains("id") && msg["id"].is_string()) {
+            if (msg.contains("signature") && msg["signature"].is_string() && msg.contains("id") &&
+                msg["id"].is_string()) {
                 std::string signature = msg["signature"].get<std::string>();
                 std::string message_id = msg["id"].get<std::string>();
                 if (!hmacValidator.verify_message_signature(message_id, signature)) {
@@ -159,13 +161,16 @@ void ChatServerApp::run_server() {
                         j["__cid"] = connection_id;
                         apply_incoming_filter(j);
                         std::string type = j.value("type", "");
-                        std::cerr << "[SERVER] Message from " << connection_id << ", type=" << type << ": " << message << std::endl;
+                        std::cerr << "[SERVER] Message from " << connection_id << ", type=" << type
+                                  << ": " << message << std::endl;
 
                         // If filter marked invalid, send structured error and drop
-                        if (j.contains("__invalid") && j["__invalid"].is_boolean() && j["__invalid"].get<bool>()) {
+                        if (j.contains("__invalid") && j["__invalid"].is_boolean() &&
+                            j["__invalid"].get<bool>()) {
                             json err;
                             err["type"] = "error";
-                            err["message"] = j.value("__error_message", std::string("Invalid message"));
+                            err["message"] =
+                                j.value("__error_message", std::string("Invalid message"));
                             send_json(ws, err, uWS::OpCode::TEXT);
                             return;
                         }
@@ -214,12 +219,12 @@ void ChatServerApp::run_server() {
                                     auto ws_it = ws_to_user.begin();
                                     while (ws_it != ws_to_user.end()) {
                                         if (ws_it->second == uid) {
-                                           try {
-                                               json msg = disconnect_notification;
-                                               send_json(ws_it->first, msg, uWS::OpCode::TEXT);
-                                           } catch (const std::exception &e) {
-                                               // Ignore send errors during disconnect
-                                           }
+                                            try {
+                                                json msg = disconnect_notification;
+                                                send_json(ws_it->first, msg, uWS::OpCode::TEXT);
+                                            } catch (const std::exception &e) {
+                                                // Ignore send errors during disconnect
+                                            }
                                             break;
                                         }
                                         ++ws_it;
