@@ -1,10 +1,10 @@
 #ifndef FILELOADER_H
 #define FILELOADER_H
 
-#include <string>
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
+#include <string>
 
 namespace utils {
 
@@ -18,6 +18,6 @@ inline std::string loadFileToString(const std::string& path) {
     return buffer.str();
 }
 
-} // namespace utils
+}  // namespace utils
 
-#endif // FILELOADER_H
+#endif  // FILELOADER_H

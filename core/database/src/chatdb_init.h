@@ -7,6 +7,6 @@ namespace DBInit {
 
 bool initializeSchema(const std::string& conninfo, const std::string& sqlFilePath);
 
-} // namespace DBInit
+}  // namespace DBInit
 
-#endif // DBINIT_H
+#endif  // DBINIT_H

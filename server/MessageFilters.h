@@ -1,7 +1,7 @@
 #pragma once
+#include <App.h>
 #include <functional>
 #include <nlohmann/json.hpp>
-#include <App.h>
 
 using json = nlohmann::json;
 
@@ -16,4 +16,4 @@ void apply_incoming_filter(json& message);
 
 // Send a JSON message via uWS, applying the outgoing filter if set
 void send_json(uWS::WebSocket<false, true, struct PerSocketData>* ws, json& message,
-               uWS::OpCode op = uWS::OpCode::TEXT); 
+               uWS::OpCode op = uWS::OpCode::TEXT);
