@@ -9,6 +9,8 @@
 
 using json = nlohmann::json;
 
+namespace security {
+
 enum class MessageType {
     CHAT,
     JOIN_CHANNEL,
@@ -73,3 +75,5 @@ class MessageValidator {
     std::string sanitize_string(const std::string& input);
     bool contains_pattern(const std::string& text, const std::unordered_set<std::string>& patterns);
 };
+
+} // namespace security

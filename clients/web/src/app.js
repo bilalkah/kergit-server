@@ -19,6 +19,36 @@ class ChatApp {
         this.setAuthMode('login');
     }
 
+    // --- Security helpers ---
+    generateId() {
+        if (crypto && crypto.getRandomValues) {
+            const buf = new Uint8Array(16);
+            crypto.getRandomValues(buf);
+            // RFC4122 v4
+            buf[6] = (buf[6] & 0x0f) | 0x40;
+            buf[8] = (buf[8] & 0x3f) | 0x80;
+            const hex = [...buf].map(b => b.toString(16).padStart(2, '0'));
+            return (
+                hex[0] + hex[1] + hex[2] + hex[3] + '-' +
+                hex[4] + hex[5] + '-' + hex[6] + hex[7] + '-' +
+                hex[8] + hex[9] + '-' + hex[10] + hex[11] + hex[12] + hex[13] + hex[14] + hex[15]
+            );
+        }
+        // Fallback
+        return (Date.now().toString(36) + Math.random().toString(36).slice(2, 10)).slice(0, 16);
+    }
+
+    nowSeconds() {
+        return Math.floor(Date.now() / 1000);
+    }
+
+    sendSecure(type, payload = {}) {
+        const base = { type, id: this.generateId(), timestamp: this.nowSeconds() };
+        const message = { ...base, ...payload };
+        this.ws.send(JSON.stringify(message));
+        return message;
+    }
+
     initializeElements() {
         // Login elements
         this.loginScreen = document.getElementById('login-screen');
@@ -432,13 +462,21 @@ class ChatApp {
         console.log('joinChannel called:', { channelName, isConnected: this.isConnected, username: this.username });
         if (!this.isConnected) { console.log('joinChannel blocked: not connected'); return; }
         if (this.currentChannel && this.currentChannel !== channelName) { this.clearMessages(); this.addSystemMessage(`Switching to channel #${channelName}...`); }
-        const message = { type: 'join', channel: channelName, username: this.username };
-        this.ws.send(JSON.stringify(message));
+        const message = this.sendSecure('join', { channel: channelName, username: this.username });
         console.log('Joining channel:', message);
     }
 
-    requestChannels() { if (!this.isConnected) return; const message = { type: 'list' }; this.ws.send(JSON.stringify(message)); console.log('Requesting channels:', message); }
-    requestUsers() { if (!this.isConnected || !this.currentChannel) return; const message = { type: 'users' }; this.ws.send(JSON.stringify(message)); console.log('Requesting users:', message); }
+    requestChannels() {
+        if (!this.isConnected) return;
+        const message = this.sendSecure('list');
+        console.log('Requesting channels:', message);
+    }
+
+    requestUsers() {
+        if (!this.isConnected || !this.currentChannel) return;
+        const message = this.sendSecure('users');
+        console.log('Requesting users:', message);
+    }
 
     setupPeriodicRefresh() {
         this.channelsRefreshInterval = setInterval(() => { if (this.isConnected) { console.log('🔄 Periodic channels refresh'); this.requestChannels(); } }, 10000);
@@ -449,18 +487,18 @@ class ChatApp {
         const text = this.messageInput.value.trim();
         console.log('sendMessage called:', { text, isConnected: this.isConnected, currentChannel: this.currentChannel });
         if (!text || !this.isConnected) { console.log('sendMessage blocked:', { hasText: !!text, isConnected: this.isConnected }); return; }
-        const message = { type: 'chat', text };
-        this.ws.send(JSON.stringify(message));
+        const payload = { text, username: this.username, channel: this.currentChannel };
+        const message = this.sendSecure('chat', payload);
         this.messageInput.value = '';
         console.log('Sent message:', message);
     }
 
     handleMessageKeypress(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this.sendMessage(); } }
 
-    startCall() { const targetUser = prompt('Enter username to call:'); if (!targetUser) return; const message = { type: 'call_request', target_user: targetUser, media_type: 'voice' }; this.ws.send(JSON.stringify(message)); this.addSystemMessage(`Calling ${targetUser}...`); }
-    acceptCall() { if (!this.currentCall) return; const message = { type: 'call_accept', call_id: this.currentCall.id }; this.ws.send(JSON.stringify(message)); this.callModal.classList.add('hidden'); }
-    rejectCall() { if (!this.currentCall) return; const message = { type: 'call_reject', call_id: this.currentCall.id }; this.ws.send(JSON.stringify(message)); this.callModal.classList.add('hidden'); this.currentCall = null; }
-    endCall() { if (!this.currentCall) return; const message = { type: 'call_end', call_id: this.currentCall.id }; this.ws.send(JSON.stringify(message)); this.hideCallInterface(); this.currentCall = null; }
+    startCall() { const targetUser = prompt('Enter username to call:'); if (!targetUser) return; const message = this.sendSecure('call_request', { target_user: targetUser, media_type: 'voice' }); this.addSystemMessage(`Calling ${targetUser}...`); }
+    acceptCall() { if (!this.currentCall) return; const message = this.sendSecure('call_accept', { call_id: this.currentCall.id }); this.callModal.classList.add('hidden'); }
+    rejectCall() { if (!this.currentCall) return; const message = this.sendSecure('call_reject', { call_id: this.currentCall.id }); this.callModal.classList.add('hidden'); this.currentCall = null; }
+    endCall() { if (!this.currentCall) return; const message = this.sendSecure('call_end', { call_id: this.currentCall.id }); this.hideCallInterface(); this.currentCall = null; }
 
     toggleMute() { console.log('Toggle mute'); }
     toggleVideo() { console.log('Toggle video'); }
@@ -509,7 +547,7 @@ class ChatApp {
         console.log('🔄 Users list updated, total users:', this.users.length);
     }
 
-    startCallWithUser(username) { if (username === this.username) return; const message = { type: 'call_request', target_user: username, media_type: 'voice' }; this.ws.send(JSON.stringify(message)); this.addSystemMessage(`Calling ${username}...`); }
+    startCallWithUser(username) { if (username === this.username) return; const message = this.sendSecure('call_request', { target_user: username, media_type: 'voice' }); this.addSystemMessage(`Calling ${username}...`); }
 
     clearMessages() { this.messages.innerHTML = ''; }
     clearChannels() { this.channelsList.innerHTML = ''; this.channels = []; }

@@ -3,6 +3,10 @@
 #include <algorithm>
 #include <regex>
 
+using security::MessageValidator;
+using security::MessageValidationResult;
+using security::MessageType;
+
 MessageValidator::MessageValidator() {
     load_profanity_filter();
     load_security_patterns();
