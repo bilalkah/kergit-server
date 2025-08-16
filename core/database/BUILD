@@ -1,24 +1,12 @@
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 
-# file group for core/database/sql/database_schema.sql
-filegroup(
-    name = "database_schema_sql",
-    srcs = glob(["sql/*.sql"]),
-    visibility = ["//visibility:public"],
-)
-
-cc_binary(
-    name = "chatdb_init",
-    srcs = [
-        "src/chatdb_init.cpp",
-        "src/chatdb_init.h",
-    ],
-    deps = [
-        "//common",
-        "@libpqxx",
-        "@nlohmann_json",
-    ],
+sh_binary(
+    name = "initialize_database",
+    srcs = ["scripts/dev_db_init.sh"],
+    data = ["//core/database/sql:V001__init.sql"],
+    args = ["$(location //core/database/sql:V001__init.sql)"],
 )
 
 cc_library(
