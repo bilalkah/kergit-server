@@ -1,16 +1,14 @@
 #pragma once
-#include "ICommand.h"
 #include "server/MessageFilters.h"
+#include "server/commands/ICommand.h"
 
 #include <unordered_map>
 
 class ChatCommand : public ICommand {
    public:
-    using WsToUserMap =
-        std::unordered_map<uWS::WebSocket<false, true, struct PerSocketData>*, std::string>;
+    using WsToUserMap = std::unordered_map<WS*, std::string>;
     ChatCommand(const WsToUserMap& ws_to_user) : ws_to_user(ws_to_user) {}
-    void execute(json& j, User& user, ChatServerState& server,
-                 uWS::WebSocket<false, true, struct PerSocketData>* ws) override {
+    void execute(json& j, User& user, ChatServerState& server, WS* ws) override {
         std::string text = j["text"];
         if (server.sendMessage(user.id, text)) {
             std::string channel = user.current_channel;

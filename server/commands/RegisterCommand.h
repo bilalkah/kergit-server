@@ -1,12 +1,11 @@
 #pragma once
-#include "ICommand.h"
+#include "server/commands/ICommand.h"
 
 class RegisterCommand : public ICommand {
    public:
     RegisterCommand() {}
 
-    void execute(json& j, User& user, ChatServerState& server,
-                 uWS::WebSocket<false, true, struct PerSocketData>* ws) override {
+    void execute(json& j, User& user, ChatServerState& server, WS* ws) override {
         std::string username = j.value("username", "");
         std::string password = j.value("password", "");
         std::string email = j.value("email", "");

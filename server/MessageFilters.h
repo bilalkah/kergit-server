@@ -1,4 +1,6 @@
 #pragma once
+#include "server/Config.h"
+
 #include <App.h>
 #include <functional>
 #include <nlohmann/json.hpp>
@@ -14,6 +16,10 @@ void set_outgoing_filter(std::function<void(json&)> filter_fn);
 // Apply the incoming filter if set
 void apply_incoming_filter(json& message);
 
-// Send a JSON message via uWS, applying the outgoing filter if set
-void send_json(uWS::WebSocket<false, true, struct PerSocketData>* ws, json& message,
-               uWS::OpCode op = uWS::OpCode::TEXT);
+// Generic over SSL bool; header-only so it links.
+template <bool SSL>
+inline void send_json(uWS::WebSocket<SSL, true, PerSocketData>* ws, json& message,
+                      uWS::OpCode opcode = uWS::OpCode::TEXT) {
+    // (optionally guard backpressure here if you want)
+    ws->send(message.dump(), opcode);
+}

@@ -5,8 +5,8 @@ load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 sh_binary(
     name = "initialize_database",
     srcs = ["scripts/dev_db_init.sh"],
-    data = ["//core/database/sql:V001__init.sql"],
     args = ["$(location //core/database/sql:V001__init.sql)"],
+    data = ["//core/database/sql:V001__init.sql"],
 )
 
 cc_library(

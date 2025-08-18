@@ -1,15 +1,13 @@
 #pragma once
-#include "ICommand.h"
 #include "server/MessageFilters.h"
+#include "server/commands/ICommand.h"
 
 class JoinCommand : public ICommand {
    public:
-    using WsToUserMap =
-        std::unordered_map<uWS::WebSocket<false, true, struct PerSocketData>*, std::string>;
+    using WsToUserMap = std::unordered_map<WS*, std::string>;
     JoinCommand(const WsToUserMap& ws_to_user) : ws_to_user(ws_to_user) {}
 
-    void execute(json& j, User& user, ChatServerState& server,
-                 uWS::WebSocket<false, true, struct PerSocketData>* ws) override {
+    void execute(json& j, User& user, ChatServerState& server, WS* ws) override {
         std::string channel = j.value("channel", "");
         std::string username = j.value("username", user.id);
         user.username = username;

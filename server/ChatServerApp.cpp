@@ -1,6 +1,8 @@
-#include "ChatServerApp.h"
+#include "server/ChatServerApp.h"
 
-#include "MessageFilters.h"
+#include "server/MessageFilters.h"
+#include "server/OriginAllowlist.h"
+#include "server/TlsConfig.h"
 
 #include <iostream>
 
@@ -126,7 +128,174 @@ void ChatServerApp::setup_commands() {
 }
 
 void ChatServerApp::run_server() {
+#ifdef USE_SSL
+    // Load TLS config and validate paths
+    TlsConfig tls{};
+    if (!tls.validate_and_log()) {
+        std::cerr << "[SSL] Startup aborted due to missing files.\n";
+        return;
+    }
+
+    if (tls.enabled) {
+        uWS::SocketContextOptions opts{
+            .key_file_name = tls.key_path.c_str(),
+            .cert_file_name = tls.cert_path.c_str(),
+        };
+        app = std::make_unique<uWS::SSLApp>(opts);
+    } else {
+        // fallback: non-TLS build path (if you ever want it)
+        exit(1);
+    }
+    if (!app) {
+        std::cerr << "[ERROR] Failed to create uWS app instance\n";
+        return;
+    }
+
+    app->ws<PerSocketData>(
+           "/*",
+           {.upgrade =
+                [this](auto *res, auto *req, auto *ctx) {
+                    std::string origin = std::string(req->getHeader("origin"));
+                    if (!origin_allowed(origin)) {
+                        res->writeStatus("403 Forbidden")->end("Origin not allowed");
+                        return;
+                    }
+                    // proceed with default upgrade; no custom PerSocketData yet
+                    res->template upgrade<PerSocketData>({}, req->getHeader("sec-websocket-key"),
+                                                         req->getHeader("sec-websocket-protocol"),
+                                                         req->getHeader("sec-websocket-extensions"),
+                                                         ctx);
+                },
+            .open =
+                [this](auto *ws) {
+                    if (!running) return;  // Don't process if server is shutting down
+
+                    std::string connection_id = std::to_string(reinterpret_cast<uintptr_t>(ws));
+                    ws->getUserData()->user_id = connection_id;
+                    ws_to_user[ws] = connection_id;
+                    std::cerr << "[SERVER] Connection opened: " << connection_id << std::endl;
+
+                    // Ensure a placeholder User exists for this connection to avoid dereferencing
+                    // an invalid iterator on first message
+                    if (chatServer.users.find(connection_id) == chatServer.users.end()) {
+                        User new_user;
+                        new_user.id = connection_id;
+                        chatServer.users[connection_id] = new_user;
+                    }
+
+                    if (connection_handler) {
+                        connection_handler(connection_id);
+                    }
+                },
+            .message =
+                [this](auto *ws, std::string_view message, uWS::OpCode opCode) {
+                    if (!running) return;  // Don't process if server is shutting down
+
+                    try {
+                        std::string connection_id = ws->getUserData()->user_id;
+                        auto j = json::parse(message);
+                        // Provide connection id to filter
+                        j["__cid"] = connection_id;
+                        apply_incoming_filter(j);
+                        std::string type = j.value("type", "");
+                        std::cerr << "[SERVER] Message from " << connection_id << ", type=" << type
+                                  << ": " << message << std::endl;
+
+                        // If filter marked invalid, send structured error and drop
+                        if (j.contains("__invalid") && j["__invalid"].is_boolean() &&
+                            j["__invalid"].get<bool>()) {
+                            json err;
+                            err["type"] = "error";
+                            err["message"] =
+                                j.value("__error_message", std::string("Invalid message"));
+                            send_json(ws, err, uWS::OpCode::TEXT);
+                            return;
+                        }
+
+                        auto user_it = chatServer.users.find(connection_id);
+                        auto &user = user_it->second;
+                        auto it = command_map.find(type);
+                        if (it != command_map.end()) {
+                            it->second->execute(j, user, chatServer, ws);
+                        } else {
+                            std::cerr << "[ERROR] Unknown command type: " << type << std::endl;
+                        }
+                    } catch (const std::exception &e) {
+                        std::cerr << "[ERROR] Invalid message: " << e.what() << std::endl;
+                    }
+                },
+            .close =
+                [this](auto *ws, int /*code*/, std::string_view /*message*/) {
+                    if (!running) return;  // Don't process if server is shutting down
+
+                    std::string user_id = ws->getUserData()->user_id;
+                    std::cerr << "[SERVER] Connection closed: " << user_id << std::endl;
+                    auto user_it = chatServer.users.find(user_id);
+                    if (user_it != chatServer.users.end()) {
+                        std::string username = user_it->second.username;
+                        std::string channel = user_it->second.current_channel;
+
+                        // Notify other users in the channel that someone disconnected
+                        if (!channel.empty()) {
+                            auto ch_it = chatServer.channels.find(channel);
+                            if (ch_it != chatServer.channels.end()) {
+                                json disconnect_notification;
+                                disconnect_notification["type"] = "user_disconnected";
+                                disconnect_notification["username"] = username;
+                                disconnect_notification["channel"] = channel;
+                                // Create a copy of the user IDs to avoid iterator invalidation
+                                std::vector<std::string> user_ids_copy;
+                                for (const auto &uid : ch_it->second.user_ids) {
+                                    if (uid != user_id) {
+                                        user_ids_copy.push_back(uid);
+                                    }
+                                }
+
+                                // Send notifications to remaining users
+                                for (const auto &uid : user_ids_copy) {
+                                    auto ws_it = ws_to_user.begin();
+                                    while (ws_it != ws_to_user.end()) {
+                                        if (ws_it->second == uid) {
+                                            try {
+                                                json msg = disconnect_notification;
+                                                send_json(ws_it->first, msg, uWS::OpCode::TEXT);
+                                            } catch (const std::exception &e) {
+                                                // Ignore send errors during disconnect
+                                            }
+                                            break;
+                                        }
+                                        ++ws_it;
+                                    }
+                                }
+                            }
+                        }
+
+                        // Remove user from channel and server state
+                        chatServer.leaveChannel(user_id);
+                        chatServer.users.erase(user_id);
+                        ws_to_user.erase(ws);
+
+                        if (disconnection_handler) {
+                            disconnection_handler(user_id);
+                        }
+                    }
+                }})
+        .listen(port,
+                [this](auto *token) {
+                    if (!token) {
+                        running = false;
+                    } else {
+                        std::cerr << "[SERVER] Listening on port " << port << std::endl;
+                    }
+                })
+        .run();
+#else
     app = std::make_unique<uWS::App>();
+    if (!app) {
+        std::cerr << "[ERROR] Failed to create uWS app instance\n";
+        return;
+    }
+
     app->ws<PerSocketData>(
            "/*",
            {.open =
@@ -252,6 +421,7 @@ void ChatServerApp::run_server() {
                     }
                 })
         .run();
+#endif
 }
 
 void ChatServerApp::set_connection_handler(std::function<void(const std::string &)> handler) {

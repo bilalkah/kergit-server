@@ -7,7 +7,7 @@
 #include <sstream>
 
 void AuthenticateCommand::execute(json& message, User& user, ChatServerState& server_state,
-                                  uWS::WebSocket<false, true, struct PerSocketData>* ws) {
+                                  WS* ws) {
     std::string auth_type = message.value("auth_type", "");
     std::cerr << "[AUTH] Execute auth type=" << auth_type << std::endl;
 
@@ -22,8 +22,7 @@ void AuthenticateCommand::execute(json& message, User& user, ChatServerState& se
 }
 
 bool AuthenticateCommand::handle_login(const json& message, User& user,
-                                       ChatServerState& server_state,
-                                       uWS::WebSocket<false, true, struct PerSocketData>* ws) {
+                                       ChatServerState& server_state, WS* ws) {
     std::string username = message.value("username", "");
     std::cerr << "[AUTH] Login attempt: username=" << username << std::endl;
     std::string password = message.value("password", "");
@@ -78,8 +77,7 @@ bool AuthenticateCommand::handle_login(const json& message, User& user,
 }
 
 bool AuthenticateCommand::handle_register(const json& message, User& user,
-                                          ChatServerState& server_state,
-                                          uWS::WebSocket<false, true, struct PerSocketData>* ws) {
+                                          ChatServerState& server_state, WS* ws) {
     std::string username = message.value("username", "");
     std::string password = message.value("password", "");
     std::string email = message.value("email", "");
@@ -137,8 +135,7 @@ bool AuthenticateCommand::handle_register(const json& message, User& user,
     return true;
 }
 
-void AuthenticateCommand::send_auth_response(uWS::WebSocket<false, true, struct PerSocketData>* ws,
-                                             bool success, const std::string& user_id,
+void AuthenticateCommand::send_auth_response(WS* ws, bool success, const std::string& user_id,
                                              const std::string& error) {
     json response;
     response["type"] = "auth_response";
@@ -154,8 +151,7 @@ void AuthenticateCommand::send_auth_response(uWS::WebSocket<false, true, struct 
     send_json(ws, response, uWS::OpCode::TEXT);
 }
 
-void AuthenticateCommand::send_init_state(uWS::WebSocket<false, true, struct PerSocketData>* ws,
-                                          int userId) {
+void AuthenticateCommand::send_init_state(WS* ws, int userId) {
     if (!db) return;
     // Hubs
     auto hubs = db->getUserHubs(userId);

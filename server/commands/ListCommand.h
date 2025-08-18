@@ -1,11 +1,10 @@
 #pragma once
-#include "ICommand.h"
 #include "server/MessageFilters.h"
+#include "server/commands/ICommand.h"
 
 class ListCommand : public ICommand {
    public:
-    void execute(json& j, User& user, ChatServerState& server,
-                 uWS::WebSocket<false, true, struct PerSocketData>* ws) override {
+    void execute(json& j, User& user, ChatServerState& server, WS* ws) override {
         auto names = server.listChannels();
         json resp;
         resp["type"] = "channels";
