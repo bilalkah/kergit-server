@@ -1,11 +1,12 @@
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+load("//third_party:versions.bzl", "LIBPQXX_SHA256", "LIBPQXX_VERSION")
 
 def _libpqxx_impl(ctx):
     http_archive(
         name = "libpqxx",
-        url = "https://github.com/jtv/libpqxx/archive/refs/tags/7.10.1.tar.gz",
-        strip_prefix = "libpqxx-7.10.1",
-        sha256 = "cfbbb1d93a0a3d81319ec71d9a3db80447bb033c4f6cee088554a88862fd77d7",
+        url = "https://github.com/jtv/libpqxx/archive/refs/tags/{}.tar.gz".format(LIBPQXX_VERSION),
+        strip_prefix = "libpqxx-{}".format(LIBPQXX_VERSION),
+        sha256 = LIBPQXX_SHA256,
         build_file_content = """
 load("@rules_foreign_cc//foreign_cc:configure.bzl", "configure_make")
 
