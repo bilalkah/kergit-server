@@ -1,5 +1,1 @@
-alias(
-    name = "usockets",
-    actual = "@usockets//:usockets",
-    visibility = ["//visibility:public"],
-)
+# dummy

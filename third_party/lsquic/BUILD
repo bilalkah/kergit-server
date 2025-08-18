@@ -1,0 +1,1 @@
+# This file makes third_party/lsquic a proper Bazel package 

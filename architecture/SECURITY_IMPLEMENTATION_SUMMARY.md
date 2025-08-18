@@ -21,7 +21,7 @@ This document summarizes the security components that have been successfully imp
 class AuthenticateCommand : public ICommand {
 public:
     void execute(json& message, User& user, ChatServerState& server_state, 
-                 uWS::WebSocket<false, true, struct PerSocketData>* ws) override;
+                 WS* ws) override;
 private:
     bool handle_login(const json& message, User& user, ...);
     bool handle_register(const json& message, User& user, ...);

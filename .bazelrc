@@ -1,0 +1,30 @@
+# === SSL + QUIC + LIBDEFLATE (Debug build) ===
+build:sslquic_dbg --define USE_SSL=true
+build:sslquic_dbg --define WITH_BORINGSSL=1
+build:sslquic_dbg --define WITH_QUIC=1
+build:sslquic_dbg --define WITH_LIBDEFLATE=1
+build:sslquic_dbg -c dbg
+build:sslquic_dbg --strip=never
+
+# === SSL + QUIC + LIBDEFLATE (Fastbuild) ===
+build:sslquic_fast --define USE_SSL=true
+build:sslquic_fast --define WITH_BORINGSSL=1
+build:sslquic_fast --define WITH_QUIC=1
+build:sslquic_fast --define WITH_LIBDEFLATE=1
+build:sslquic_fast -c fastbuild
+
+# === SSL + QUIC + LIBDEFLATE (Release/Opt) ===
+build:sslquic_opt --define USE_SSL=true
+build:sslquic_opt --define WITH_BORINGSSL=1
+build:sslquic_opt --define WITH_QUIC=1
+build:sslquic_opt --define WITH_LIBDEFLATE=1
+build:sslquic_opt -c opt
+build:sslquic_opt --strip=always
+
+# === disable SSL + QUIC + LIBDEFLATE ===
+build:vanilla --define WITH_BORINGSSL=0
+build:vanilla --define WITH_QUIC=0
+build:vanilla --define WITH_LIBDEFLATE=0
+build:vanilla --define USE_SSL=false
+build:vanilla -c opt
+build:vanilla --strip=always

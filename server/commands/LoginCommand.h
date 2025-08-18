@@ -1,13 +1,12 @@
 #pragma once
-#include "ICommand.h"
 #include "core/security/authentication/Authentication.h"
+#include "server/commands/ICommand.h"
 
 class LoginCommand : public ICommand {
    public:
     LoginCommand(Authentication& auth) : auth(auth) {}
 
-    void execute(json& j, User& user, ChatServerState& server,
-                 uWS::WebSocket<false, true, struct PerSocketData>* ws) override {
+    void execute(json& j, User& user, ChatServerState& server, WS* ws) override {
         std::string username = j.value("username", "");
         std::string password = j.value("password", "");
 

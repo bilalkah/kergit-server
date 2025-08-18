@@ -1,11 +1,10 @@
 #pragma once
-#include "ICommand.h"
 #include "server/MessageFilters.h"
+#include "server/commands/ICommand.h"
 
 class UsersCommand : public ICommand {
    public:
-    void execute(json& j, User& user, ChatServerState& server,
-                 uWS::WebSocket<false, true, struct PerSocketData>* ws) override {
+    void execute(json& j, User& user, ChatServerState& server, WS* ws) override {
         std::string channel = user.current_channel;
         if (channel.empty()) {
             json resp;
