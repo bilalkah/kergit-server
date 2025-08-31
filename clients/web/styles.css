@@ -97,6 +97,43 @@ body {
     border-color: #667eea;
 }
 
+/* Authentication field transitions */
+.auth-signup-fields,
+.auth-login-fields {
+    transition: all 0.3s ease;
+}
+
+.auth-signup-fields.hidden,
+.auth-login-fields.hidden {
+    opacity: 0;
+    transform: translateY(-10px);
+    pointer-events: none;
+}
+
+/* Form validation styles */
+.input-group input.error {
+    border-color: #e53e3e;
+}
+
+.input-group input.success {
+    border-color: #38a169;
+}
+
+/* Loading state for auth button */
+.login-btn.loading {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+.login-btn.loading i {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
 .login-btn {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;

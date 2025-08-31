@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,6 +8,7 @@
     <link rel="stylesheet" href="styles.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
+
 <body>
     <div class="app-container">
         <!-- Login Screen -->
@@ -18,30 +20,44 @@
                     <p>Connect with friends in real-time</p>
                 </div>
                 <form id="login-form" class="login-form">
-                    <div id="auth-error" style="display:none;color:#d9534f;background:#fdecea;padding:8px;border-radius:6px;margin-bottom:10px"></div>
-                    <div class="input-group">
-                        <i class="fas fa-user"></i>
-                        <input type="text" id="username" placeholder="Enter your username" required>
+                    <div id="auth-error"
+                        style="display:none;color:#d9534f;background:#fdecea;padding:8px;border-radius:6px;margin-bottom:10px">
                     </div>
-                    <div class="input-group auth-email hidden">
+                    
+                    <!-- Signup fields (hidden by default) -->
+                    <div class="input-group auth-signup-fields hidden">
+                        <i class="fas fa-user"></i>
+                        <input type="text" id="full-name" placeholder="Full Name">
+                    </div>
+                    <div class="input-group auth-signup-fields hidden">
+                        <i class="fas fa-at"></i>
+                        <input type="text" id="username" placeholder="Username">
+                    </div>
+                    
+                    <!-- Login fields -->
+                    <div class="input-group auth-login-fields hidden">
+                        <i class="fas fa-user"></i>
+                        <input type="text" id="login-username" placeholder="Username or Email">
+                    </div>
+                    
+                    <!-- Common fields -->
+                    <div class="input-group auth-email">
                         <i class="fas fa-envelope"></i>
-                        <input type="email" id="email" placeholder="Email (sign up only)">
+                        <input type="email" id="email" placeholder="Email">
                     </div>
                     <div class="input-group">
                         <i class="fas fa-lock"></i>
                         <input type="password" id="password" placeholder="Password">
-                    </div>
-                    <div class="input-group">
-                        <i class="fas fa-server"></i>
-                        <input type="text" id="server-url" placeholder="Server URL" value="wss://localhost:9001">
                     </div>
                     <button type="button" id="auth-submit-btn" class="login-btn">
                         <i class="fas fa-sign-in-alt"></i>
                         <span id="auth-submit-text">Sign In</span>
                     </button>
                     <div class="auth-toggle" style="text-align:center;margin-top:10px;">
-                        <span id="toggle-to-signup">Don't have an account? <a href="#" id="switch-to-signup">Sign up</a></span>
-                        <span id="toggle-to-signin" class="hidden">Have an account? <a href="#" id="switch-to-signin">Sign in</a></span>
+                        <span id="toggle-to-signup">Don't have an account? <a href="#" id="switch-to-signup">Sign
+                                up</a></span>
+                        <span id="toggle-to-signin" class="hidden">Have an account? <a href="#"
+                                id="switch-to-signin">Sign in</a></span>
                     </div>
                 </form>
                 <div class="login-footer">
@@ -228,4 +244,5 @@
 
     <script type="module" src="src/main.js"></script>
 </body>
-</html> 
+
+</html>

@@ -1,3 +1,6 @@
+import { initializeSupabase, loginWithPassword, signUp } from './auth/supabase.js';
+import { CONFIG } from './config.js';
+
 // Web-based Chat Client Application
 class ChatApp {
     constructor() {
@@ -8,11 +11,11 @@ class ChatApp {
         this.channels = [];
         this.users = [];
         this.currentCall = null;
-        
+
         this.hubs = [];
         this.hubChannels = {}; // hub_id -> [{id, name, type}]
         this.authMode = 'login';
-        
+
         this.initializeElements();
         this.bindEvents();
         this.showLoginScreen();
@@ -53,10 +56,11 @@ class ChatApp {
         // Login elements
         this.loginScreen = document.getElementById('login-screen');
         this.loginForm = document.getElementById('login-form');
+        this.loginUsernameInput = document.getElementById('login-username');
         this.usernameInput = document.getElementById('username');
+        this.fullNameInput = document.getElementById('full-name');
         this.emailInput = document.getElementById('email');
         this.passwordInput = document.getElementById('password');
-        this.serverUrlInput = document.getElementById('server-url');
         this.authSubmitBtn = document.getElementById('auth-submit-btn');
         this.authSubmitText = document.getElementById('auth-submit-text');
         this.switchToSignup = document.getElementById('switch-to-signup');
@@ -64,6 +68,8 @@ class ChatApp {
         this.toggleToSignupSpan = document.getElementById('toggle-to-signup');
         this.toggleToSigninSpan = document.getElementById('toggle-to-signin');
         this.authEmailGroup = document.querySelector('.auth-email');
+        this.authSignupFields = document.querySelectorAll('.auth-signup-fields');
+        this.authLoginFields = document.querySelectorAll('.auth-login-fields');
         this.authErrorBanner = document.getElementById('auth-error');
 
         // Chat interface elements
@@ -173,13 +179,20 @@ class ChatApp {
     setAuthMode(mode) {
         this.authMode = mode;
         const isSignup = mode === 'register';
+        
         if (isSignup) {
+            // Show signup fields
+            this.authSignupFields.forEach(field => field.classList.remove('hidden'));
+            this.authLoginFields.forEach(field => field.classList.add('hidden'));
             this.authEmailGroup.classList.remove('hidden');
             this.authSubmitText.textContent = 'Sign Up';
             this.toggleToSignupSpan.classList.add('hidden');
             this.toggleToSigninSpan.classList.remove('hidden');
         } else {
-            this.authEmailGroup.classList.add('hidden');
+            // Show login fields (but keep username field hidden for login)
+            this.authSignupFields.forEach(field => field.classList.add('hidden'));
+            this.authLoginFields.forEach(field => field.classList.add('hidden')); // Keep hidden for login
+            this.authEmailGroup.classList.remove('hidden');
             this.authSubmitText.textContent = 'Sign In';
             this.toggleToSignupSpan.classList.remove('hidden');
             this.toggleToSigninSpan.classList.add('hidden');
@@ -220,39 +233,90 @@ class ChatApp {
     }
 
     async handleAuth(mode) {
-        this.username = this.usernameInput.value.trim();
         const email = this.emailInput.value.trim();
         const password = this.passwordInput.value.trim();
-        const serverUrl = this.serverUrlInput.value.trim();
 
         this.clearAuthError();
 
-        if (!this.username) { this.showAuthError('Please enter a username'); return; }
-        if (!serverUrl) { this.showAuthError('Please enter a server URL'); return; }
+        // Validation
+        if (!email) { this.showAuthError('Please enter an email'); return; }
         if (!password) { this.showAuthError('Please enter a password'); return; }
-        if (mode === 'register' && !email) { this.showAuthError('Please enter an email to sign up'); return; }
+        
+        // Check if Supabase config is available
+        if (!CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_ANON) {
+            this.showAuthError('Supabase configuration not found. Please check your config.');
+            return;
+        }
+
+        // Additional validation for signup
+        if (mode === 'register') {
+            const fullName = this.fullNameInput.value.trim();
+            const username = this.usernameInput.value.trim();
+            if (!fullName) { this.showAuthError('Please enter your full name'); return; }
+            if (!username) { this.showAuthError('Please enter a username'); return; }
+        }
 
         this.updateConnectionStatus('connecting');
-        // Disable button to prevent double submits
         this.authSubmitBtn.disabled = true;
+        this.authSubmitBtn.classList.add('loading');
+        
+        // Update button text based on mode
+        const originalText = this.authSubmitText.textContent;
+        this.authSubmitText.textContent = mode === 'register' ? 'Creating Account...' : 'Signing In...';
+
         try {
-            await this.connect(serverUrl);
+            // Initialize Supabase
+            initializeSupabase(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON);
+
+            // Perform authentication with Supabase
+            let authResult;
+            if (mode === 'register') {
+                const fullName = this.fullNameInput.value.trim();
+                const username = this.usernameInput.value.trim();
+                console.log('Attempting Supabase signup with:', { email, fullName, username });
+                authResult = await signUp(email, password, {
+                    full_name: fullName,
+                    username: username
+                });
+                this.username = username; // Set username for the app
+                console.log('Supabase signup successful:', authResult);
+            } else {
+                console.log('Attempting Supabase login with:', { email });
+                authResult = await loginWithPassword(email, password);
+                // For login, we'll use the email as username or extract from user metadata
+                this.username = authResult.user.user_metadata?.username || email.split('@')[0];
+                console.log('Supabase login successful:', authResult);
+            }
+
+            // Connect to WebSocket server
+            await this.connect(CONFIG.WS_URL);
+            if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+                throw new Error('Failed to connect to WebSocket server');
+            }
+
+            // Send authentication token to server
+            const authMessage = {
+                type: 'auth', 
+                token: authResult.token,
+                username: this.username,
+                auth_type: mode
+            };
+            console.log('Sending auth message to server:', authMessage);
+            this.ws.send(JSON.stringify(authMessage));
+            
+            // Don't re-enable the button here - wait for server response
+            // The auth_response handler will handle success/failure
+
         } catch (err) {
-            this.showAuthError('Failed to connect to server');
+            console.error('Authentication error:', err);
+            this.showAuthError(err.message || 'Failed to authenticate');
             this.authSubmitBtn.disabled = false;
-            return;
+            this.authSubmitBtn.classList.remove('loading');
+            this.authSubmitText.textContent = this.authMode === 'register' ? 'Sign Up' : 'Sign In';
+            this.updateConnectionStatus('disconnected');
         }
-
-        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-            this.showAuthError('Failed to connect to server');
-            this.authSubmitBtn.disabled = false;
-            return;
-        }
-
-        const authMsg = { type: 'auth', auth_type: mode, username: this.username, password, email };
-        console.log('Sending auth message:', authMsg);
-        this.ws.send(JSON.stringify(authMsg));
     }
+
 
     async connect(serverUrl) {
         // If already open, resolve immediately
@@ -319,11 +383,11 @@ class ChatApp {
         if (this.ws) {
             this.ws.close();
         }
-        
+
         // Clear refresh intervals
         if (this.channelsRefreshInterval) { clearInterval(this.channelsRefreshInterval); this.channelsRefreshInterval = null; }
         if (this.usersRefreshInterval) { clearInterval(this.usersRefreshInterval); this.usersRefreshInterval = null; }
-        
+
         this.showLoginScreen();
         this.clearMessages();
         this.clearChannels();
@@ -341,12 +405,15 @@ class ChatApp {
     }
 
     handleMessage(data) {
-        console.log('Received message:', data);
-        
+        console.log('📨 Received WebSocket message:', data);
+
         switch (data.type) {
             case 'auth_response':
+                console.log('🔐 Auth response received:', data);
                 // Re-enable auth button on response
                 this.authSubmitBtn.disabled = false;
+                this.authSubmitBtn.classList.remove('loading');
+                this.authSubmitText.textContent = this.authMode === 'register' ? 'Sign Up' : 'Sign In';
                 if (data.success) {
                     this.clearAuthError();
                     this.onAuthSuccess();
@@ -418,7 +485,19 @@ class ChatApp {
         }
     }
 
-    onAuthSuccess() { this.addSystemMessage('Authenticated successfully. Fetching your hubs and channels...'); }
+    onAuthSuccess() { 
+        this.addSystemMessage('Authenticated successfully. Fetching your hubs and channels...'); 
+        this.clearAuthForm();
+    }
+
+    clearAuthForm() {
+        this.emailInput.value = '';
+        this.passwordInput.value = '';
+        this.fullNameInput.value = '';
+        this.usernameInput.value = '';
+        this.loginUsernameInput.value = '';
+        this.clearAuthError();
+    }
 
     handleJoinedMessage(data) {
         this.currentChannel = data.channel;
