@@ -10,6 +10,8 @@
 #include "core/security/hmac_validator/HMACValidator.h"
 #include "core/security/message_validator/MessageValidator.h"
 #include "core/security/rate_limiter/RateLimiter.h"
+#include "core/security/supabase_jwt_verifier/SupabaseJWTVerifier.h"
+#include "utils/EnvLoader.h"
 
 using json = nlohmann::json;
 
@@ -62,17 +64,33 @@ void ChatServerApp::stop() {
 }
 
 void ChatServerApp::setup_commands() {
+    // Load environment variables from .env file
+    EnvLoader::load_env_file();
+    
     // Initialize DB connection
     try {
-        // Use local Postgres by default; can be overridden later to use env/config
-        std::string conninfo = "postgresql://chat_user:12345678@localhost/chat_db";
+        std::string conninfo = EnvLoader::get_env("DATABASE_URL", "postgresql://chat_user:12345678@localhost/chat_db");
         db = std::make_unique<ChatDB>(conninfo);
         std::cerr << "[SERVER] Connected to DB" << std::endl;
     } catch (const std::exception &e) {
         std::cerr << "[WARN] Failed to connect to DB: " << e.what() << "\n";
     }
 
-    command_map["auth"] = std::make_unique<AuthenticateCommand>(db.get());
+    // Initialize Supabase JWT verifier with single key from environment
+    std::string supabase_jwt_key = EnvLoader::get_env("SUPABASE_JWT_KEY", "");
+    
+    std::cerr << "[SERVER] Loaded Supabase JWT key length: " << supabase_jwt_key.length() << std::endl;
+    
+    std::unique_ptr<SupabaseJWTVerifier> jwt_verifier = nullptr;
+    if (!supabase_jwt_key.empty()) {
+        jwt_verifier = std::make_unique<SupabaseJWTVerifier>(supabase_jwt_key, supabase_jwt_key); // Use same key for both
+        std::cerr << "[SERVER] Supabase JWT verifier initialized with single key" << std::endl;
+    } else {
+        std::cerr << "[WARN] Supabase JWT key not found in environment variables" << std::endl;
+        std::cerr << "[WARN] Make sure you have created .env file with SUPABASE_JWT_KEY" << std::endl;
+    }
+    
+    command_map["auth"] = std::make_unique<AuthenticateCommand>(db.get(), std::move(jwt_verifier));
     command_map["join"] = std::make_unique<JoinCommand>(ws_to_user);
     command_map["chat"] = std::make_unique<ChatCommand>(ws_to_user);
     command_map["list"] = std::make_unique<ListCommand>();
