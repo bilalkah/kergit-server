@@ -4,7 +4,7 @@ module(name = "serverless_communication")
 # Third-party dependencies.
 bazel_dep(name = "websocketpp", version = "0.8.2")
 bazel_dep(name = "googletest", version = "1.17.0")
-# bazel_dep(name = "boringssl", version = "0.20250807.0")
+bazel_dep(name = "jwt-cpp", version = "0.7.0.bcr.1")
 
 libpqxx_ext = use_extension("//third_party/libpqxx:extension.bzl", "libpqxx")
 use_repo(libpqxx_ext, "libpqxx")
@@ -26,6 +26,7 @@ use_repo(libdeflate_ext, "libdeflate")
 
 uwebsockets_ext = use_extension("//third_party/uwebsockets:extension.bzl", "uwebsockets")
 use_repo(uwebsockets_ext, "uwebsockets")
+
 
 # Bazel rules dependencies.
 bazel_dep(name = "rules_python", version = "1.5.3")

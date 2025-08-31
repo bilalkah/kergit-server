@@ -27,9 +27,9 @@ cc_library(
 )
 
 cc_library(
-    name = "jwt_manager_lib",
-    srcs = ["jwt_manager/JWTManager.cpp"],
-    hdrs = ["jwt_manager/JWTManager.h"],
+    name = "supabase_jwt_verifier_lib",
+    srcs = ["supabase_jwt_verifier/SupabaseJWTVerifier.cpp"],
+    hdrs = ["supabase_jwt_verifier/SupabaseJWTVerifier.h"],
     linkopts = ["-lcrypto"],  # OpenSSL crypto library
     visibility = ["//visibility:public"],
     deps = ["@nlohmann_json"],
