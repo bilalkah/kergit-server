@@ -14,217 +14,84 @@ void AuthenticateCommand::execute(json& message, User& user, ChatServerState& se
     // Check if JWT token is provided (new Supabase auth flow)
     if (message.contains("token") && !message["token"].get<std::string>().empty()) {
         handle_jwt_auth(message, user, server_state, ws);
-    } else if (auth_type == "login") {
-        handle_login(message, user, server_state, ws);
-    } else if (auth_type == "register") {
-        handle_register(message, user, server_state, ws);
     } else {
         std::cerr << "[AUTH] Invalid authentication type: " << auth_type << std::endl;
         send_auth_response(ws, false, "", "Invalid authentication type");
     }
 }
 
-bool AuthenticateCommand::handle_login(const json& message, User& user,
-                                       ChatServerState& server_state, WS* ws) {
-    std::string username = message.value("username", "");
-    std::cerr << "[AUTH] Login attempt: username=" << username << std::endl;
-    std::string password = message.value("password", "");
-
-    if (username.empty() || password.empty()) {
-        send_auth_response(ws, false, "", "Username and password required");
-        return false;
-    }
-
-    if (!db) {
-        send_auth_response(ws, false, "", "Server database unavailable");
-        return false;
-    }
-
-    try {
-        auto stored_hash = db->findPasswordHashByUsername(username);
-        if (!stored_hash.has_value()) {
-            std::cerr << "[AUTH] User not found: " << username << std::endl;
-            send_auth_response(ws, false, "", "User not found");
-            return false;
-        }
-
-        if (!verify_password(password, stored_hash.value())) {
-            std::cerr << "[AUTH] Invalid password for: " << username << std::endl;
-            send_auth_response(ws, false, "", "Invalid password");
-            return false;
-        }
-
-        // Login successful - add user to server state
-        std::string connection_id = user.id;  // connection ID
-        User authenticated_user;
-        authenticated_user.id = connection_id;
-        authenticated_user.username = username;
-        server_state.users[connection_id] = authenticated_user;
-        std::cerr << "[AUTH] Login success: username=" << username << ", conn_id=" << connection_id
-                  << std::endl;
-
-        send_auth_response(ws, true, connection_id);
-
-        // Send initialization data
-        auto userId = db->findUserIdByUsername(username);
-        if (userId.has_value()) {
-            send_init_state(ws, userId.value());
-        }
-    } catch (const std::exception& e) {
-        std::cerr << "[AUTH] DB error during login: " << e.what() << std::endl;
-        send_auth_response(ws, false, "", std::string("Database error during login: ") + e.what());
-        return false;
-    }
-
-    return true;
-}
-
+// Assumptions:
+// - jwt_verifier_->verify_token(token) returns a struct with at least:
+//     .sub (Supabase user UUID), .email (optional), .username (optional)
+//   If your verifier returns only the decoded JWT, read "sub" from claims.
+// - send_auth_response(ws, ok, user_uuid, err?) takes the Supabase UUID.
+// - send_init_state(ws, user_uuid) expects a UUID (string). If your current
+//   signature takes an int, make an overload that takes std::string uuid.
 bool AuthenticateCommand::handle_jwt_auth(const json& message, User& user,
                                           ChatServerState& server_state, WS* ws) {
-    std::string token = message.value("token", "");
-    std::string username = message.value("username", "");
-    std::string auth_type = message.value("auth_type", "");
-    
-    std::cerr << "[AUTH] JWT auth attempt: username=" << username << ", auth_type=" << auth_type << std::endl;
+    const std::string token = message.value("token", "");
+    const std::string username_ = message.value("username", "");
+    const std::string auth_type = message.value("auth_type", "");
+
+    std::cerr << "[AUTH] JWT auth attempt (supabase) auth_type=" << auth_type << std::endl;
 
     if (token.empty()) {
         send_auth_response(ws, false, "", "JWT token required");
         return false;
     }
-
     if (!jwt_verifier_) {
-        std::cerr << "[AUTH] JWT verifier not configured" << std::endl;
         send_auth_response(ws, false, "", "JWT authentication not configured");
         return false;
     }
 
     try {
-        // Verify JWT token with Supabase
-        auto supabase_user = jwt_verifier_->verify_token(token);
-        if (!supabase_user.has_value()) {
-            std::cerr << "[AUTH] JWT token verification failed" << std::endl;
+        // 1️⃣ Verify token and get SupabaseUser
+        auto supa = jwt_verifier_->verify_token(token);
+        if (!supa.has_value()) {
             send_auth_response(ws, false, "", "Invalid JWT token");
             return false;
         }
 
-        // Check if token is expired
         if (jwt_verifier_->is_token_expired(token)) {
-            std::cerr << "[AUTH] JWT token expired" << std::endl;
             send_auth_response(ws, false, "", "JWT token expired");
             return false;
         }
 
-        std::cerr << "[AUTH] JWT verified for user: " << supabase_user->email << std::endl;
+        const std::string user_uuid = supa->id;  // ✅ Supabase user UUID
+        const std::string email = supa->email;
+        const std::string handle =
+            !username_.empty()
+                ? username_
+                : (!supa->username.empty() ? supa->username
+                                           : (!email.empty() ? email : "unknown_user"));
 
-        // For registration, create user in local database if needed
-        if (auth_type == "register") {
-            if (!db) {
-                send_auth_response(ws, false, "", "Server database unavailable");
-                return false;
-            }
+        std::cerr << "[AUTH] JWT verified: uid=" << user_uuid
+                  << (email.empty() ? "" : (", email=" + email)) << std::endl;
 
-            // Check if user already exists
-            auto existing_user = db->findUserIdByUsername(username);
-            if (!existing_user.has_value()) {
-                // Create new user in local database
-                int new_user_id = db->createUser(username, "", supabase_user->email); // No password for JWT auth
-                std::cerr << "[AUTH] Created new user in local DB: " << username << ", id: " << new_user_id << std::endl;
-                
-                // Ensure personal hub with general channel
-                db->ensurePersonalHubWithGeneral(new_user_id);
-            }
+        // 3️⃣ Add user to in-memory server state
+        user.id = user_uuid;
+        user.username = handle;
+        server_state.users[user.id] = user;
+
+        std::cerr << "[AUTH] JWT auth success: uid=" << user.id
+                  << (user.username.empty() ? "" : (", name=" + user.username)) << std::endl;
+
+        // 4️⃣ Reply and send initial state
+        send_auth_response(ws, true, user.id);
+
+        if (db) {
+            send_init_state(ws, user.id);
+        } else {
+            std::cerr << "[AUTH] Database not available; skipping init state\n";
         }
 
-                        // Add user to server state
-                std::string connection_id = user.id;
-                User authenticated_user;
-                authenticated_user.id = connection_id;
-                authenticated_user.username = username.empty() ? supabase_user->username : username;
-                server_state.users[connection_id] = authenticated_user;
-                
-                std::cerr << "[AUTH] JWT auth success: username=" << authenticated_user.username 
-                          << ", conn_id=" << connection_id << std::endl;
-
-                send_auth_response(ws, true, connection_id);
-
-                // Send initialization data only if database is available
-                if (db) {
-                    auto user_id = db->findUserIdByUsername(authenticated_user.username);
-                    if (user_id.has_value()) {
-                        send_init_state(ws, user_id.value());
-                    } else {
-                        std::cerr << "[AUTH] User not found in database: " << authenticated_user.username << std::endl;
-                    }
-                } else {
-                    std::cerr << "[AUTH] Database not available, skipping init state" << std::endl;
-                }
+        return true;
 
     } catch (const std::exception& e) {
         std::cerr << "[AUTH] JWT auth error: " << e.what() << std::endl;
         send_auth_response(ws, false, "", std::string("JWT authentication error: ") + e.what());
         return false;
     }
-
-    return true;
-}
-
-bool AuthenticateCommand::handle_register(const json& message, User& user,
-                                          ChatServerState& server_state, WS* ws) {
-    std::string username = message.value("username", "");
-    std::string password = message.value("password", "");
-    std::string email = message.value("email", "");
-    std::cerr << "[AUTH] Register attempt: username=" << username << ", email=" << email
-              << std::endl;
-
-    if (username.empty() || password.empty()) {
-        send_auth_response(ws, false, "", "Username and password required");
-        return false;
-    }
-
-    if (password.length() < 6) {
-        send_auth_response(ws, false, "", "Password must be at least 6 characters");
-        return false;
-    }
-
-    if (!db) {
-        send_auth_response(ws, false, "", "Server database unavailable");
-        return false;
-    }
-
-    try {
-        // Check if user exists
-        auto existingId = db->findUserIdByUsername(username);
-        if (existingId.has_value()) {
-            std::cerr << "[AUTH] Registration failed, username exists: " << username << std::endl;
-            send_auth_response(ws, false, "", "Username already exists");
-            return false;
-        }
-
-        // Create user
-        int newUserId = db->createUser(username, hash_password(password), email);
-        std::cerr << "[AUTH] Registration success: username=" << username
-                  << ", user_id=" << newUserId << std::endl;
-
-        // Ensure personal hub with general channel
-        db->ensurePersonalHubWithGeneral(newUserId);
-
-        // Auto-login
-        std::string connection_id = user.id;
-        User authenticated_user;
-        authenticated_user.id = connection_id;
-        authenticated_user.username = username;
-        server_state.users[connection_id] = authenticated_user;
-
-        send_auth_response(ws, true, connection_id);
-        send_init_state(ws, newUserId);
-    } catch (const std::exception& e) {
-        std::cerr << "[AUTH] DB error during registration: " << e.what() << std::endl;
-        send_auth_response(ws, false, "",
-                           std::string("Database error during registration: ") + e.what());
-        return false;
-    }
-
-    return true;
 }
 
 void AuthenticateCommand::send_auth_response(WS* ws, bool success, const std::string& user_id,
@@ -243,7 +110,7 @@ void AuthenticateCommand::send_auth_response(WS* ws, bool success, const std::st
     send_json(ws, response, uWS::OpCode::TEXT);
 }
 
-void AuthenticateCommand::send_init_state(WS* ws, int userId) {
+void AuthenticateCommand::send_init_state(WS* ws, std::string userId) {
     if (!db) return;
     // Hubs
     auto hubs = db->getUserHubs(userId);
@@ -276,18 +143,4 @@ void AuthenticateCommand::send_init_state(WS* ws, int userId) {
         chansMsg["channels"] = carr;
         send_json(ws, chansMsg, uWS::OpCode::TEXT);
     }
-}
-
-std::string AuthenticateCommand::hash_password(const std::string& password) {
-    // Simple hash for demo - use bcrypt in production!
-    std::hash<std::string> hasher;
-    size_t hash = hasher(password + "simple_salt");
-
-    std::stringstream ss;
-    ss << std::hex << hash;
-    return ss.str();
-}
-
-bool AuthenticateCommand::verify_password(const std::string& password, const std::string& hash) {
-    return hash_password(password) == hash;
 }

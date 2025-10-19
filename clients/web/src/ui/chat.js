@@ -1,6 +1,4 @@
 import { qs, el } from './dom.js';
-}
-
 
 function addMessage(sender, text, timestamp) {
     const row = el('div', 'message');

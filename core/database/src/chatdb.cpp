@@ -3,171 +3,142 @@
 #include <stdexcept>
 
 ChatDB::ChatDB(const std::string& conninfo) : conn_(conninfo) {
-    if (!conn_.is_open()) {
-        throw std::runtime_error("Failed to open database connection");
-    }
+    if (!conn_.is_open()) throw std::runtime_error("Failed to open database connection");
 }
 
-int ChatDB::createHub(const std::string& hubName, int ownerId) {
+std::string ChatDB::createHub(const std::string& hubName, const std::string& ownerUuid) {
     pqxx::work txn(conn_);
-    auto result =
-        txn.exec(pqxx::zview("INSERT INTO hubs (name, owner_id) VALUES ($1, $2) RETURNING id"),
-                 pqxx::params(hubName, ownerId));
-    int hubId = result[0][0].as<int>();
-
-    txn.exec(
-        pqxx::zview("INSERT INTO hub_members (hub_id, user_id, role) VALUES ($1, $2, 'owner')"),
-        pqxx::params(hubId, ownerId));
-
+    auto res = txn.exec_params(
+        "INSERT INTO public.hubs (name, owner_id) VALUES ($1, $2::uuid) RETURNING id::text",
+        hubName, ownerUuid);
+    if (res.empty()) throw std::runtime_error("createHub failed");
+    std::string hubId = res[0][0].as<std::string>();
     txn.commit();
     return hubId;
 }
 
-void ChatDB::addMember(int hubId, int userId) {
+void ChatDB::addMember(const std::string& hubId, const std::string& userUuid,
+                       const std::string& role) {
     pqxx::work txn(conn_);
-    txn.exec(
-        pqxx::zview("INSERT INTO hub_members (hub_id, user_id, role) VALUES ($1, $2, 'member') ON "
-                    "CONFLICT DO NOTHING"),
-        pqxx::params(hubId, userId));
+    txn.exec_params(
+        "INSERT INTO public.hub_members (hub_id, user_id, role) "
+        "VALUES ($1::uuid, $2::uuid, $3) "
+        "ON CONFLICT (hub_id, user_id) DO UPDATE SET role = EXCLUDED.role",
+        hubId, userUuid, role);
     txn.commit();
 }
 
-void ChatDB::removeMember(int hubId, int userId) {
+void ChatDB::removeMember(const std::string& hubId, const std::string& userUuid) {
     pqxx::work txn(conn_);
-    txn.exec(pqxx::zview("DELETE FROM hub_members WHERE hub_id = $1 AND user_id = $2"),
-             pqxx::params(hubId, userId));
+    txn.exec_params("DELETE FROM public.hub_members WHERE hub_id = $1::uuid AND user_id = $2::uuid",
+                    hubId, userUuid);
     txn.commit();
 }
 
-int ChatDB::createChannel(int hubId, const std::string& channelName, const std::string& type) {
-    if (type != "text" && type != "voice") {
-        throw std::invalid_argument("Channel type must be 'text' or 'voice'");
-    }
-
+std::string ChatDB::createChannel(const std::string& hubId, const std::string& channelName,
+                                  const std::string& type) {
     pqxx::work txn(conn_);
-    auto result = txn.exec(
-        pqxx::zview("INSERT INTO channels (hub_id, name, type) VALUES ($1, $2, $3) RETURNING id"),
-        pqxx::params(hubId, channelName, type));
-    int channelId = result[0][0].as<int>();
+    auto res = txn.exec_params(
+        "INSERT INTO public.channels (hub_id, name, type) VALUES ($1::uuid, $2, $3) RETURNING "
+        "id::text",
+        hubId, channelName, type);
+    if (res.empty()) throw std::runtime_error("createChannel failed");
+    std::string channelId = res[0][0].as<std::string>();
     txn.commit();
     return channelId;
 }
 
-void ChatDB::sendMessage(int channelId, int senderId, const std::string& content) {
+void ChatDB::sendMessage(const std::string& channelId, const std::string& senderUuid,
+                         const std::string& content) {
     pqxx::work txn(conn_);
-    txn.exec(
-        pqxx::zview("INSERT INTO messages (channel_id, sender_id, content) VALUES ($1, $2, $3)"),
-        pqxx::params(channelId, senderId, content));
+    txn.exec_params(
+        "INSERT INTO public.messages (channel_id, sender_id, content) "
+        "VALUES ($1::uuid, $2::uuid, $3)",
+        channelId, senderUuid, content);
     txn.commit();
 }
 
-std::vector<DbMessage> ChatDB::fetchMessages(int channelId, int limit) {
+std::vector<DbMessage> ChatDB::fetchMessages(const std::string& channelId, int limit) {
     pqxx::work txn(conn_);
-    auto result = txn.exec(
-        pqxx::zview(
-            "SELECT id, channel_id, sender_id, content, sent_at FROM messages WHERE channel_id "
-            "= $1 ORDER BY sent_at DESC LIMIT $2"),
-        pqxx::params(channelId, limit));
+    auto res = txn.exec_params(
+        "SELECT id::text, channel_id::text, sender_id::text, content, created_at "
+        "FROM public.messages WHERE channel_id = $1::uuid "
+        "ORDER BY created_at DESC LIMIT $2",
+        channelId, limit);
 
-    std::vector<DbMessage> messages;
-    for (auto row : result) {
-        messages.push_back({row[0].as<int>(), row[1].as<int>(), row[2].as<int>(),
-                            row[3].as<std::string>(), row[4].as<std::string>()});
+    std::vector<DbMessage> msgs;
+    msgs.reserve(res.size());
+    for (const auto& row : res) {
+        msgs.push_back({row[0].as<std::string>(), row[1].as<std::string>(),
+                        row[2].as<std::string>(), row[3].as<std::string>(),
+                        row[4].as<std::string>()});
     }
-    return messages;
+    return msgs;
 }
 
 pqxx::connection& ChatDB::getConnection() { return conn_; }
 
-std::optional<int> ChatDB::findUserIdByUsername(const std::string& username) {
+std::vector<HubInfo> ChatDB::getUserHubs(const std::string& userUuid) {
     pqxx::work txn(conn_);
-    auto res =
-        txn.exec(pqxx::zview("SELECT id FROM users WHERE username = $1"), pqxx::params(username));
-    if (res.empty()) return std::nullopt;
-    return res[0][0].as<int>();
-}
+    auto res = txn.exec_params(
+        "SELECT h.id::text, h.name "
+        "FROM public.hubs h "
+        "JOIN public.hub_members m ON h.id = m.hub_id "
+        "WHERE m.user_id = $1::uuid ORDER BY h.created_at DESC",
+        userUuid);
 
-std::optional<std::string> ChatDB::findPasswordHashByUsername(const std::string& username) {
-    pqxx::work txn(conn_);
-    auto res = txn.exec(pqxx::zview("SELECT password_hash FROM users WHERE username = $1"),
-                        pqxx::params(username));
-    if (res.empty()) return std::nullopt;
-    return res[0][0].as<std::string>();
-}
-
-int ChatDB::createUser(const std::string& username, const std::string& passwordHash,
-                       const std::string& email) {
-    pqxx::work txn(conn_);
-    auto res = txn.exec(
-        pqxx::zview(
-            "INSERT INTO users (username, password_hash, email) VALUES ($1, $2, $3) RETURNING id"),
-        pqxx::params(username, passwordHash, email));
-    int id = res[0][0].as<int>();
-    txn.commit();
-    return id;
-}
-
-std::vector<HubInfo> ChatDB::getUserHubs(int userId) {
-    pqxx::work txn(conn_);
-    auto res = txn.exec(
-        pqxx::zview(
-            "SELECT h.id, h.name FROM hubs h JOIN hub_members m ON h.id = m.hub_id WHERE m.user_"
-            "id = $1 ORDER BY h.id"),
-        pqxx::params(userId));
     std::vector<HubInfo> hubs;
     hubs.reserve(res.size());
-    for (auto row : res) {
-        hubs.push_back({row[0].as<int>(), row[1].as<std::string>()});
+    for (const auto& row : res) {
+        hubs.push_back({row[0].as<std::string>(), row[1].as<std::string>()});
     }
     return hubs;
 }
 
-std::vector<ChannelInfo> ChatDB::getHubChannels(int hubId) {
+std::vector<ChannelInfo> ChatDB::getHubChannels(const std::string& hubId) {
     pqxx::work txn(conn_);
-    auto res = txn.exec(
-        pqxx::zview("SELECT id, hub_id, name, type FROM channels WHERE hub_id = $1 ORDER BY id"),
-        pqxx::params(hubId));
+    auto res = txn.exec_params(
+        "SELECT id::text, hub_id::text, name, type "
+        "FROM public.channels WHERE hub_id = $1::uuid ORDER BY created_at ASC",
+        hubId);
+
     std::vector<ChannelInfo> chans;
     chans.reserve(res.size());
-    for (auto row : res) {
-        chans.push_back({row[0].as<int>(), row[1].as<int>(), row[2].as<std::string>(),
-                         row[3].as<std::string>()});
+    for (const auto& row : res) {
+        chans.push_back({row[0].as<std::string>(), row[1].as<std::string>(),
+                         row[2].as<std::string>(), row[3].as<std::string>()});
     }
     return chans;
 }
 
-int ChatDB::ensurePersonalHubWithGeneral(int userId, const std::string& hubName) {
+std::string ChatDB::ensurePersonalHubWithGeneral(const std::string& ownerUuid,
+                                                 const std::string& hubName) {
     pqxx::work txn(conn_);
+    auto existing = txn.exec_params(
+        "SELECT id::text FROM public.hubs WHERE owner_id = $1::uuid LIMIT 1", ownerUuid);
 
-    // Check if user already owns a hub
-    auto res = txn.exec(pqxx::zview("SELECT id FROM hubs WHERE owner_id = $1 ORDER BY id LIMIT 1"),
-                        pqxx::params(userId));
-    int hubId;
-    if (res.empty()) {
-        auto r2 =
-            txn.exec(pqxx::zview("INSERT INTO hubs (name, owner_id) VALUES ($1, $2) RETURNING id"),
-                     pqxx::params(hubName, userId));
-        hubId = r2[0][0].as<int>();
-        txn.exec(
-            pqxx::zview("INSERT INTO hub_members (hub_id, user_id, role) VALUES ($1, $2, 'owner')"),
-            pqxx::params(hubId, userId));
+    std::string hubId;
+    if (existing.empty()) {
+        auto res = txn.exec_params(
+            "INSERT INTO public.hubs (name, owner_id) VALUES ($1, $2::uuid) RETURNING id::text",
+            hubName, ownerUuid);
+        hubId = res[0][0].as<std::string>();
     } else {
-        hubId = res[0][0].as<int>();
-        // Ensure membership exists at least as member
-        txn.exec(pqxx::zview(
-                     "INSERT INTO hub_members (hub_id, user_id, role) VALUES ($1, $2, 'member') ON "
-                     "CONFLICT DO NOTHING"),
-                 pqxx::params(hubId, userId));
+        hubId = existing[0][0].as<std::string>();
+        txn.exec_params(
+            "INSERT INTO public.hub_members (hub_id, user_id, role) "
+            "VALUES ($1::uuid, $2::uuid, 'member') ON CONFLICT DO NOTHING",
+            hubId, ownerUuid);
     }
 
-    // Ensure a 'general' text channel exists
-    auto ch =
-        txn.exec(pqxx::zview("SELECT id FROM channels WHERE hub_id = $1 AND name = 'general'"),
-                 pqxx::params(hubId));
+    // ensure "general" exists
+    auto ch = txn.exec_params(
+        "SELECT 1 FROM public.channels WHERE hub_id = $1::uuid AND name = 'general' LIMIT 1",
+        hubId);
     if (ch.empty()) {
-        txn.exec(
-            pqxx::zview("INSERT INTO channels (hub_id, name, type) VALUES ($1, 'general', 'text')"),
-            pqxx::params(hubId));
+        txn.exec_params(
+            "INSERT INTO public.channels (hub_id, name, type) VALUES ($1::uuid, 'general', 'text')",
+            hubId);
     }
 
     txn.commit();
