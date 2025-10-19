@@ -1,13 +1,5 @@
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
-load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
-load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
-
-sh_binary(
-    name = "initialize_database",
-    srcs = ["scripts/dev_db_init.sh"],
-    args = ["$(location //core/database/sql:V001__init.sql)"],
-    data = ["//core/database/sql:V001__init.sql"],
-)
+load("@rules_cc//cc:defs.bzl", "cc_library")
 
 cc_library(
     name = "chatdb_lib",

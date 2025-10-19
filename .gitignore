@@ -1,9 +1,6 @@
 # Bazel build outputs
-bazel-bin/
-bazel-out/
-bazel-serverless-communication/
-bazel-testlogs/
-*.runfiles/
+bazel-*
+*.runfiles*
 
 # Bazel configuration and lock files
 MODULE.bazel.lock

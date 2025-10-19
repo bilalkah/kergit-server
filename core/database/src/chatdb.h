@@ -1,5 +1,5 @@
-#ifndef CHATDB_H
-#define CHATDB_H
+#ifndef CORE_DATABASE_SRC_CHATDB_H
+#define CORE_DATABASE_SRC_CHATDB_H
 
 #include <optional>
 #include <pqxx/pqxx>
@@ -7,54 +7,51 @@
 #include <vector>
 
 struct DbMessage {
-    int id;
-    int channel_id;
-    int sender_id;
+    std::string id;
+    std::string channel_id;
+    std::string sender_id;
     std::string content;
-    std::string sent_at;
+    std::string created_at;
 };
 
 struct HubInfo {
-    int id;
+    std::string id;
     std::string name;
 };
 
 struct ChannelInfo {
-    int id;
-    int hub_id;
+    std::string id;
+    std::string hub_id;
     std::string name;
-    std::string type;
+    std::string type;  // "text" or "voice"
 };
 
 class ChatDB {
    public:
     explicit ChatDB(const std::string& conninfo);
 
-    int createHub(const std::string& hubName, int ownerId);
-    void addMember(int hubId, int userId);
-    void removeMember(int hubId, int userId);
-    int createChannel(int hubId, const std::string& channelName, const std::string& type);
-    void sendMessage(int channelId, int senderId, const std::string& content);
-    std::vector<DbMessage> fetchMessages(int channelId, int limit = 50);
+    // CRUD
+    std::string createHub(const std::string& hubName, const std::string& ownerUuid);
+    void addMember(const std::string& hubId, const std::string& userUuid,
+                   const std::string& role = "member");
+    void removeMember(const std::string& hubId, const std::string& userUuid);
 
-    // Provide access to raw connection for advanced queries or tests
+    std::string createChannel(const std::string& hubId, const std::string& channelName,
+                              const std::string& type);
+    void sendMessage(const std::string& channelId, const std::string& senderUuid,
+                     const std::string& content);
+
+    std::vector<DbMessage> fetchMessages(const std::string& channelId, int limit);
+    std::vector<HubInfo> getUserHubs(const std::string& userUuid);
+    std::vector<ChannelInfo> getHubChannels(const std::string& hubId);
+
+    std::string ensurePersonalHubWithGeneral(const std::string& ownerUuid,
+                                             const std::string& hubName);
+
     pqxx::connection& getConnection();
-
-    // New: Users
-    std::optional<int> findUserIdByUsername(const std::string& username);
-    std::optional<std::string> findPasswordHashByUsername(const std::string& username);
-    int createUser(const std::string& username, const std::string& passwordHash,
-                   const std::string& email);
-
-    // New: Hubs and channels for a user
-    std::vector<HubInfo> getUserHubs(int userId);
-    std::vector<ChannelInfo> getHubChannels(int hubId);
-
-    // New: Ensure defaults
-    int ensurePersonalHubWithGeneral(int userId, const std::string& hubName = "Personal Hub");
 
    private:
     pqxx::connection conn_;
 };
 
-#endif  // CHATDB_H
+#endif // CORE_DATABASE_SRC_CHATDB_H
