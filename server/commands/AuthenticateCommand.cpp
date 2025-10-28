@@ -61,6 +61,8 @@ bool AuthenticateCommand::handle_jwt_auth(const json& message, User& user,
 
         // 4️⃣ Reply and send initial state
         send_auth_response(ws, true, user.id);
+        ws->getUserData()->user_id = user.id;
+
         std::cout << "[AUTH] User authenticated: " << user.id << " (" << user.username << ")\n";
 
         if (db) {
@@ -69,7 +71,6 @@ bool AuthenticateCommand::handle_jwt_auth(const json& message, User& user,
             std::cerr << "[AUTH] Database not available; skipping init state\n";
         }
 
-        ws->getUserData()->user_id = user.id;
         return true;
 
     } catch (const std::exception& e) {

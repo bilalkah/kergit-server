@@ -14,7 +14,7 @@
 
 class ChatServerApp {
    public:
-    ChatServerApp(int port = 9001);
+    ChatServerApp(std::string url = "localhost", int port = 9001);
     ~ChatServerApp();
 
     // Server control
@@ -36,6 +36,7 @@ class ChatServerApp {
     void run_server();
 
     int port;
+    std::string url;
     std::atomic<bool> running{false};
     std::atomic<bool> started{false};
     std::atomic<bool> stopped{false};

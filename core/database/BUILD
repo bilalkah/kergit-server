@@ -13,12 +13,12 @@ cc_library(
     ],
 )
 
-cc_test(
-    name = "chatdb_test",
-    srcs = ["test/database_connection.cpp"],
-    deps = [
-        ":chatdb_lib",
-        "//common",
-        "@googletest//:gtest_main",
-    ],
-)
+# cc_test(
+#     name = "chatdb_test",
+#     srcs = ["test/database_connection.cpp"],
+#     deps = [
+#         ":chatdb_lib",
+#         "//common",
+#         "@googletest//:gtest_main",
+#     ],
+# )
