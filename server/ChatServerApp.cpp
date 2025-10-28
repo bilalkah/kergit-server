@@ -15,7 +15,7 @@
 
 using json = nlohmann::json;
 
-ChatServerApp::ChatServerApp(int port) : port(port) { setup_commands(); }
+ChatServerApp::ChatServerApp(std::string url, int port) : url(url), port(port) { setup_commands(); }
 
 ChatServerApp::~ChatServerApp() { stop(); }
 
@@ -454,12 +454,12 @@ void ChatServerApp::run_server() {
                         }
                     }
                 }})
-        .listen("0.0.0.0", port,
+        .listen(url, port,
                 [this](auto *token) {
                     if (!token) {
                         running = false;
                     } else {
-                        std::cerr << "[SERVER] Listening on port " << port << std::endl;
+                        std::cerr << "[SERVER] Listening on url " << url << " - port " << port << std::endl;
                         started = true;
                     }
                 })
