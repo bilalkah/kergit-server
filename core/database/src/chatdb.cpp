@@ -78,14 +78,14 @@ std::vector<DbMessage> ChatDB::fetchMessages(const std::string& channelId, int l
 
 pqxx::connection& ChatDB::getConnection() { return conn_; }
 
-std::vector<HubInfo> ChatDB::getUserHubs(const std::string& userUuid) {
+std::vector<HubInfo> ChatDB::getUserHubs(const UserId& userUuid) {
     pqxx::work txn(conn_);
     auto res = txn.exec_params(
         "SELECT h.id::text, h.name "
         "FROM public.hubs h "
         "JOIN public.hub_members m ON h.id = m.hub_id "
         "WHERE m.user_id = $1::uuid ORDER BY h.created_at DESC",
-        userUuid);
+        userUuid.value);
 
     std::vector<HubInfo> hubs;
     hubs.reserve(res.size());

@@ -8,6 +8,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//common",
+        "//domains/ids:domain_ids",
         "@libpqxx",
         "@nlohmann_json",
     ],

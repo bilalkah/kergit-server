@@ -28,15 +28,15 @@ class ChatServerApp {
     const std::unordered_map<WS*, std::string>& get_connections() const { return ws_to_user; }
 
     // Event handlers
-    void set_connection_handler(std::function<void(const std::string&)> handler);
-    void set_disconnection_handler(std::function<void(const std::string&)> handler);
+    void set_connection_handler(std::function<void(const UserId&)> handler);
+    void set_disconnection_handler(std::function<void(const UserId&)> handler);
 
    private:
     void setup_commands();
     void run_server();
 
-    int port;
     std::string url;
+    int port;
     std::atomic<bool> running{false};
     std::atomic<bool> started{false};
     std::atomic<bool> stopped{false};
@@ -46,8 +46,8 @@ class ChatServerApp {
     std::unordered_map<WS*, std::string> ws_to_user;
     std::unordered_map<std::string, std::unique_ptr<ICommand>> command_map;
 
-    std::function<void(const std::string&)> connection_handler;
-    std::function<void(const std::string&)> disconnection_handler;
+    std::function<void(const UserId&)> connection_handler;
+    std::function<void(const UserId&)> disconnection_handler;
 
 // uWS server instance for proper shutdown
 #ifdef USE_SSL

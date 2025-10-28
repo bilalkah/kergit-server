@@ -16,7 +16,8 @@ void AuthenticateCommand::execute(json& message, User& user, ChatServerState& se
         handle_jwt_auth(message, user, server_state, ws);
     } else {
         std::cerr << "[AUTH] Invalid authentication type: " << auth_type << std::endl;
-        send_auth_response(ws, false, "", "Invalid authentication type");
+        send_auth_response(ws, false, UserId(ws->getUserData()->user_id),
+                           "Invalid authentication type");
     }
 }
 
@@ -36,11 +37,12 @@ bool AuthenticateCommand::handle_jwt_auth(const json& message, User& user,
     std::cerr << "[AUTH] JWT auth attempt (supabase) auth_type=" << auth_type << std::endl;
 
     if (token.empty()) {
-        send_auth_response(ws, false, "", "JWT token required");
+        send_auth_response(ws, false, UserId(ws->getUserData()->user_id), "JWT token required");
         return false;
     }
     if (!jwt_verifier_) {
-        send_auth_response(ws, false, "", "JWT authentication not configured");
+        send_auth_response(ws, false, UserId(ws->getUserData()->user_id),
+                           "JWT authentication not configured");
         return false;
     }
 
@@ -48,12 +50,12 @@ bool AuthenticateCommand::handle_jwt_auth(const json& message, User& user,
         // 1️⃣ Verify token and get SupabaseUser
         auto supa = jwt_verifier_->verify_token(token);
         if (!supa.has_value()) {
-            send_auth_response(ws, false, "", "Invalid JWT token");
+            send_auth_response(ws, false, UserId(ws->getUserData()->user_id), "Invalid JWT token");
             return false;
         }
 
         if (jwt_verifier_->is_token_expired(token)) {
-            send_auth_response(ws, false, "", "JWT token expired");
+            send_auth_response(ws, false, UserId(ws->getUserData()->user_id), "JWT token expired");
             return false;
         }
 
@@ -61,9 +63,9 @@ bool AuthenticateCommand::handle_jwt_auth(const json& message, User& user,
 
         // 4️⃣ Reply and send initial state
         send_auth_response(ws, true, user.id);
-        ws->getUserData()->user_id = user.id;
+        ws->getUserData()->user_id = user.id.value;
 
-        std::cout << "[AUTH] User authenticated: " << user.id << " (" << user.username << ")\n";
+        std::cout << "[AUTH] User authenticated: " << user.id.value << " (" << user.username << ")\n";
 
         if (db) {
             send_init_state(ws, user.id);
@@ -75,19 +77,19 @@ bool AuthenticateCommand::handle_jwt_auth(const json& message, User& user,
 
     } catch (const std::exception& e) {
         std::cerr << "[AUTH] JWT auth error: " << e.what() << std::endl;
-        send_auth_response(ws, false, "", std::string("JWT authentication error: ") + e.what());
+        send_auth_response(ws, false, UserId(ws->getUserData()->user_id), std::string("JWT authentication error: ") + e.what());
         return false;
     }
 }
 
-void AuthenticateCommand::send_auth_response(WS* ws, bool success, const std::string& user_id,
+void AuthenticateCommand::send_auth_response(WS* ws, bool success, const UserId& user_id,
                                              const std::string& error) {
     json response;
     response["type"] = "auth_response";
     response["success"] = success;
 
     if (success) {
-        response["user_id"] = user_id;
+        response["user_id"] = user_id.value;
         response["message"] = "Authentication successful";
     } else {
         response["error"] = error;
@@ -96,7 +98,7 @@ void AuthenticateCommand::send_auth_response(WS* ws, bool success, const std::st
     send_json(ws, response, uWS::OpCode::TEXT);
 }
 
-void AuthenticateCommand::send_init_state(WS* ws, std::string userId) {
+void AuthenticateCommand::send_init_state(WS* ws, UserId userId) {
     if (!db) return;
     // Hubs
     auto hubs = db->getUserHubs(userId);

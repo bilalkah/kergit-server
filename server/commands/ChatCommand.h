@@ -11,7 +11,7 @@ class ChatCommand : public ICommand {
     void execute(json& j, User& user, ChatServerState& server, WS* ws) override {
         std::string text = j["text"];
         if (server.sendMessage(user.id, text)) {
-            std::string channel = user.current_channel;
+            ChannelId channel = user.current_channel;
             auto& ch = server.channels[channel];
 
             // Get the timestamp from the last message in history
@@ -28,7 +28,7 @@ class ChatCommand : public ICommand {
             auto epoch = timestamp.time_since_epoch();
             auto seconds = std::chrono::duration_cast<std::chrono::seconds>(epoch);
             resp["timestamp"] = seconds.count();
-            for (const auto& uid : ch.user_ids) {
+            for (const auto& uid : ch.member_user_ids) {
                 for (const auto& [ws_ptr, ws_uid] : ws_to_user) {
                     if (ws_uid == uid) {
                         json out = resp;
