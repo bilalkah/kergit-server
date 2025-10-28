@@ -4,12 +4,11 @@
 #include <ctime>
 #include <random>
 
-bool ChatServerState::createChannel(const std::string& name, const std::string& owner_id) {
+bool ChatServerState::createChannel(const std::string& name, const std::string& hub_id) {
     if (channels.find(name) != channels.end()) return false;  // already exists
     Channel ch;
     ch.name = name;
-    ch.owner_id = owner_id;
-    ch.is_persistent = true;
+    ch.hub_id = hub_id;
     channels[name] = ch;
     return true;
 }
@@ -17,7 +16,10 @@ bool ChatServerState::createChannel(const std::string& name, const std::string& 
 bool ChatServerState::destroyChannel(const std::string& name, const std::string& requester_id) {
     auto it = channels.find(name);
     if (it == channels.end()) return false;
-    if (it->second.owner_id != requester_id) return false;  // only owner can destroy
+    // ch -> hub -> check owner
+    auto hub_it = hubs.find(it->second.hub_id);
+    if (hub_it == hubs.end()) return false;
+    if (hub_it->second.owner != requester_id) return false;  // not owner
     channels.erase(it);
     return true;
 }
@@ -59,7 +61,6 @@ bool ChatServerState::sendMessage(const std::string& user_id, const std::string&
     msg.sender = user_it->second.username;
     msg.text = text;
     msg.timestamp = std::chrono::system_clock::now();
-    ch_it->second.history.push_back(msg);
     return true;
 }
 
@@ -74,5 +75,9 @@ std::vector<std::string> ChatServerState::listChannels() const {
 std::vector<Message> ChatServerState::getChannelHistory(const std::string& channel_name) const {
     auto it = channels.find(channel_name);
     if (it == channels.end()) return {};
-    return it->second.history;
+    if (it->second.type != ChannelType::CHAT) 
+    {
+        return {};
+    }
+    return {};
 }
