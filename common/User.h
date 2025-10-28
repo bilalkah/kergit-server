@@ -31,8 +31,8 @@ class User {
     // Basic user information
     std::string id;
     std::string username;
+    std::string full_name;
     std::string email;
-    Authority authority = Authority::USER;
     UserStatus status = UserStatus::ONLINE;
     std::string current_channel;
 
@@ -68,7 +68,7 @@ class User {
     bool is_recently_active(int minutes = 5) const;
 
    private:
-    static constexpr int MAX_SESSIONS_PER_USER = 5;
+    static constexpr int MAX_SESSIONS_PER_USER = 1;
     static constexpr int MAX_FAILED_ATTEMPTS = 5;
     static constexpr int ACCOUNT_LOCK_DURATION_MINUTES = 30;
 };

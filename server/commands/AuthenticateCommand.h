@@ -22,4 +22,5 @@ class AuthenticateCommand : public ICommand {
     void send_auth_response(WS* ws, bool success, const std::string& user_id = "",
                             const std::string& error = "");
     void send_init_state(WS* ws, std::string userId);
+    User& get_or_create_user(const SupabaseUser& supa, ChatServerState& server_state);
 };

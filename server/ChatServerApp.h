@@ -37,10 +37,11 @@ class ChatServerApp {
 
     int port;
     std::atomic<bool> running{false};
+    std::atomic<bool> started{false};
+    std::atomic<bool> stopped{false};
     std::thread server_thread;
 
     ChatServerState chatServer;
-    // std::unordered_map<uWS::WebSocket<false, true, PerSocketData>*, std::string> ws_to_user;
     std::unordered_map<WS*, std::string> ws_to_user;
     std::unordered_map<std::string, std::unique_ptr<ICommand>> command_map;
 

@@ -57,27 +57,11 @@ bool AuthenticateCommand::handle_jwt_auth(const json& message, User& user,
             return false;
         }
 
-        const std::string user_uuid = supa->id;  // ✅ Supabase user UUID
-        const std::string email = supa->email;
-        const std::string handle =
-            !username_.empty()
-                ? username_
-                : (!supa->username.empty() ? supa->username
-                                           : (!email.empty() ? email : "unknown_user"));
-
-        std::cerr << "[AUTH] JWT verified: uid=" << user_uuid
-                  << (email.empty() ? "" : (", email=" + email)) << std::endl;
-
-        // 3️⃣ Add user to in-memory server state
-        user.id = user_uuid;
-        user.username = handle;
-        server_state.users[user.id] = user;
-
-        std::cerr << "[AUTH] JWT auth success: uid=" << user.id
-                  << (user.username.empty() ? "" : (", name=" + user.username)) << std::endl;
+        user = get_or_create_user(supa.value(), server_state);
 
         // 4️⃣ Reply and send initial state
         send_auth_response(ws, true, user.id);
+        std::cout << "[AUTH] User authenticated: " << user.id << " (" << user.username << ")\n";
 
         if (db) {
             send_init_state(ws, user.id);
@@ -85,6 +69,7 @@ bool AuthenticateCommand::handle_jwt_auth(const json& message, User& user,
             std::cerr << "[AUTH] Database not available; skipping init state\n";
         }
 
+        ws->getUserData()->user_id = user.id;
         return true;
 
     } catch (const std::exception& e) {
@@ -142,5 +127,21 @@ void AuthenticateCommand::send_init_state(WS* ws, std::string userId) {
         }
         chansMsg["channels"] = carr;
         send_json(ws, chansMsg, uWS::OpCode::TEXT);
+    }
+}
+
+User& AuthenticateCommand::get_or_create_user(const SupabaseUser& supa,
+                                              ChatServerState& server_state) {
+    auto it = server_state.users.find(supa.id);
+    if (it != server_state.users.end()) {
+        return it->second;
+    } else {
+        User new_user;
+        new_user.id = supa.id;
+        new_user.username = !supa.username.empty() ? supa.username : supa.email;
+        new_user.full_name = supa.full_name;
+        new_user.email = supa.email;
+        server_state.users[new_user.id] = new_user;
+        return server_state.users[new_user.id];
     }
 }

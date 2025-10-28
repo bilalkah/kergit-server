@@ -12,6 +12,7 @@ cc_library(
         "ChatServer.h",
         "Message.h",
         "User.h",
+        "Hub.h",
     ],
     includes = ["."],
     visibility = ["//visibility:public"],

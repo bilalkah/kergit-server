@@ -16,9 +16,9 @@ class ChatCommand : public ICommand {
 
             // Get the timestamp from the last message in history
             auto timestamp = std::chrono::system_clock::now();
-            if (!ch.history.empty()) {
-                timestamp = ch.history.back().timestamp;
-            }
+            // if (!ch.history.empty()) {
+            //     timestamp = ch.history.back().timestamp;
+            // }
 
             json resp;
             resp["type"] = "chat";

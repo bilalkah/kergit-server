@@ -26,7 +26,9 @@ bool ChatServerApp::start() {
     server_thread = std::thread(&ChatServerApp::run_server, this);
 
     // Wait a bit for server to start
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    while (!started) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
     return true;
 }
 
@@ -57,7 +59,17 @@ void ChatServerApp::stop() {
         }
 
         // Wait a bit more to ensure the server is fully stopped
-        std::this_thread::sleep_for(std::chrono::milliseconds(25));
+        auto current = std::chrono::steady_clock::now();
+        while (!stopped) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            if (std::chrono::steady_clock::now() - current > std::chrono::milliseconds(500)) {
+                std::cerr << "[WARN] Server stop timeout reached\n";
+                break;
+            }
+        }
+        if (stopped) {
+            std::cerr << "[SERVER] Server stopped successfully\n";
+        }
     } catch (const std::exception &e) {
         // Ignore exceptions during stop
     }
@@ -66,10 +78,11 @@ void ChatServerApp::stop() {
 void ChatServerApp::setup_commands() {
     // Load environment variables from .env file
     EnvLoader::load_env_file();
-    
+
     // Initialize DB connection
     try {
-        std::string conninfo = EnvLoader::get_env("DATABASE_URL", "postgresql://chat_user:12345678@localhost/chat_db");
+        std::string conninfo =
+            EnvLoader::get_env("DATABASE_URL", "postgresql://chat_user:12345678@localhost/chat_db");
         db = std::make_unique<ChatDB>(conninfo);
         std::cerr << "[SERVER] Connected to DB" << std::endl;
     } catch (const std::exception &e) {
@@ -78,18 +91,18 @@ void ChatServerApp::setup_commands() {
 
     // Initialize Supabase JWT verifier with single key from environment
     std::string supabase_jwt_key = EnvLoader::get_env("SUPABASE_JWT_KEY", "");
-    
-    std::cerr << "[SERVER] Loaded Supabase JWT key length: " << supabase_jwt_key.length() << std::endl;
-    
+
     std::unique_ptr<SupabaseJWTVerifier> jwt_verifier = nullptr;
     if (!supabase_jwt_key.empty()) {
-        jwt_verifier = std::make_unique<SupabaseJWTVerifier>(supabase_jwt_key, supabase_jwt_key); // Use same key for both
+        jwt_verifier = std::make_unique<SupabaseJWTVerifier>(
+            supabase_jwt_key, supabase_jwt_key);  // Use same key for both
         std::cerr << "[SERVER] Supabase JWT verifier initialized with single key" << std::endl;
     } else {
         std::cerr << "[WARN] Supabase JWT key not found in environment variables" << std::endl;
-        std::cerr << "[WARN] Make sure you have created .env file with SUPABASE_JWT_KEY" << std::endl;
+        std::cerr << "[WARN] Make sure you have created .env file with SUPABASE_JWT_KEY"
+                  << std::endl;
     }
-    
+
     command_map["auth"] = std::make_unique<AuthenticateCommand>(db.get(), std::move(jwt_verifier));
     command_map["join"] = std::make_unique<JoinCommand>(ws_to_user);
     command_map["chat"] = std::make_unique<ChatCommand>(ws_to_user);
@@ -97,52 +110,53 @@ void ChatServerApp::setup_commands() {
     command_map["ping"] = std::make_unique<PingCommand>();
     command_map["users"] = std::make_unique<UsersCommand>();
 
-    // Security filters: message validation, optional HMAC, and rate limiting
-    static security::MessageValidator validator;
-    static RateLimiter rateLimiter;
-    static HMACValidator hmacValidator("dev_hmac_secret");
-    rateLimiter.set_message_rate_limit(120);  // 120 messages/min per user/connection
+    // // Security filters: message validation, optional HMAC, and rate limiting
+    // static security::MessageValidator validator;
+    // static RateLimiter rateLimiter;
+    // static HMACValidator hmacValidator("dev_hmac_secret");
+    // rateLimiter.set_message_rate_limit(120);  // 120 messages/min per user/connection
 
-    set_incoming_filter([&](json &msg) {
-        // Allow auth to pass basic checks (no signature expected)
-        std::string type = msg.value("type", "");
-        std::string cid = msg.value("__cid", "");
+    // set_incoming_filter([&](json &msg) {
+    //     // Allow auth to pass basic checks (no signature expected)
+    //     std::string type = msg.value("type", "");
+    //     std::string cid = msg.value("__cid", "");
 
-        // Rate limit per connection id
-        if (!cid.empty() && !rateLimiter.is_message_allowed(cid)) {
-            msg["__invalid"] = true;
-            msg["__error_message"] = "Rate limit exceeded";
-            msg["type"] = "error";
-            msg["message"] = "Rate limit exceeded";
-            return;
-        }
+    //     // Rate limit per connection id
+    //     if (!cid.empty() && !rateLimiter.is_message_allowed(cid)) {
+    //         msg["__invalid"] = true;
+    //         msg["__error_message"] = "Rate limit exceeded";
+    //         msg["type"] = "error";
+    //         msg["message"] = "Rate limit exceeded";
+    //         return;
+    //     }
 
-        // Validate message format/content (skip for auth)
-        if (type != "auth") {
-            auto res = validator.validate_message(msg);
-            if (!res.is_valid) {
-                msg["__invalid"] = true;
-                msg["__error_message"] = res.error_message;
-                msg["type"] = "error";
-                msg["message"] = res.error_message;
-                return;
-            }
+    //     // Validate message format/content (skip for auth)
+    //     if (type != "auth") {
+    //         auto res = validator.validate_message(msg);
+    //         if (!res.is_valid) {
+    //             msg["__invalid"] = true;
+    //             msg["__error_message"] = res.error_message;
+    //             msg["type"] = "error";
+    //             msg["message"] = res.error_message;
+    //             return;
+    //         }
 
-            // Optional HMAC verification if client provided signature and id
-            if (msg.contains("signature") && msg["signature"].is_string() && msg.contains("id") &&
-                msg["id"].is_string()) {
-                std::string signature = msg["signature"].get<std::string>();
-                std::string message_id = msg["id"].get<std::string>();
-                if (!hmacValidator.verify_message_signature(message_id, signature)) {
-                    msg["__invalid"] = true;
-                    msg["__error_message"] = "Invalid signature";
-                    msg["type"] = "error";
-                    msg["message"] = "Invalid signature";
-                    return;
-                }
-            }
-        }
-    });
+    //         // Optional HMAC verification if client provided signature and id
+    //         if (msg.contains("signature") && msg["signature"].is_string() && msg.contains("id")
+    //         &&
+    //             msg["id"].is_string()) {
+    //             std::string signature = msg["signature"].get<std::string>();
+    //             std::string message_id = msg["id"].get<std::string>();
+    //             if (!hmacValidator.verify_message_signature(message_id, signature)) {
+    //                 msg["__invalid"] = true;
+    //                 msg["__error_message"] = "Invalid signature";
+    //                 msg["type"] = "error";
+    //                 msg["message"] = "Invalid signature";
+    //                 return;
+    //             }
+    //         }
+    //     }
+    // });
 }
 
 void ChatServerApp::run_server() {
@@ -304,6 +318,7 @@ void ChatServerApp::run_server() {
                         running = false;
                     } else {
                         std::cerr << "[SERVER] Listening on port " << port << std::endl;
+                        started = true;
                     }
                 })
         .run();
@@ -344,24 +359,29 @@ void ChatServerApp::run_server() {
                     try {
                         std::string connection_id = ws->getUserData()->user_id;
                         auto j = json::parse(message);
-                        // Provide connection id to filter
-                        j["__cid"] = connection_id;
-                        apply_incoming_filter(j);
+
+                        // // Provide connection id to filter
+                        // j["__cid"] = connection_id;
+                        // apply_incoming_filter(j);
+                        // std::string type = j.value("type", "");
+                        // std::cerr << "[SERVER] Message from " << connection_id << ", type=" <<
+                        // type
+                        //           << ": " << message << std::endl;
+
+                        // // If filter marked invalid, send structured error and drop
+                        // if (j.contains("__invalid") && j["__invalid"].is_boolean() &&
+                        //     j["__invalid"].get<bool>()) {
+                        //     json err;
+                        //     err["type"] = "error";
+                        //     err["message"] =
+                        //         j.value("__error_message", std::string("Invalid message"));
+                        //     send_json(ws, err, uWS::OpCode::TEXT);
+                        //     return;
+                        // }
+
                         std::string type = j.value("type", "");
                         std::cerr << "[SERVER] Message from " << connection_id << ", type=" << type
                                   << ": " << message << std::endl;
-
-                        // If filter marked invalid, send structured error and drop
-                        if (j.contains("__invalid") && j["__invalid"].is_boolean() &&
-                            j["__invalid"].get<bool>()) {
-                            json err;
-                            err["type"] = "error";
-                            err["message"] =
-                                j.value("__error_message", std::string("Invalid message"));
-                            send_json(ws, err, uWS::OpCode::TEXT);
-                            return;
-                        }
-
                         auto user_it = chatServer.users.find(connection_id);
                         auto &user = user_it->second;
                         auto it = command_map.find(type);
@@ -369,6 +389,10 @@ void ChatServerApp::run_server() {
                             it->second->execute(j, user, chatServer, ws);
                         } else {
                             std::cerr << "[ERROR] Unknown command type: " << type << std::endl;
+                        }
+                        if (type == "auth") {
+                            // After auth, update ws_to_user mapping
+                            ws_to_user[ws] = ws->getUserData()->user_id;
                         }
                     } catch (const std::exception &e) {
                         std::cerr << "[ERROR] Invalid message: " << e.what() << std::endl;
@@ -430,16 +454,18 @@ void ChatServerApp::run_server() {
                         }
                     }
                 }})
-        .listen(port,
+        .listen("0.0.0.0", port,
                 [this](auto *token) {
                     if (!token) {
                         running = false;
                     } else {
                         std::cerr << "[SERVER] Listening on port " << port << std::endl;
+                        started = true;
                     }
                 })
         .run();
 #endif
+    stopped = true;
 }
 
 void ChatServerApp::set_connection_handler(std::function<void(const std::string &)> handler) {
