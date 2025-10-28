@@ -26,10 +26,6 @@ std::optional<SupabaseUser> SupabaseJWTVerifier::verify_token(const std::string&
         return std::nullopt;
     }
 
-    std::cerr << "[SUPABASE_JWT] Token length: " << token.length() << std::endl;
-    std::cerr << "[SUPABASE_JWT] Token preview: " << token.substr(0, 50) << "..." << std::endl;
-    std::cerr << "[SUPABASE_JWT] Attempting verification with key kid: " << current_key_.kid << std::endl;
-
     // Try current key first
     auto user = decode_and_verify(token, current_key_);
     if (user.has_value()) {
@@ -71,17 +67,11 @@ std::optional<SupabaseUser> SupabaseJWTVerifier::decode_and_verify(const std::st
         std::string payload_b64 = parts[1];
         std::string signature_b64 = parts[2];
 
-        std::cerr << "[SUPABASE_JWT] Token parts - header: " << header_b64.substr(0, 20) << "..."
-                  << ", payload: " << payload_b64.substr(0, 20) << "..."
-                  << ", signature: " << signature_b64.substr(0, 20) << "..." << std::endl;
-
         // Decode header to check algorithm
         std::string header_json = base64_decode(header_b64);
         json header = json::parse(header_json);
         std::string alg = header.value("alg", "");
         std::string kid = header.value("kid", "");
-
-        std::cerr << "[SUPABASE_JWT] Token algorithm: " << alg << ", key id: " << kid << std::endl;
 
         // Verify signature based on algorithm
         std::string header_payload = header_b64 + "." + payload_b64;
@@ -132,6 +122,8 @@ std::optional<SupabaseUser> SupabaseJWTVerifier::decode_and_verify(const std::st
             std::cerr << "[SUPABASE_JWT] Missing required user fields" << std::endl;
             return std::nullopt;
         }
+
+        std::cout << "[SUPABASE_JWT] Decoded user: " << user << std::endl;
 
         return user;
 
@@ -185,12 +177,8 @@ std::string SupabaseJWTVerifier::base64_decode(const std::string& input) {
 
 bool SupabaseJWTVerifier::verify_es256_signature(const std::string& header_payload, const std::string& signature_b64, const JWK& key) {
     try {
-        std::cerr << "[SUPABASE_JWT] ES256 verification - header_payload length: " << header_payload.length() << std::endl;
-        std::cerr << "[SUPABASE_JWT] ES256 verification - signature_b64 length: " << signature_b64.length() << std::endl;
-        
         // Decode signature
         std::string signature = base64_decode(signature_b64);
-        std::cerr << "[SUPABASE_JWT] ES256 verification - decoded signature length: " << signature.length() << std::endl;
         
         // ES256 signatures in JWT are raw R and S components concatenated (not DER encoded)
         // Each component is 32 bytes for P-256 curve
@@ -202,9 +190,6 @@ bool SupabaseJWTVerifier::verify_es256_signature(const std::string& header_paylo
         // Split into R and S components (each 32 bytes)
         std::string r_bytes = signature.substr(0, 32);
         std::string s_bytes = signature.substr(32, 32);
-        
-        std::cerr << "[SUPABASE_JWT] ES256 verification - R component length: " << r_bytes.length() << std::endl;
-        std::cerr << "[SUPABASE_JWT] ES256 verification - S component length: " << s_bytes.length() << std::endl;
         
         // Create EC key from JWK
         EC_KEY* ec_key = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
@@ -219,9 +204,6 @@ bool SupabaseJWTVerifier::verify_es256_signature(const std::string& header_paylo
         
         std::string x_bytes = base64_decode(key.x);
         std::string y_bytes = base64_decode(key.y);
-        
-        std::cerr << "[SUPABASE_JWT] ES256 verification - x_bytes length: " << x_bytes.length() << std::endl;
-        std::cerr << "[SUPABASE_JWT] ES256 verification - y_bytes length: " << y_bytes.length() << std::endl;
         
         BN_bin2bn((unsigned char*)x_bytes.c_str(), x_bytes.length(), x);
         BN_bin2bn((unsigned char*)y_bytes.c_str(), y_bytes.length(), y);
@@ -252,12 +234,8 @@ bool SupabaseJWTVerifier::verify_es256_signature(const std::string& header_paylo
         SHA256_Update(&sha256, (unsigned char*)header_payload.c_str(), header_payload.length());
         SHA256_Final(hash, &sha256);
         
-        std::cerr << "[SUPABASE_JWT] ES256 verification - header_payload hash length: " << SHA256_DIGEST_LENGTH << std::endl;
-        
         // Verify signature
         int result = ECDSA_do_verify(hash, SHA256_DIGEST_LENGTH, sig, ec_key);
-        
-        std::cerr << "[SUPABASE_JWT] ES256 verification - ECDSA_do_verify result: " << result << std::endl;
         
         // Cleanup
         ECDSA_SIG_free(sig);
@@ -294,7 +272,6 @@ int64_t SupabaseJWTVerifier::get_current_timestamp() {
 JWK SupabaseJWTVerifier::parse_jwk(const std::string& jwk_json) {
     JWK jwk;
     try {
-        std::cerr << "[SUPABASE_JWT] Parsing JWK JSON: " << jwk_json.substr(0, 100) << "..." << std::endl;
         json j = json::parse(jwk_json);
         jwk.kty = j.value("kty", "");
         jwk.alg = j.value("alg", "");
@@ -305,8 +282,6 @@ JWK SupabaseJWTVerifier::parse_jwk(const std::string& jwk_json) {
         jwk.n = j.value("n", "");
         jwk.e = j.value("e", "");
         
-        std::cerr << "[SUPABASE_JWT] Parsed JWK - kty: " << jwk.kty << ", alg: " << jwk.alg << ", kid: " << jwk.kid << std::endl;
-        std::cerr << "[SUPABASE_JWT] Parsed JWK - x length: " << jwk.x.length() << ", y length: " << jwk.y.length() << std::endl;
     } catch (const std::exception& e) {
         std::cerr << "[SUPABASE_JWT] Error parsing JWK: " << e.what() << std::endl;
         std::cerr << "[SUPABASE_JWT] JWK JSON that failed: " << jwk_json << std::endl;

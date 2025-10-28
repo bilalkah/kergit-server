@@ -6,6 +6,8 @@
 
 struct PerSocketData {
     std::string user_id;
+    bool authenticated = false;
+    
 };
 
 #ifdef USE_SSL
