@@ -2,12 +2,12 @@ load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
 
 config_setting(
     name = "ssl_on",
-    values = {"define": "USE_SSL=true"},
+    values = { "define": "USE_SSL=true" },
 )
 
 config_setting(
     name = "ssl_off",
-    values = {"define": "USE_SSL=false"},
+    values = { "define": "USE_SSL=false" },
 )
 
 cc_library(
@@ -98,35 +98,6 @@ cc_library(
         "//core/security:message_validator_lib",
         "//core/security:rate_limiter_lib",
         "//utils:env_loader",
-        "@nlohmann_json",
-        "@uwebsockets",
-    ],
-)
-
-cc_library(
-    name = "chat_server_lib",
-    srcs = ["ChatServer.cpp"],
-    hdrs = ["ChatServer.h"],
-    copts = ["-std=c++17"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":chat_server_app_lib",
-    ],
-)
-
-cc_binary(
-    name = "server",
-    srcs = ["server.cpp"],
-    linkopts = [
-        "-lpthread",
-        "-lz",
-    ],
-    deps = [
-        ":chat_server_app_lib",
-        ":message_filters",
-        ":server_commands",
-        "//common",
-        "//core/database:chatdb_lib",
         "@nlohmann_json",
         "@uwebsockets",
     ],
