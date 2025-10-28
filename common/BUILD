@@ -4,16 +4,12 @@ cc_library(
     name = "common",
     srcs = [
         "ChatServer.cpp",
-        "Message.cpp",
-        "User.cpp",
     ],
     hdrs = [
-        "Channel.h",
         "ChatServer.h",
-        "Message.h",
-        "User.h",
-        "Hub.h",
     ],
-    includes = ["."],
     visibility = ["//visibility:public"],
+    deps = [
+        "//domains",
+    ],
 )

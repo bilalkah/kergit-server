@@ -1,5 +1,6 @@
 #ifndef CORE_DATABASE_SRC_CHATDB_H
 #define CORE_DATABASE_SRC_CHATDB_H
+#include "domains/ids/Ids.h"
 
 #include <optional>
 #include <pqxx/pqxx>
@@ -42,7 +43,7 @@ class ChatDB {
                      const std::string& content);
 
     std::vector<DbMessage> fetchMessages(const std::string& channelId, int limit);
-    std::vector<HubInfo> getUserHubs(const std::string& userUuid);
+    std::vector<HubInfo> getUserHubs(const UserId& userUuid);
     std::vector<ChannelInfo> getHubChannels(const std::string& hubId);
 
     std::string ensurePersonalHubWithGeneral(const std::string& ownerUuid,
@@ -54,4 +55,4 @@ class ChatDB {
     pqxx::connection conn_;
 };
 
-#endif // CORE_DATABASE_SRC_CHATDB_H
+#endif  // CORE_DATABASE_SRC_CHATDB_H

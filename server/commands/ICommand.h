@@ -1,6 +1,6 @@
 #pragma once
 #include "common/ChatServer.h"
-#include "common/User.h"
+#include "domains/User.h"
 #include "server/Config.h"
 
 #include <App.h>

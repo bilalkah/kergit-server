@@ -402,25 +402,25 @@ void ChatServerApp::run_server() {
                 [this](auto *ws, int /*code*/, std::string_view /*message*/) {
                     if (!running) return;  // Don't process if server is shutting down
 
-                    std::string user_id = ws->getUserData()->user_id;
-                    std::cerr << "[SERVER] Connection closed: " << user_id << std::endl;
+                    UserId user_id(ws->getUserData()->user_id);
+                    std::cerr << "[SERVER] Connection closed: " << user_id.value << std::endl;
                     auto user_it = chatServer.users.find(user_id);
                     if (user_it != chatServer.users.end()) {
                         std::string username = user_it->second.username;
-                        std::string channel = user_it->second.current_channel;
+                        ChannelId channel = user_it->second.current_channel;
 
                         // Notify other users in the channel that someone disconnected
-                        if (!channel.empty()) {
+                        if (!channel.value.empty()) {
                             auto ch_it = chatServer.channels.find(channel);
                             if (ch_it != chatServer.channels.end()) {
                                 json disconnect_notification;
                                 disconnect_notification["type"] = "user_disconnected";
                                 disconnect_notification["username"] = username;
-                                disconnect_notification["channel"] = channel;
+                                disconnect_notification["channel"] = channel.value;
                                 // Create a copy of the user IDs to avoid iterator invalidation
-                                std::vector<std::string> user_ids_copy;
-                                for (const auto &uid : ch_it->second.user_ids) {
-                                    if (uid != user_id) {
+                                std::vector<UserId> user_ids_copy;
+                                for (const auto &uid : ch_it->second.member_user_ids) {
+                                    if (!(uid == user_id)) {
                                         user_ids_copy.push_back(uid);
                                     }
                                 }
@@ -459,7 +459,8 @@ void ChatServerApp::run_server() {
                     if (!token) {
                         running = false;
                     } else {
-                        std::cerr << "[SERVER] Listening on url " << url << " - port " << port << std::endl;
+                        std::cerr << "[SERVER] Listening on url " << url << " - port " << port
+                                  << std::endl;
                         started = true;
                     }
                 })
@@ -468,10 +469,10 @@ void ChatServerApp::run_server() {
     stopped = true;
 }
 
-void ChatServerApp::set_connection_handler(std::function<void(const std::string &)> handler) {
+void ChatServerApp::set_connection_handler(std::function<void(const UserId &)> handler) {
     connection_handler = handler;
 }
 
-void ChatServerApp::set_disconnection_handler(std::function<void(const std::string &)> handler) {
+void ChatServerApp::set_disconnection_handler(std::function<void(const UserId &)> handler) {
     disconnection_handler = handler;
 }
