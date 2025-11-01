@@ -3,8 +3,8 @@ load("@rules_cc//cc:defs.bzl", "cc_library")
 
 cc_library(
     name = "chatdb_lib",
-    srcs = ["src/chatdb.cpp"],
-    hdrs = ["src/chatdb.h"],
+    srcs = ["chatdb.cpp"],
+    hdrs = ["chatdb.h"],
     visibility = ["//visibility:public"],
     deps = [
         "//common",
@@ -13,13 +13,3 @@ cc_library(
         "@nlohmann_json",
     ],
 )
-
-# cc_test(
-#     name = "chatdb_test",
-#     srcs = ["test/database_connection.cpp"],
-#     deps = [
-#         ":chatdb_lib",
-#         "//common",
-#         "@googletest//:gtest_main",
-#     ],
-# )

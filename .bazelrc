@@ -28,3 +28,12 @@ build:vanilla --define WITH_LIBDEFLATE=0
 build:vanilla --define USE_SSL=false
 build:vanilla -c opt
 build:vanilla --strip=always
+
+
+# === configurations for tests ===
+test:debug -c dbg
+test:debug --test_output=all
+test:debug --verbose_failures
+test:debug --sandbox_debug
+test:debug --nouse_action_cache
+test:debug --nocache_test_results

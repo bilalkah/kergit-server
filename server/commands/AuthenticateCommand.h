@@ -1,5 +1,5 @@
 #pragma once
-#include "core/database/src/chatdb.h"
+#include "infra/persistence/chatdb.h"
 #include "core/security/supabase_jwt_verifier/SupabaseJWTVerifier.h"
 #include "server/commands/ICommand.h"
 

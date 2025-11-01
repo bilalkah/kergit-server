@@ -1,13 +1,13 @@
-load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
+load("@rules_cc//cc:defs.bzl", "cc_library")
 
 config_setting(
     name = "ssl_on",
-    values = { "define": "USE_SSL=true" },
+    values = {"define": "USE_SSL=true"},
 )
 
 config_setting(
     name = "ssl_off",
-    values = { "define": "USE_SSL=false" },
+    values = {"define": "USE_SSL=false"},
 )
 
 cc_library(
@@ -34,8 +34,8 @@ cc_library(
     deps = [
         ":message_filters",
         "//common",
-        "//core/database:chatdb_lib",
         "//core/security:supabase_jwt_verifier_lib",
+        "//infra/persistence:chatdb_lib",
         "@nlohmann_json",
         "@uwebsockets",
     ],
@@ -93,10 +93,10 @@ cc_library(
         ":message_filters",
         ":server_commands",
         "//common",
-        "//core/database:chatdb_lib",
         "//core/security:hmac_validator_lib",
         "//core/security:message_validator_lib",
         "//core/security:rate_limiter_lib",
+        "//infra/persistence:chatdb_lib",
         "//utils:env_loader",
         "@nlohmann_json",
         "@uwebsockets",
