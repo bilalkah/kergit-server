@@ -12,3 +12,18 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
 )
+
+cc_library(
+    name = "tls_config",
+    hdrs = ["TlsConfig.h"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "loggable",
+    hdrs = [
+        "Loggable.h",
+        "Logger.h",
+    ],
+    visibility = ["//visibility:public"],
+)

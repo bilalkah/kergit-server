@@ -1,7 +1,5 @@
-// server/TlsConfig.h
-#pragma once
-
-#include "server/Config.h"
+#ifndef UTILS_TLS_CONFIG_H
+#define UTILS_TLS_CONFIG_H
 
 #include <filesystem>
 #include <iostream>
@@ -42,3 +40,6 @@ struct TlsConfig {
         return ok;
     }
 };
+
+
+#endif  // UTILS_TLS_CONFIG_H

@@ -1,5 +1,5 @@
-#ifndef CORE_DATABASE_SRC_CHATDB_H
-#define CORE_DATABASE_SRC_CHATDB_H
+#ifndef INFRA_PERSISTENCE_CHATDB_H
+#define INFRA_PERSISTENCE_CHATDB_H
 #include "domains/ids/Ids.h"
 
 #include <optional>
@@ -55,4 +55,4 @@ class ChatDB {
     pqxx::connection conn_;
 };
 
-#endif  // CORE_DATABASE_SRC_CHATDB_H
+#endif  // INFRA_PERSISTENCE_CHATDB_H
