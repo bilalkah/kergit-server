@@ -2,7 +2,7 @@
 
 #include "App.h"
 #include "common/ChatServer.h"
-#include "core/database/src/chatdb.h"
+#include "infra/persistence/chatdb.h"
 #include "server/Config.h"
 #include "server/commands/AllCommands.h"
 

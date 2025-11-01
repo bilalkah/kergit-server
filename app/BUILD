@@ -1,19 +1,35 @@
-load("@rules_cc//cc:defs.bzl", "cc_binary")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
-cc_binary(
-    name = "server",
-    srcs = ["server.cpp"],
-    linkopts = [
-        "-lpthread",
-        "-lz",
+cc_library(
+    name = "i_command",
+    hdrs = [
+        "ICommand.h",
     ],
+    visibility = ["//visibility:public"],
     deps = [
-        "//common",
-        "//core/database:chatdb_lib",
-        "//server:chat_server_app_lib",
-        "//server:message_filters",
-        "//server:server_commands",
+        "//domains/ids:domain_ids",
         "@nlohmann_json",
-        "@uwebsockets",
+    ],
+)
+
+cc_library(
+    name = "dispatcher",
+    hdrs = ["Dispatcher.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":i_command",
+        "@nlohmann_json",
+    ],
+)
+
+cc_library(
+    name = "command_registry",
+    hdrs = [
+        "CommandRegistery.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":dispatcher",
+        "//app/commands:ping_command",
     ],
 )

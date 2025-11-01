@@ -54,11 +54,13 @@ server/
 │      └─ PubSub.{h,cpp}              # topic → set<ConnId>; later swap to Redis/NATS
 │
 ├─ infra/                             # infrastructure adapters
-│  └─ persistence/
-│      ├─ Database.{h,cpp}            # connection pool or client
-│      ├─ HubRepository.{h,cpp}
-│      ├─ ChannelRepository.{h,cpp}
-│      └─ UserRepository.{h,cpp}
+│  ├─ persistence/
+│  |    ├─ Database.{h,cpp}            # connection pool or client
+│  |    ├─ HubRepository.{h,cpp}
+│  |    ├─ ChannelRepository.{h,cpp}
+│  |    └─ UserRepository.{h,cpp}
+|  └─ security/
+│       └─ JWTVerifier.{h,cpp}        # JWT encode/decode/verify
 │
 ├─ domain/                            # pure models, no IO or uWS
 │  ├─ Hub.{h,cpp}
