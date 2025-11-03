@@ -1,20 +1,23 @@
 #include "utils/EnvLoader.h"
+
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <sstream>
-#include <cstdlib>
+
+namespace utils {
 
 std::unordered_map<std::string, std::string> EnvLoader::env_vars_;
 bool EnvLoader::loaded_ = false;
 
 bool EnvLoader::load_env_file(const std::string& file_path) {
     if (loaded_) {
-        return true; // Already loaded
+        return true;  // Already loaded
     }
 
     std::ifstream file(file_path);
     if (!file.is_open()) {
-        std::cerr << "[ENV] Could not open .env file: " << file_path << std::endl;
+        logger().log(LogLevel::WARN, "Could not open .env file: ", file_path);
         return false;
     }
 
@@ -22,7 +25,7 @@ bool EnvLoader::load_env_file(const std::string& file_path) {
     int line_number = 0;
     while (std::getline(file, line)) {
         line_number++;
-        
+
         // Skip empty lines and comments
         if (line.empty() || line[0] == '#') {
             continue;
@@ -31,7 +34,8 @@ bool EnvLoader::load_env_file(const std::string& file_path) {
         // Find the equals sign
         size_t pos = line.find('=');
         if (pos == std::string::npos) {
-            std::cerr << "[ENV] Invalid line " << line_number << " in .env file: " << line << std::endl;
+            logger().log(LogLevel::WARN, "Invalid line in .env file at line ", line_number, ": ",
+                         line);
             continue;
         }
 
@@ -46,20 +50,20 @@ bool EnvLoader::load_env_file(const std::string& file_path) {
         value.erase(value.find_last_not_of(" \t") + 1);
 
         // Remove quotes if present
-        if (value.length() >= 2 && 
-            ((value[0] == '"' && value[value.length()-1] == '"') ||
-             (value[0] == '\'' && value[value.length()-1] == '\''))) {
+        if (value.length() >= 2 && ((value[0] == '"' && value[value.length() - 1] == '"') ||
+                                    (value[0] == '\'' && value[value.length() - 1] == '\''))) {
             value = value.substr(1, value.length() - 2);
         }
 
         if (!key.empty()) {
             env_vars_[key] = value;
-            std::cerr << "[ENV] Loaded: " << key << " = " << (key.find("KEY") != std::string::npos ? "[HIDDEN]" : value) << std::endl;
+            logger().log(LogLevel::INFO, "Loaded: ", key);
         }
     }
 
     loaded_ = true;
-    std::cerr << "[ENV] Loaded " << env_vars_.size() << " environment variables from .env file" << std::endl;
+    logger().log(LogLevel::INFO, "Loaded " + std::to_string(env_vars_.size()) +
+                                     " environment variables from .env file");
     return true;
 }
 
@@ -81,4 +85,11 @@ std::string EnvLoader::get_env(const std::string& key, const std::string& defaul
 
 void EnvLoader::set_env(const std::string& key, const std::string& value) {
     env_vars_[key] = value;
-} 
+}
+
+void EnvLoader::clear_env() {
+    env_vars_.clear();
+    loaded_ = false;
+}
+
+}  // namespace utils

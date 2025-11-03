@@ -1,4 +1,4 @@
-#include "infra/security/token/SupabaseJWTVerifier.h"
+#include "infra/security/token/SupabaseJwtVerifier.h"
 
 #include "utils/EnvLoader.h"
 
@@ -23,18 +23,20 @@ SupabaseJWTVerifier::SupabaseJWTVerifier() {
     std::string current_jwk = EnvLoader::get_env("SUPABASE_JWT_CURRENT_KEY", "");
     std::string standby_jwk = EnvLoader::get_env("SUPABASE_JWT_STANDBY_KEY", "");
     if (current_jwk.empty() || standby_jwk.empty()) {
-        log(LogLevel::CRITICAL, "JWK keys not set in environment variables");
+        log(LogLevel::ERROR, "JWK keys not set in environment variables");
         throw std::runtime_error("JWK keys not set in environment variables");
     }
     current_key_ = parse_jwk(current_jwk);
     standby_key_ = parse_jwk(standby_jwk);
+
+    log(LogLevel::INFO, "SupabaseJWTVerifier initialized with current and standby keys");
 }
 
 SupabaseJWTVerifier::~SupabaseJWTVerifier() {}
 
 std::optional<UserClaims> SupabaseJWTVerifier::verify_token(const std::string& token) {
     if (token.empty()) {
-        log(LogLevel::WARNING, "Empty token provided for verification");
+        log(LogLevel::WARN, "Empty token provided for verification");
         return std::nullopt;
     }
 
@@ -51,7 +53,7 @@ std::optional<UserClaims> SupabaseJWTVerifier::verify_token(const std::string& t
         log(LogLevel::INFO, "Token verified with standby key");
         return user;
     }
-    log(LogLevel::WARNING, "Token verification failed with both keys");
+    log(LogLevel::WARN, "Token verification failed with both keys");
 
     return std::nullopt;
 }
@@ -79,7 +81,7 @@ std::optional<UserClaims> SupabaseJWTVerifier::decode_and_verify(const std::stri
     try {
         auto parts = split_token(token);
         if (parts.size() != 3) {
-            log(LogLevel::WARNING, "Invalid token format - expected 3 parts");
+            log(LogLevel::WARN, "Invalid token format - expected 3 parts");
             return std::nullopt;
         }
 
@@ -100,12 +102,12 @@ std::optional<UserClaims> SupabaseJWTVerifier::decode_and_verify(const std::stri
         if (alg == "ES256") {
             signature_valid = verify_es256_signature(header_payload, signature_b64, key);
         } else {
-            log(LogLevel::WARNING, "Unsupported algorithm: " + alg);
+            log(LogLevel::WARN, "Unsupported algorithm: " + alg);
             return std::nullopt;
         }
 
         if (!signature_valid) {
-            log(LogLevel::WARNING, "Signature verification failed");
+            log(LogLevel::WARN, "Signature verification failed");
             return std::nullopt;
         }
 
@@ -139,7 +141,7 @@ std::optional<UserClaims> SupabaseJWTVerifier::decode_and_verify(const std::stri
 
         // Validate required fields
         if (user.id.empty() || user.email.empty()) {
-            log(LogLevel::WARNING, "Missing required user fields");
+            log(LogLevel::WARN, "Missing required user fields");
             return std::nullopt;
         }
 
@@ -148,7 +150,7 @@ std::optional<UserClaims> SupabaseJWTVerifier::decode_and_verify(const std::stri
         return user;
 
     } catch (const std::exception& e) {
-        log(LogLevel::CRITICAL, "Error decoding and verifying token: " + std::string(e.what()));
+        log(LogLevel::ERROR, "Error decoding and verifying token: " + std::string(e.what()));
         return std::nullopt;
     }
 }
@@ -204,7 +206,7 @@ bool SupabaseJWTVerifier::verify_es256_signature(const std::string& header_paylo
         // ES256 signatures in JWT are raw R and S components concatenated (not DER encoded)
         // Each component is 32 bytes for P-256 curve
         if (signature.length() != 64) {
-            log(LogLevel::CRITICAL,
+            log(LogLevel::ERROR,
                 "ES256 verification - signature length should be 64 bytes, got " +
                     std::to_string(signature.length()));
             return false;
@@ -217,7 +219,7 @@ bool SupabaseJWTVerifier::verify_es256_signature(const std::string& header_paylo
         // Create EC key from JWK
         EC_KEY* ec_key = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
         if (!ec_key) {
-            log(LogLevel::CRITICAL, "ES256 verification - failed to create EC key");
+            log(LogLevel::ERROR, "ES256 verification - failed to create EC key");
             return false;
         }
 
@@ -233,7 +235,7 @@ bool SupabaseJWTVerifier::verify_es256_signature(const std::string& header_paylo
 
         int set_result = EC_KEY_set_public_key_affine_coordinates(ec_key, x, y);
         if (set_result != 1) {
-            log(LogLevel::CRITICAL, "ES256 verification - failed to set public key coordinates");
+            log(LogLevel::ERROR, "ES256 verification - failed to set public key coordinates");
             BN_free(x);
             BN_free(y);
             EC_KEY_free(ec_key);
@@ -269,7 +271,7 @@ bool SupabaseJWTVerifier::verify_es256_signature(const std::string& header_paylo
         return result == 1;
 
     } catch (const std::exception& e) {
-        log(LogLevel::CRITICAL, "ES256 verification error: " + std::string(e.what()));
+        log(LogLevel::ERROR, "ES256 verification error: " + std::string(e.what()));
         return false;
     }
 }
@@ -306,7 +308,7 @@ SupabaseJWK SupabaseJWTVerifier::parse_jwk(const std::string& jwk_json) {
         jwk.e = j.value("e", "");
 
     } catch (const std::exception& e) {
-        log(LogLevel::CRITICAL,
+        log(LogLevel::ERROR,
             "Error parsing JWK: " + std::string(e.what()) + "\nJWK JSON that failed: " + jwk_json);
     }
     return jwk;

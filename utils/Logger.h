@@ -7,7 +7,14 @@
 #include <string>
 
 namespace utils {
-enum class LogLevel { INFO, WARNING, CRITICAL };
+enum class LogLevel { INFO, WARN, ERROR };
+
+namespace Color {
+inline constexpr const char* RESET = "\033[0m";
+inline constexpr const char* RED = "\033[31m";
+inline constexpr const char* GREEN = "\033[32m";
+inline constexpr const char* YELLOW = "\033[33m";
+}  // namespace Color
 
 inline std::string timestamp() {
     std::time_t t = std::time(nullptr);
@@ -21,18 +28,32 @@ inline const char* level_to_string(LogLevel lvl) {
     switch (lvl) {
         case LogLevel::INFO:
             return "INFO";
-        case LogLevel::WARNING:
+        case LogLevel::WARN:
             return "WARN";
-        case LogLevel::CRITICAL:
-            return "CRIT";
+        case LogLevel::ERROR:
+            return "ERROR";
         default:
             return "LOG";
     }
 }
 
+inline const char* level_to_color(LogLevel lvl) {
+    switch (lvl) {
+        case LogLevel::INFO:
+            return Color::GREEN;
+        case LogLevel::WARN:
+            return Color::YELLOW;
+        case LogLevel::ERROR:
+            return Color::RED;
+        default:
+            return Color::RESET;
+    }
+}
+
 inline void log_line(LogLevel lvl, const std::string& msg) {
-    std::cout << "[" << timestamp() << "] " << "[" << level_to_string(lvl) << "] " << msg
-              << std::endl;
+    const char* color = level_to_color(lvl);
+    std::cout << color << "[" << timestamp() << "] " << "[" << level_to_string(lvl) << "] " << msg
+              << Color::RESET << std::endl;
 }
 
 };  // namespace utils

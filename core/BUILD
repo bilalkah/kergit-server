@@ -1,12 +1,41 @@
 load("@rules_cc//cc:defs.bzl", "cc_library")
 
+config_setting(
+    name = "ssl_on",
+    values = {"define": "USE_SSL=true"},
+)
+
+config_setting(
+    name = "ssl_off",
+    values = {"define": "USE_SSL=false"},
+)
+
 cc_library(
     name = "types",
     hdrs = [
         "Types.h",
     ],
+    defines = select({
+        ":ssl_on": ["USE_SSL"],
+        ":ssl_off": [],
+        "//conditions:default": [],
+    }),
     visibility = ["//visibility:public"],
-    deps = ["@uwebsockets"],
+    deps = [
+        "//net:persocketdata",
+        "@uwebsockets",
+    ],
+)
+
+cc_library(
+    name = "server_config",
+    hdrs = [
+        "ServerConfig.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//utils:env_loader",
+    ],
 )
 
 cc_library(
@@ -19,22 +48,15 @@ cc_library(
 )
 
 cc_library(
-    name = "i_websocket",
-    hdrs = ["IWebSocket.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":i_app",
-        "//net:persocketdata",
-    ],
-)
-
-cc_library(
     name = "plain_app",
     hdrs = [
         "PlainApp.h",
     ],
     visibility = ["//visibility:public"],
-    deps = [":i_app"],
+    deps = [
+        ":i_app",
+        "//utils:loggable",
+    ],
 )
 
 cc_library(
@@ -45,6 +67,38 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":i_app",
+        "//utils:loggable",
         "//utils:tls_config",
+    ],
+)
+
+cc_library(
+    name = "app_factory",
+    hdrs = [
+        "AppFactory.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":i_app",
+        ":plain_app",
+        ":tls_app",
+        "//utils:tls_config",
+    ],
+)
+
+cc_library(
+    name = "chat_server_app",
+    srcs = ["ChatServerApp.cpp"],
+    hdrs = ["ChatServerApp.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":app_factory",
+        ":server_config",
+        ":types",
+        "//app:command_registry",
+        "//app:dispatcher",
+        "//infra/persistence:chatdb_lib",
+        "//net:websocket_server",
+        "//utils:loggable",
     ],
 )

@@ -13,7 +13,7 @@ export function wireAuth({ ws, els, config }) {
     submitBtn, submitText, authError
   } = els;
 
-  const setBusy  = (b) => { if (submitBtn) submitBtn.disabled = !!b; if (submitText) submitText.textContent = b ? 'Signing In…' : 'Sign In'; };
+  const setBusy = (b) => { if (submitBtn) submitBtn.disabled = !!b; if (submitText) submitText.textContent = b ? 'Signing In…' : 'Sign In'; };
   const setError = (msg) => { if (authError) { authError.textContent = msg || ''; authError.style.display = msg ? 'block' : 'none'; } };
 
   // Make Enter key submit the same handler
@@ -24,11 +24,11 @@ export function wireAuth({ ws, els, config }) {
     console.log('[CLICK] login button clicked');
     setError('');
 
-    const em  = email?.value?.trim() || '';
-    const pw  = password?.value?.trim() || '';
+    const em = email?.value?.trim() || '';
+    const pw = password?.value?.trim() || '';
     // serverUrl is OPTIONAL in your HTML; fall back gracefully
     const url = (serverUrl?.value?.trim()) || (window.CONFIG?.WS_URL) || 'ws://localhost:9001';
-    const un  = (username?.value?.trim()) || (em.split('@')[0] || 'user');
+    const un = (username?.value?.trim()) || (em.split('@')[0] || 'user');
 
     if (!em || !pw) return setError('Email and Password are required');
 
@@ -43,8 +43,13 @@ export function wireAuth({ ws, els, config }) {
       await ws.connect(url);
       console.log('[WS] connected');
 
-      sendAuth(ws, token, un);
+      const res = await sendAuth(ws, token, un);
       console.log('[WS=>] auth sent');
+
+      if (!res.success) {
+        throw new Error('Authentication failed');
+      }
+
 
       loginScreen?.classList.add('hidden');
       chatScreen?.classList.remove('hidden');
@@ -52,8 +57,11 @@ export function wireAuth({ ws, els, config }) {
       actions.setConnection('connected');
       actions.setAuth(true, { id: user?.id, email: em, username: un });
     } catch (e) {
-      console.error('[AUTH] failed', e);
+      console.error('❌ Login/auth failed:', err);
+      alert('Login failed: ' + err.message);
+      
       actions.setConnection('disconnected');
+      actions.setAuth(false);
       setError(e?.message || 'Auth failed');
     } finally {
       setBusy(false);

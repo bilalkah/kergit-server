@@ -14,7 +14,6 @@ server/
 │  ├─ AppFactory.{h,cpp}              # builds PlainApp or TLSApp from TlsConfig
 │  ├─ ServerConfig.{h,cpp}            # host, ports, flags, env loading
 │  ├─ IApp.h                          # type-erased app interface
-│  ├─ IWebSocket.h                    # type-erased websocket interface
 │  ├─ PlainApp.{h,cpp}                # wraps uWS::App, wires IApp
 │  ├─ TLSApp.{h,cpp}                  # wraps uWS::SSLApp, cert options
 │  └─ Types.h                         # PerSocketData typedefs shared across net/core
@@ -24,7 +23,6 @@ server/
 │  ├─ ConnectionManager.{h,cpp}       # track connections, map<connId, WS*>
 │  ├─ middleware/
 │  │   └─ RateLimiter.{h,cpp}         # per-IP or per-socket throttling
-│  ├─ WSAdapter.{h}                   # WSAdapter<false/true> → IWebSocket
 │  └─ PerSocketData.h                 # user_id, authenticated, current_channel, etc.
 │
 ├─ app/                               # business logic (transport-agnostic)

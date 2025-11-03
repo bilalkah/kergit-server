@@ -1,151 +1,139 @@
-#include "server/core/ChatServerApp.h"
+#include "core/ChatServerApp.h"
 
-#include <csignal>
 #include <iostream>
 
-// uSockets close symbol is in the uWS headers you already include via Types.h
-// Alias is `ListenToken = us_listen_socket_t*;` from Types.h
+namespace core {
 
-namespace {
+using namespace utils;
 
-// simple signal latch to trigger stop()
-std::atomic<bool> g_stop_requested{false};
-
-void set_signal_handlers() {
-    static bool installed = false;
-    if (installed) return;
-    installed = true;
-
-    auto handler = [](int) { g_stop_requested.store(true); };
-    std::signal(SIGINT, handler);
-    std::signal(SIGTERM, handler);
-#ifdef SIGQUIT
-    std::signal(SIGQUIT, handler);
-#endif
+ChatServerApp::ChatServerApp(ServerConfig& cfg) {
+    cfg_ = std::move(cfg);
+    chat_db_ptr_ = std::make_unique<ChatDB>(cfg_.database.to_connection_string());
 }
 
-}  // namespace
-
-ChatServerApp::ChatServerApp(ServerConfig cfg) : cfg_(std::move(cfg)) {
-    // Build TLS/plain app here so wire_components() can use it
-    app_ = AppFactory::create(cfg_);
-}
+ChatServerApp::~ChatServerApp() {}
 
 bool ChatServerApp::wire_components() {
-    // 1) Register commands
-    app::register_all(dispatcher_);
+    app::register_all(*dispatcher_ptr_);
 
-    // 2) Construct WS server and wire routes
-    ws_server_ = std::make_unique<net::WebSocketServer>(
-        *app_, dispatcher_, connections_, net::OriginAllowlist{},  // customize allowlist later
-        net::WsLimits{256 * 1024}                                  // 256 KB max message
-    );
+    ws_server_ = std::make_unique<net::WebSocketServer>(*app_ptr_, *dispatcher_ptr_,
+                                                        *connections_ptr_, *gateway_ptr_,
+                                                        net::OriginAllowlist{}, net::WsLimits{});
 
     // Optional: hooks for logging / side-effects on lifecycle
     ws_server_->set_hooks(net::WsHooks{
-        .on_open =
-            [&](const std::string& cid) { std::cerr << "[WS] open conn_id=" << cid << "\n"; },
+        .on_open = [&](const ConnId& cid) { log(LogLevel::INFO, "open conn_id:" + cid.value); },
         .on_close =
-            [&](const std::string& cid, int code, std::string_view reason) {
-                std::cerr << "[WS] close conn_id=" << cid << " code=" << code
-                          << " reason=" << std::string(reason) << "\n";
+            [&](const ConnId& cid, int code, std::string_view reason) {
+                log(LogLevel::INFO, "close conn_id:" + cid.value + " code:" + std::to_string(code) +
+                                        " reason:" + std::string(reason));
             },
         .on_message_raw =
-            [&](const std::string& cid, std::string_view raw) {
-                // lightweight trace; make it debug if noisy
-                // std::cerr << "[WS] recv cid=" << cid << " " << raw << "\n";
+            [&](const ConnId& cid, std::string_view raw) {
+                log(LogLevel::INFO, "message conn_id:" + cid.value + " raw:" + std::string(raw));
             },
         .on_auth =
-            [&](const std::string& cid, const std::string& uid) {
-                std::cerr << "[WS] auth conn_id=" << cid << " user_id=" << uid << "\n";
+            [&](const ConnId& cid, const UserId& uid) {
+                log(LogLevel::INFO, "auth success conn_id:" + cid.value + " user_id:" + uid.value);
             }});
 
     // 3) Register ws endpoint
-    ws_server_->wire("/ws");
+    ws_server_->wire(cfg_.ws_path);
 
-    // 4) Listen and keep listen token so we can stop gracefully
-    bool ok = true;
+    return true;
+}
+
+bool ChatServerApp::start() {
+    if (running_.exchange(true) || started_.exchange(true))
+        return false;  // already running or started
+
+    log(LogLevel::INFO, "Starting event loop (async)...");
+    loop_thread_ = std::thread(&ChatServerApp::run_server, this);
+
+    auto timeout = std::chrono::seconds(5);
+    auto start_time = std::chrono::steady_clock::now();
+    while (!started_.load()) {
+        if (std::chrono::steady_clock::now() - start_time > timeout) {
+            log(LogLevel::ERROR, "Failed to start event loop within timeout.");
+            running_.store(false);
+            started_.store(false);
+            return false;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    if (!running_.load()) {
+        log(LogLevel::ERROR, "Event loop failed to start.");
+        started_.store(false);
+        return false;
+    }
+    started_.store(true);
+    return true;
+}
+
+void ChatServerApp::run_server() {
+    log(LogLevel::INFO, "Starting run_server");
+    app_ptr_ = AppFactory::create(cfg_);
+    dispatcher_ptr_ = std::make_unique<app::Dispatcher>();
+    connections_ptr_ = std::make_unique<net::ConnectionManager>();
+    gateway_ptr_ =
+        std::make_unique<net::ClientGateway>(*app_ptr_, *connections_ptr_, cfg_.debug_gateway);
+
+    if (!wire_components()) {
+        running_.store(false);
+        return;
+    }
+
     listen_token_ = nullptr;
-    app_->uws().listen(cfg_.port, [&](auto* token) {
-        listen_token_ = token;
-        ok = (token != nullptr);
-        if (ok) {
-            std::cerr << "[SERVER] Listening on " << (cfg_.tls_enabled ? "wss" : "ws") << "://"
-                      << cfg_.host << ":" << cfg_.port << " (pattern /ws)\n";
+    app_ptr_->uws().listen(cfg_.host, cfg_.port, [&](auto* token) {
+        if (token) {
+            log(LogLevel::INFO, "Listener bound successfully.");
+            running_.store(true);
+            listen_token_ = token;
+        } else {
+            running_.store(false);
         }
     });
 
-    if (!ok) {
-        std::cerr << "[ERROR] Failed to bind port " << cfg_.port << "\n";
-        return false;
-    }
+    app_ptr_->uws().run();
 
-    return true;
-}
-
-bool ChatServerApp::start_blocking() {
-    if (running_.exchange(true)) return false;  // already running
-    set_signal_handlers();
-
-    if (!wire_components()) {
-        running_.store(false);
-        return false;
-    }
-
-    // Run until stop() closes listen socket
-    std::cerr << "[SERVER] Starting event loop (blocking)...\n";
-    app_->uws().run();  // blocks
-
+    log(LogLevel::INFO, "Exiting run_server");
+    app_ptr_.reset();
+    listen_token_ = nullptr;
     running_.store(false);
-    std::cerr << "[SERVER] Event loop exited.\n";
-    return true;
-}
-
-bool ChatServerApp::start_async() {
-    if (running_.exchange(true)) return false;  // already running
-    set_signal_handlers();
-
-    if (!wire_components()) {
-        running_.store(false);
-        return false;
-    }
-
-    std::cerr << "[SERVER] Starting event loop (async)...\n";
-    loop_thread_ = std::thread([this] {
-        app_->uws().run();  // blocks in this thread
-        running_.store(false);
-        std::cerr << "[SERVER] Event loop exited (async thread).\n";
-    });
-
-    // Optionally, a tiny supervisor that watches the signal latch in a background thread
-    std::thread([this] {
-        while (running_.load()) {
-            if (g_stop_requested.load()) {
-                this->stop();
-                break;
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(200));
-        }
-    }).detach();
-
-    return true;
 }
 
 void ChatServerApp::stop() {
-    if (!running_.load()) return;
+    log(LogLevel::INFO, "Stop ChatServerApp is requested.");
 
-    // Close the listen socket: uWS will stop accepting new conns,
-    // and the loop will exit once existing handlers drain.
-    if (listen_token_) {
-        us_listen_socket_close(listen_token_);
-        listen_token_ = nullptr;
+    // Guarantee we only stop once
+    bool was_running = running_.exchange(false);
+    if (!was_running) {
+        log(LogLevel::INFO, "ChatServerApp already stopping / stopped.");
+        return;
     }
-    // If you also keep a uWS::Loop* you can post a deferred "graceful shutdown" task here
-    // to close all active connections from ConnectionManager, etc.
+
+    // Ask the loop thread to close the app
+    if (app_ptr_) {
+        auto* loop = app_ptr_->uws().getLoop();
+        loop->defer([this]() {
+            log(LogLevel::INFO, "Defer close uWS app loop from stop()");
+            app_ptr_->uws().close();
+        });
+    }
+
+    // Now wait for run_server() to finish
+    join();
+    stopped_.store(true);
+    log(LogLevel::INFO, "Stop WebSocket is completed.");
 }
 
 void ChatServerApp::join() {
     if (loop_thread_.joinable()) {
+        log(LogLevel::INFO, "Joining event loop thread...");
         loop_thread_.join();
+    } else {
+        log(LogLevel::INFO, "Event loop thread not joinable.");
     }
 }
+
+}  // namespace core

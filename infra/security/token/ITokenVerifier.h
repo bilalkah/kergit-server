@@ -3,10 +3,10 @@
 
 #include <chrono>
 #include <cstdint>
+#include <iomanip>
 #include <iostream>
 #include <ostream>
 #include <string>
-#include <iomanip>
 
 namespace infra::security::token {
 
@@ -20,6 +20,7 @@ struct UserClaims {
     std::string iss;
     int64_t exp{0};
     int64_t iat{0};
+    bool valid{false};
 
     // For debugging
     static std::string to_utc_string(int64_t epoch) {

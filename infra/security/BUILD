@@ -2,10 +2,10 @@ load("@rules_cc//cc:defs.bzl", "cc_library")
 
 cc_library(
     name = "supabase_jwt_verifier",
-    srcs = ["token/SupabaseJWTVerifier.cpp"],
+    srcs = ["token/SupabaseJwtVerifier.cpp"],
     hdrs = [
         "token/ITokenVerifier.h",
-        "token/SupabaseJWTVerifier.h",
+        "token/SupabaseJwtVerifier.h",
     ],
     linkopts = ["-lcrypto"],  # OpenSSL crypto library
     visibility = ["//visibility:public"],

@@ -1,17 +1,38 @@
 #include "net/ConnectionManager.h"
 
 namespace net {
-void ConnectionManager::attach(const ConnId& id, IWebSocket* ws) {
+
+void ConnectionManager::attach(const ConnId& conn_id, UwsSocket* ws) {
     std::lock_guard<std::mutex> lk(mu_);
-    by_id_[id] = ws;
+    map_[conn_id] = ws;
 }
-void ConnectionManager::detach(const ConnId& id) {
+
+void ConnectionManager::detach(const ConnId& conn_id) {
     std::lock_guard<std::mutex> lk(mu_);
-    by_id_.erase(id);
+    map_.erase(conn_id);
 }
-IWebSocket* ConnectionManager::get(const ConnId& id) const {
+
+UwsSocket* ConnectionManager::get(const ConnId& conn_id) const {
     std::lock_guard<std::mutex> lk(mu_);
-    auto it = by_id_.find(id);
-    return it == by_id_.end() ? nullptr : it->second;
+    auto it = map_.find(conn_id);
+    return it == map_.end() ? nullptr : it->second;
 }
+
+std::vector<UwsSocket*> ConnectionManager::get_all() const {
+    std::lock_guard<std::mutex> lk(mu_);
+    std::vector<UwsSocket*> result;
+    result.reserve(map_.size());
+    for (const auto& pair : map_) {
+        result.push_back(pair.second);
+    }
+    return result;
+}
+
+void ConnectionManager::for_each(std::function<void(UwsSocket*)> func) const {
+    std::lock_guard<std::mutex> lk(mu_);
+    for (const auto& pair : map_) {
+        func(pair.second);
+    }
+}
+
 }  // namespace net
