@@ -1,38 +1,50 @@
-#include "server/ChatServerApp.h"
+// app/main_plain.cc
+#include "core/ChatServerApp.h"
+#include "core/ServerConfig.h"
 #include "utils/EnvLoader.h"
+#include "utils/Logger.h"
 
-#include <atomic>
-#include <string>
 #include <csignal>
 #include <iostream>
+#include <thread>
 
-std::atomic<bool> running{true};
+using namespace core;
 
-void handle_signal(int) { running = false; }
+std::atomic<bool> g_shutdown_requested{false};
+
+void handle_signal(int) {
+    log_line(utils::LogLevel::WARN, "[signal] Ctrl+C received, shutting down...");
+    g_shutdown_requested.store(true, std::memory_order_relaxed);
+}
 
 int main() {
     std::signal(SIGINT, handle_signal);
     std::signal(SIGTERM, handle_signal);
 
-    EnvLoader::load_env_file();
+    try {
+        std::unique_ptr<ChatServerApp> g_server;
+        utils::EnvLoader::load_env_file();
 
-    const std::string url = EnvLoader::get_env("SERVER_HOST", "localhost");
-    const int port = std::stoi(EnvLoader::get_env("SERVER_PORT", "9001"));
+        ServerConfig cfg;
+        ServerConfigFiller::fill_from_env(cfg);
 
-    ChatServerApp server(url, port);
+        g_server = std::make_unique<ChatServerApp>(cfg);
 
-    if (!server.start()) {
-        std::cerr << "[APP] Failed to start server." << std::endl;
+        log_line(utils::LogLevel::INFO, "Starting the App...");
+
+        g_server->start();  // runs until stop() closes listener
+
+        while (!g_shutdown_requested.load(std::memory_order_relaxed)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        }
+
+        log_line(utils::LogLevel::INFO, "Stopping the App...");
+        g_server->stop();
+        log_line(utils::LogLevel::INFO, "App stopped gracefully.");
+    } catch (const std::exception& ex) {
+        log_line(utils::LogLevel::ERROR, std::string("Fatal error: ") + ex.what());
         return 1;
     }
-
-    std::cout << "[APP] Chat server started. Press Ctrl+C to stop." << std::endl;
-
-    while (running.load()) {
-        std::this_thread::sleep_for(std::chrono::seconds(1));
-    }
-
-    std::cerr << "\n[APP] Server is shutting down." << std::endl;
 
     return 0;
 }

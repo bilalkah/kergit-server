@@ -1,13 +1,15 @@
 #ifndef APP_PINGCOMMAND_H
 #define APP_PINGCOMMAND_H
 
-#include "app/ICommand.h"
+#include "app/commands/ICommand.h"
+
+namespace app {
 
 class PingCommand : public ICommand {
    public:
-    nlohmann::json execute(const CommandContext&, const nlohmann::json& in) override {
-        return {{"type", "pong"}, {"ts", /* your time util */ 0}};
-    }
+    void execute(CommandContext&) override { return; }
 };
+
+}  // namespace app
 
 #endif  // APP_PINGCOMMAND_H

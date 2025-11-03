@@ -1,7 +1,7 @@
 #ifndef APP_DISPATCHER_H
 #define APP_DISPATCHER_H
 
-#include "app/ICommand.h"
+#include "app/commands/ICommand.h"
 #include "domains/ids/Ids.h"
 
 #include <functional>
@@ -18,8 +18,7 @@ class Dispatcher {
 
     void register_cmd(std::string type, std::unique_ptr<ICommand> cmd);
     void on_auth_success(SetAuthFn fn) { set_auth_ = std::move(fn); }
-    std::optional<nlohmann::json> dispatch(const std::string& type, const CommandContext& ctx,
-                                           const nlohmann::json& j);
+    std::optional<nlohmann::json> dispatch(const std::string& type, CommandContext& ctx);
 
    private:
     std::unordered_map<std::string, std::unique_ptr<ICommand>> map_;

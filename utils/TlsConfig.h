@@ -1,11 +1,15 @@
 #ifndef UTILS_TLS_CONFIG_H
 #define UTILS_TLS_CONFIG_H
 
+#include "utils/Loggable.h"
+
 #include <filesystem>
 #include <iostream>
 #include <string>
 
-struct TlsConfig {
+namespace utils {
+
+struct TlsConfig : public Loggable {
 #ifdef USE_SSL
     bool enabled{true};
     std::string key_path{"certs/key.pem"};
@@ -21,25 +25,24 @@ struct TlsConfig {
         using std::filesystem::exists;
         bool ok = true;
         if (!enabled) {
-            std::cerr << "[SERVER] SSL mode: OFF\n";
-            return true;
+            log(LogLevel::WARN, "SSL mode: OFF");
+            return false;
         }
         if (!exists(key_path)) {
-            std::cerr << "[SSL] Missing key:  " << key_path << "\n";
+            log(LogLevel::ERROR, "Missing key: ", key_path);
             ok = false;
         }
         if (!exists(cert_path)) {
-            std::cerr << "[SSL] Missing cert: " << cert_path << "\n";
+            log(LogLevel::ERROR, "Missing cert: ", cert_path);
             ok = false;
         }
         if (ok) {
-            std::cerr << "[SERVER] SSL mode: ON\n"
-                      << "         key=" << key_path << "\n"
-                      << "         cert=" << cert_path << "\n";
+            log(LogLevel::WARN, "SSL mode: ON - key=", key_path, " - cert=", cert_path);
         }
         return ok;
     }
 };
 
+}  // namespace utils
 
 #endif  // UTILS_TLS_CONFIG_H

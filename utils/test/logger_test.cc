@@ -22,8 +22,8 @@ TEST(Logger, DifferentLevels) {
     std::ostringstream capture;
     auto* old = std::cout.rdbuf(capture.rdbuf());
 
-    log_line(LogLevel::WARNING, "warn");
-    log_line(LogLevel::CRITICAL, "crit");
+    log_line(LogLevel::WARN, "warn");
+    log_line(LogLevel::ERROR, "crit");
     std::cout.rdbuf(old);
 
     std::string out = capture.str();

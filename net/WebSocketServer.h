@@ -4,9 +4,9 @@
 #include "app/Dispatcher.h"
 #include "core/IApp.h"
 #include "core/Types.h"
+#include "net/ClientGateway.h"
 #include "net/ConnectionManager.h"
 #include "net/PerSocketData.h"
-#include "net/WSAdapter.h"
 
 #include <functional>
 #include <memory>
@@ -19,10 +19,8 @@ struct WsLimits {
 };
 
 struct OriginAllowlist {
-    // Very simple; replace with your util if you already have one
     bool is_allowed(const std::string& origin) const {
-        if (origin.empty()) return true;  // allow no-origin (native apps)
-        // allow localhost/dev tools by default
+        if (origin.empty()) return true;
         return origin.find("http://localhost") == 0 || origin.find("https://localhost") == 0;
     }
 };
@@ -36,19 +34,20 @@ struct WsHooks {
 
 class WebSocketServer {
    public:
-    WebSocketServer(IApp& app, app::Dispatcher& dispatcher, ConnectionManager& conns,
-                    OriginAllowlist origins = {}, WsLimits limits = {});
+    WebSocketServer(core::IApp& app, app::Dispatcher& dispatcher, ConnectionManager& conns,
+                    ClientGateway& gateway, OriginAllowlist origins = {}, WsLimits limits = {});
 
-    void wire(const std::string& pattern);
+    void wire(const std::string& pattern = "/ws");
 
     void set_hooks(WsHooks hooks) { hooks_ = std::move(hooks); }
 
    private:
     static std::string make_conn_id(void* p);
 
-    IApp& app_;
+    core::IApp& app_;
     app::Dispatcher& dispatcher_;
     ConnectionManager& conns_;
+    ClientGateway& gateway_;
     OriginAllowlist origins_;
     WsLimits limits_;
     WsHooks hooks_{};
