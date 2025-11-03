@@ -17,3 +17,15 @@ cc_test(
         "@googletest//:gtest_main",
     ],
 )
+
+cc_test(
+    name = "env_loader_test",
+    srcs = ["env_loader_test.cc"],
+    data = [
+        "sample.env",
+    ],
+    deps = [
+        "//utils:env_loader",
+        "@googletest//:gtest_main",
+    ],
+)

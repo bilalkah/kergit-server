@@ -11,12 +11,18 @@ cc_library(
         "//:.env",
     ],
     visibility = ["//visibility:public"],
+    deps = [
+        ":loggable",
+    ],
 )
 
 cc_library(
     name = "tls_config",
     hdrs = ["TlsConfig.h"],
     visibility = ["//visibility:public"],
+    deps = [
+        ":loggable",
+    ],
 )
 
 cc_library(

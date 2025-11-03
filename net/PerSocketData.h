@@ -6,6 +6,8 @@
 #include <chrono>
 #include <string>
 
+namespace net {
+
 struct PerSocketData {
     ConnId conn_id{""};
     UserId user_id{""};
@@ -14,5 +16,7 @@ struct PerSocketData {
     std::chrono::system_clock::time_point connected_at = std::chrono::system_clock::now();
     bool authenticated = false;
 };
+
+}  // namespace net
 
 #endif  // NET_PERSOCKETDATA_Hp

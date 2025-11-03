@@ -10,25 +10,29 @@ cc_library(
 )
 
 cc_library(
-    name = "ws_adapter",
-    hdrs = [
-        "WSAdapter.h",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//core:i_websocket",
-        "//core:types",
-    ],
-)
-
-cc_library(
     name = "connection_manager",
     srcs = ["ConnectionManager.cpp"],
     hdrs = ["ConnectionManager.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//core:i_websocket",
+        "//app/pubsub",
+        "//core:types",
         "//domains/ids:domain_ids",
+    ],
+)
+
+cc_library(
+    name = "client_gateway",
+    srcs = ["ClientGateway.cpp"],
+    hdrs = ["ClientGateway.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":connection_manager",
+        "//core:i_app",
+        "//core:types",
+        "//domains/ids:domain_ids",
+        "//utils:loggable",
+        "@nlohmann_json",
     ],
 )
 
@@ -38,13 +42,13 @@ cc_library(
     hdrs = ["WebSocketServer.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":client_gateway",
+        ":connection_manager",
+        ":persocketdata",
         "//app:dispatcher",
         "//core:i_app",
-        "//core:i_websocket",
         "//core:types",
         "//domains/ids:domain_ids",
-        "//net:connection_manager",
-        "//net:ws_adapter",
         "@nlohmann_json",
         "@uwebsockets",  # or uwebsockets depending on kSslEnabled
     ],
