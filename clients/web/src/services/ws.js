@@ -11,7 +11,7 @@ export class WSClient {
     this.ws = null;
     this.handlers = new Map(); // type -> Set<fn>
     this.anyHandlers = new Set(); // raw handler for all messages
-    this.pingInterval = null;
+    this.heartbeatTimer = null;
     this.lastPongAt = 0;
     this.heartbeatMs = 2500;
     this.missToleranceMs = 60000; // ~2 missed pings
@@ -36,6 +36,10 @@ export class WSClient {
         console.log('[WS<= RAW]', ev.data);
         let msg;
         try { msg = JSON.parse(ev.data); } catch { return; }
+        if (msg?.type === 'ping') {
+          this.lastPongAt = Date.now();
+          this.send({ type: 'pong', ts: msg?.ts ?? Date.now() });
+        }
         if (msg?.type === 'pong') this.lastPongAt = Date.now();
         this._emit('*', msg);
         if (msg?.type) this._emit(msg.type, msg);
@@ -109,11 +113,8 @@ export class WSClient {
 
   _startHeartbeat() {
     this.lastPongAt = Date.now();
-    if (this.pingInterval) clearInterval(this.pingInterval);
-    this.pingInterval = setInterval(() => {
-      // send ping
-      this.send({ type: 'ping', ts: Date.now() });
-      // check miss
+    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
+    this.heartbeatTimer = setInterval(() => {
       const missFor = Date.now() - this.lastPongAt;
       if (missFor > this.missToleranceMs) {
         this._emit('__stalled__', { missFor });
@@ -122,8 +123,8 @@ export class WSClient {
   }
 
   _stopHeartbeat() {
-    if (this.pingInterval) clearInterval(this.pingInterval);
-    this.pingInterval = null;
+    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
+    this.heartbeatTimer = null;
   }
 
   _startHubList() {
