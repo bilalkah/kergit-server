@@ -1,10 +1,19 @@
 // src/api/chatApi.js
 export function sendAuth(wsClient, token, username) {
   return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => { off(); reject(new Error('Auth timeout')); }, 5000);
+    const timeoutErr = new Error('Authentication timed out');
+    timeoutErr.code = 'AUTH_TIMEOUT';
+    const timeout = setTimeout(() => { off(); reject(timeoutErr); }, 5000);
     const off = wsClient.on('auth_response', (msg) => {
       clearTimeout(timeout); off();
-      msg?.success ? resolve(msg) : reject(new Error(msg?.error || 'Authentication failed'));
+      if (msg?.success) {
+        resolve(msg);
+        return;
+      }
+      const err = new Error(msg?.error || 'Authentication failed');
+      if (msg?.code) err.code = msg.code;
+      err.payload = msg;
+      reject(err);
     });
     wsClient.send({ type: 'auth', token, username });
   });
