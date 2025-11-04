@@ -14,10 +14,12 @@ ChatServerApp::ChatServerApp(ServerConfig& cfg) {
 ChatServerApp::~ChatServerApp() {}
 
 bool ChatServerApp::wire_components() {
-    app::register_all(*dispatcher_ptr_);
+    app::register_all(*dispatcher_ptr_, *chat_db_ptr_, *gateway_ptr_, *connections_ptr_,
+                      *hub_publisher_);
 
     ws_server_ = std::make_unique<net::WebSocketServer>(*app_ptr_, *dispatcher_ptr_,
                                                         *connections_ptr_, *gateway_ptr_,
+                                                        hub_publisher_.get(),
                                                         net::OriginAllowlist{}, net::WsLimits{});
 
     // Optional: hooks for logging / side-effects on lifecycle
@@ -39,6 +41,7 @@ bool ChatServerApp::wire_components() {
 
     // 3) Register ws endpoint
     ws_server_->wire(cfg_.ws_path);
+    if (hub_publisher_) hub_publisher_->start();
 
     return true;
 }
@@ -77,6 +80,8 @@ void ChatServerApp::run_server() {
     connections_ptr_ = std::make_unique<net::ConnectionManager>();
     gateway_ptr_ =
         std::make_unique<net::ClientGateway>(*app_ptr_, *connections_ptr_, cfg_.debug_gateway);
+    hub_publisher_ = std::make_unique<app::services::HubPublisher>(
+        *app_ptr_, *chat_db_ptr_, *connections_ptr_, *gateway_ptr_);
 
     if (!wire_components()) {
         running_.store(false);
@@ -97,6 +102,7 @@ void ChatServerApp::run_server() {
     app_ptr_->uws().run();
 
     log(LogLevel::INFO, "Exiting run_server");
+    if (hub_publisher_) hub_publisher_->stop();
     app_ptr_.reset();
     listen_token_ = nullptr;
     running_.store(false);
@@ -111,6 +117,9 @@ void ChatServerApp::stop() {
         log(LogLevel::INFO, "ChatServerApp already stopping / stopped.");
         return;
     }
+
+    if (hub_publisher_) hub_publisher_->stop();
+    if (ws_server_) ws_server_->shutdown();
 
     // Ask the loop thread to close the app
     if (app_ptr_) {

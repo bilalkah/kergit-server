@@ -18,10 +18,19 @@ std::optional<nlohmann::json> Dispatcher::dispatch(const std::string& type, Comm
     if (set_auth_ && out.value("type", "") == "auth_response" &&
         out.value("success", false) == true) {
         if (auto uid_it = out.find("user_id"); uid_it != out.end() && uid_it->is_string()) {
-            set_auth_(ctx.psd.conn_id, uid_it->get<std::string>());
+            UserId user_id{uid_it->get<std::string>()};
+            set_auth_(ctx.psd.conn_id, user_id);
         }
     }
     return out;
+}
+
+std::unordered_set<std::string> Dispatcher::registered_commands() const {
+    std::unordered_set<std::string> commands;
+    for (const auto& pair : map_) {
+        commands.insert(pair.first);
+    }
+    return commands;
 }
 
 }  // namespace app

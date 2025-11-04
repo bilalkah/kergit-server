@@ -7,5 +7,6 @@ export const sel = {
   currentChannelId: () => state.current.channelId,
   currentChannelName: () => state.current.channelName,
   usersInChannel: (cid) => state.usersByChannel[cid] || [],
-  messagesInChannel: (cid) => state.messagesByChannel[cid] || []
+  messagesInChannel: (cid) => state.messagesByChannel[cid] || [],
+  membersInHub: (hubId) => state.membersByHub[hubId] || []
 };

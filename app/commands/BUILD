@@ -34,5 +34,9 @@ cc_library(
     deps = [
         ":i_command",
         "//app/services:auth_service",
+        "//app/services:hub_publisher",
+        "//infra/persistence:chatdb_lib",
+        "//net:client_gateway",
+        "//net:connection_manager",
     ],
 )

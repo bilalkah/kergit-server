@@ -195,6 +195,12 @@ body {
     color: #2d3748;
 }
 
+.current-hub-label {
+    font-size: 18px;
+    font-weight: 600;
+    color: #2d3748;
+}
+
 .status-indicator {
     display: flex;
     align-items: center;
@@ -285,21 +291,93 @@ body {
     color: #4a5568;
 }
 
-/* Chat Content */
-.chat-content {
+/* Chat Layout */
+.chat-body {
     display: flex;
     flex: 1;
     overflow: hidden;
+    background: #edf2f7;
+}
+
+.hub-rail {
+    width: 84px;
+    background: #1a202c;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px 0;
+    gap: 16px;
+}
+
+.hub-rail__list {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    overflow-y: auto;
+    padding: 0 12px;
+}
+
+.hub-rail__actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 0 12px 8px;
+}
+
+.hub-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: #4a5568;
+    color: #f7fafc;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.2s, background 0.2s, box-shadow 0.2s;
+    border: none;
+}
+
+.hub-icon:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.25);
+}
+
+.hub-icon.active {
+    background: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.35);
+}
+
+.hub-icon--action {
+    background: rgba(255, 255, 255, 0.15);
+    color: #f7fafc;
+    font-size: 20px;
+}
+
+.hub-icon--action:hover {
+    background: rgba(255, 255, 255, 0.25);
 }
 
 /* Sidebar */
 .sidebar {
-    width: 280px;
+    width: 260px;
     background: white;
-    border-right: 1px solid #e2e8f0;
     display: flex;
     flex-direction: column;
     overflow-y: auto;
+}
+
+.channel-sidebar {
+    border-right: 1px solid #e2e8f0;
+    background: #fdfdfd;
+}
+
+.members-sidebar {
+    border-left: 1px solid #e2e8f0;
 }
 
 .sidebar-section {
@@ -341,7 +419,6 @@ body {
     font-weight: 500;
 }
 
-/* Channels List */
 .channels-list {
     display: flex;
     flex-direction: column;
@@ -358,12 +435,12 @@ body {
 }
 
 .channel:hover {
-    background: #f7fafc;
+    background: rgba(102, 126, 234, 0.08);
 }
 
 .channel.active {
-    background: #667eea;
-    color: white;
+    background: rgba(102, 126, 234, 0.25);
+    color: #2d3748;
 }
 
 /* Users List */
@@ -463,7 +540,9 @@ body {
 .messages-container {
     flex: 1;
     overflow-y: auto;
-    padding: 20px;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
 }
 
 .messages {
@@ -518,6 +597,23 @@ body {
     color: #4a5568;
     font-size: 14px;
     line-height: 1.5;
+}
+
+.chat-empty-state,
+.empty-state {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    color: #718096;
+    font-size: 15px;
+    padding: 40px 24px;
+}
+
+.chat-empty-state p,
+.empty-state p {
+    max-width: 240px;
 }
 
 .system-message {
@@ -987,6 +1083,6 @@ body {
 }
 
 /* Hide when no hub selected */
-.sidebar.hidden, .right-sidebar.hidden, #channels-section.hidden, #users-sidebar.hidden {
+.sidebar.hidden, .right-sidebar.hidden, #channels-section.hidden, #members-sidebar.hidden {
   display: none !important;
 }

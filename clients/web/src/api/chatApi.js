@@ -15,7 +15,7 @@ export function sendAuth(wsClient, token, username) {
       err.payload = msg;
       reject(err);
     });
-    wsClient.send({ type: 'auth', token, username });
+    wsClient.send({ type: 'auth', token, username, 'ts': Date.now() });
   });
 }
 

@@ -32,7 +32,6 @@ filegroup(
         "src/store/selectors.js",
         "src/store/state.js",
         "src/views/chat.js",
-        "src/views/hubSwitcher.js",
         "src/views/sidebar.js",
         "src/views/status.js",
         "styles.css",
