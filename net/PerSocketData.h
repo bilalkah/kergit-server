@@ -1,10 +1,12 @@
 #ifndef NET_PERSOCKETDATA_H
 #define NET_PERSOCKETDATA_H
 
+#include "domains/Hub.h"
 #include "domains/ids/Ids.h"
 
 #include <chrono>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 
 namespace net {
@@ -20,6 +22,8 @@ struct PerSocketData {
     std::string email{};
     std::string username{};
     std::unordered_set<HubId> hub_memberships;
+    std::unordered_map<HubId, Role> hub_roles;
+    std::unordered_set<ChannelId> channel_subscriptions;
     bool authenticated = false;
 };
 

@@ -19,3 +19,10 @@ export async function loginWithPassword(email, password) {
   console.log('[Supabase] login ok for', user?.email);
   return { token: session.access_token, user };
 }
+
+export async function logout() {
+  if (!supabase) return;
+  const { error } = await supabase.auth.signOut();
+  if (error) throw new Error(`[Supabase] ${error.message}`);
+  console.log('[Supabase] logout ok');
+}

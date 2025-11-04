@@ -21,14 +21,18 @@ export function sendAuth(wsClient, token, username) {
 
 
 export function reqList(ws) {
-  ws.send({ type: 'list', include: ['hubs', 'channels'] });
+  ws.send({ type: 'list', include: ['hubs', 'channels'], ts: Date.now() });
 }
 export function joinChannel(ws, channel_id) {
-  ws.send({ type: 'join_channel', channel_id });
+  ws.send({ type: 'join_channel', channel_id, ts: Date.now() });
 }
 export function reqUsersForChannel(ws, channel_id) {
-  ws.send({ type: 'users', scope: 'channel', channel_id });
+  ws.send({ type: 'users', scope: 'channel', channel_id, ts: Date.now() });
 }
 export function sendMessage(ws, channel_id, content) {
-  ws.send({ type: 'send_message', channel_id, content });
+  ws.send({ type: 'send_message', channel_id, content, ts: Date.now() });
+}
+
+export function createChannel(ws, hub_id, name) {
+  ws.send({ type: 'create_channel', hub_id, name, ts: Date.now() });
 }

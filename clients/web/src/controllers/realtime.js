@@ -285,9 +285,25 @@ export function wireRealtime({ ws, els }) {
     }
   });
 
+  ws.on('channel_created', (msg) => {
+    const { hub_id, channel } = msg || {};
+    if (!hub_id || !channel) return;
+    actions.appendChannel(hub_id, channel);
+    if (state.current.hubId === hub_id) {
+      const list = sel.channels(hub_id);
+      if (channelsList) {
+        renderChannels(channelsList, list, sel.currentChannelId());
+      }
+      if (channelEmptyState && list.length) {
+        channelEmptyState.classList.add('hidden');
+        channelsSection?.classList.remove('hidden');
+      }
+    }
+  });
+
   // Presence snapshot for a channel
   ws.on('presence_snapshot', (msg) => {
-    // expect: {type:'presence_snapshot', channel_id, members:[{user_id,email,role,online}]}
+    // expect: {type:'presence_snapshot', channel_id, members:[{handle,display_name,online}]}
     const { channel_id, members } = msg || {};
     if (!channel_id || !Array.isArray(members)) return;
     actions.setJoinedChannel({ channel_id, channel_name: state.current.channelName, members, history: [] });
@@ -297,21 +313,21 @@ export function wireRealtime({ ws, els }) {
 
   // Presence incremental updates
   ws.on('presence_update', (msg) => {
-    // expect: {type:'presence_update', channel_id, user_id, email, role, online:true|false}
-    const { channel_id, user_id, email, role, online } = msg || {};
-    if (!channel_id || !user_id) return;
-    actions.upsertPresence({ channel_id, user_id, email, role, online });
+    // expect: {type:'presence_update', channel_id, handle, display_name, online:true|false}
+    const { channel_id, handle, display_name, online } = msg || {};
+    if (!channel_id) return;
+    actions.upsertPresence({ channel_id, handle, display_name, online });
     document.dispatchEvent(new CustomEvent('presence:updated', { detail: { channel_id } }));
   });
 
   // Messages from server (just pass to your existing messageController via store)
   ws.on('message', (msg) => {
-    // expect: {type:'message', channel_id, sender_name|sender_id, content, sent_at}
+    // expect: {type:'message', channel_id, sender, content, sent_at}
     const ch = msg?.channel_id;
     if (!ch) return;
     actions.pushMessage({
       channel_id: ch,
-      sender: msg.sender_name || msg.sender_id || 'unknown',
+      sender: msg.sender || msg.sender_display || 'Member',
       content: msg.content ?? '',
       sent_at: msg.sent_at || new Date().toISOString()
     });

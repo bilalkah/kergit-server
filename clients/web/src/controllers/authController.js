@@ -10,7 +10,9 @@ export function wireAuth({ ws, els, config }) {
     // form + inputs
     loginForm, email, password, username, serverUrl,
     // button + status
-    submitBtn, submitText, authError
+    submitBtn, submitText, authError,
+    // logout + header
+    disconnectBtn, currentUser
   } = els;
 
   const setBusy = (b) => { if (submitBtn) submitBtn.disabled = !!b; if (submitText) submitText.textContent = b ? 'Signing In…' : 'Sign In'; };
@@ -29,7 +31,7 @@ export function wireAuth({ ws, els, config }) {
     const pw = password?.value?.trim() || '';
     // serverUrl is OPTIONAL in your HTML; fall back gracefully
     const url = (serverUrl?.value?.trim()) || (window.CONFIG?.WS_URL) || 'ws://localhost:9001';
-    const un = (username?.value?.trim()) || (em.split('@')[0] || 'user');
+    const rawName = username?.value?.trim();
 
     if (!em || !pw) return setError('Email and Password are required');
 
@@ -44,7 +46,18 @@ export function wireAuth({ ws, els, config }) {
       await ws.connect(url);
       console.log('[WS] connected');
 
-      const res = await sendAuth(ws, token, un);
+      const userMeta = user?.user_metadata || {};
+      const autoName =
+        rawName ||
+        userMeta.username ||
+        userMeta.full_name ||
+        userMeta.name ||
+        (user?.email ? user.email.split('@')[0] : '') ||
+        `Member-${Math.random().toString(36).slice(2, 6)}`;
+
+      const finalName = autoName.trim() || `Member-${Math.random().toString(36).slice(2, 6)}`;
+
+      const res = await sendAuth(ws, token, finalName);
       console.log('[WS=>] auth sent');
 
       if (!res.success) {
@@ -53,10 +66,12 @@ export function wireAuth({ ws, els, config }) {
 
       loginScreen?.classList.add('hidden');
       chatScreen?.classList.remove('hidden');
+      if (disconnectBtn) disconnectBtn.disabled = false;
+      if (currentUser) currentUser.textContent = finalName;
 
       actions.setConnection('connected');
-      actions.setAuth(true, { id: user?.id, email: em, username: un });
-      actions.setSession({ url, token, username: un });
+      actions.setAuth(true, { id: user?.id, email: em, username: finalName });
+      actions.setSession({ url, token, username: finalName });
     } catch (err) {
       console.error('❌ Login/auth failed:', err);
       ws.disconnect?.(4001, 'auth failed');
@@ -66,6 +81,7 @@ export function wireAuth({ ws, els, config }) {
       const msg = err?.message || 'Authentication failed';
       const code = err?.code ? ` (${err.code})` : '';
       setError(`${msg}${code}`);
+      if (disconnectBtn) disconnectBtn.disabled = true;
     } finally {
       setBusy(false);
     }
