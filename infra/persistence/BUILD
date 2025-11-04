@@ -7,6 +7,9 @@ cc_library(
     hdrs = ["chatdb.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//domains:channel_domain",
+        "//domains:hub_domain",
+        "//domains:message_domain",
         "//domains/ids:domain_ids",
         "@libpqxx",
         "@nlohmann_json",

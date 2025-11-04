@@ -5,9 +5,7 @@ import { renderChannels } from '../views/sidebar.js';
 import { sel } from '../store/selectors.js';
 
 export function wireList({ ws, els }) {
-  const { channelsList, refreshChannelsBtn } = els;
-
-  refreshChannelsBtn?.addEventListener('click', () => reqList(ws));
+  const { channelsList } = els;
 
   ws.on('hubs_list', () => {
     if (!channelsList) return;

@@ -19,8 +19,9 @@ export function wireMessaging({ ws, els }) {
 
   ws.on('message', (m) => {
     if (m.channel_id !== sel.currentChannelId()) return;
-    actions.pushMessage({ channel_id: m.channel_id, sender: m.sender_name || m.sender_id, content: m.content, sent_at: m.sent_at });
-    appendMessage(messages, m.sender_name || m.sender_id, m.content, m.sent_at);
+    const display = m.sender || 'Member';
+    actions.pushMessage({ channel_id: m.channel_id, sender: display, content: m.content, sent_at: m.sent_at });
+    appendMessage(messages, display, m.content, m.sent_at);
   });
 
   ws.on('error', (m) => {

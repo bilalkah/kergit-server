@@ -6,7 +6,10 @@ cc_library(
         "PerSocketData.h",
     ],
     visibility = ["//visibility:public"],
-    deps = ["//domains/ids:domain_ids"],
+    deps = [
+        "//domains:hub_domain",
+        "//domains/ids:domain_ids",
+    ],
 )
 
 cc_library(

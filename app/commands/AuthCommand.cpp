@@ -10,6 +10,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <cctype>
 #include <exception>
 #include <string>
 #include <unordered_map>
@@ -17,8 +18,36 @@
 #include <vector>
 
 using namespace app::services;
+using nlohmann::json;
 
 namespace app {
+
+namespace {
+std::string safe_display(const net::PerSocketData& psd) {
+    if (!psd.username.empty()) return psd.username;
+    return "Member";
+}
+
+nlohmann::json make_member_payload(const net::PerSocketData& psd) {
+    const auto name = safe_display(psd);
+    return nlohmann::json{{"handle", name}, {"display_name", name}, {"online", true}};
+}
+
+std::string role_to_string(Role role) {
+    switch (role) {
+        case Role::OWNER:
+            return "owner";
+        case Role::ADMIN:
+            return "admin";
+        default:
+            return "member";
+    }
+}
+
+std::string channel_type_to_string(ChannelType type) {
+    return type == ChannelType::VOICE ? "voice" : "text";
+}
+}  // namespace
 
 AuthCommand::AuthCommand(ChatDB& db, net::ClientGateway& gateway, net::ConnectionManager& connections,
                          app::services::HubPublisher& hub_publisher)
@@ -30,6 +59,17 @@ void AuthCommand::execute(CommandContext& ctx) {
     auto& output = ctx.output;
 
     const std::string token = input.data.value("token", "");
+    std::string preferred_username;
+    if (auto it = input.data.find("username"); it != input.data.end() && it->is_string()) {
+        preferred_username = it->get<std::string>();
+    }
+
+    auto trim = [](std::string& s) {
+        auto not_space = [](unsigned char ch) { return !std::isspace(ch); };
+        s.erase(s.begin(), std::find_if(s.begin(), s.end(), not_space));
+        s.erase(std::find_if(s.rbegin(), s.rend(), not_space).base(), s.end());
+    };
+    trim(preferred_username);
 
     if (token.empty()) {
         output.success = false;
@@ -58,22 +98,33 @@ void AuthCommand::execute(CommandContext& ctx) {
 
     try {
         fill_psd(psd, claims);
+        if (!preferred_username.empty()) {
+            psd.username = preferred_username;
+        }
+        if (psd.username.empty()) {
+            psd.username = "Member";
+        }
 
         // Gather hub & channel data
-        const std::vector<HubInfo> hubs = db_.getUserHubs(psd.user_id);
-        std::unordered_map<HubId, std::vector<ChannelInfo>> channels_by_hub;
+        const std::vector<Hub> hubs = db_.getUserHubs(psd.user_id);
+        std::unordered_map<HubId, std::vector<Channel>> channels_by_hub;
         channels_by_hub.reserve(hubs.size());
 
         psd.hub_memberships.clear();
+        psd.hub_roles.clear();
         for (const auto& hub : hubs) {
             psd.hub_memberships.insert(hub.id);
+            Role role = Role::USER;
+            auto it = hub.members.find(psd.user_id);
+            if (it != hub.members.end()) role = it->second;
+            psd.hub_roles[hub.id] = role;
             channels_by_hub.emplace(hub.id, db_.getHubChannels(hub.id));
         }
 
         auto online_by_hub = collect_online_members(hubs);
         subscribe_to_hubs(psd, hubs);
 
-        auto bootstrap = build_bootstrap_payload(hubs, channels_by_hub, online_by_hub);
+        auto bootstrap = build_bootstrap_payload(hubs, channels_by_hub, online_by_hub, psd.user_id);
         gateway_.send_now(psd.conn_id, bootstrap);
         if (!psd.hub_memberships.empty()) {
             hub_publisher_.publish_hubs(psd.hub_memberships);
@@ -86,11 +137,11 @@ void AuthCommand::execute(CommandContext& ctx) {
                        {"success", true},
                        {"user_id", psd.user_id.value}};
         if (!psd.username.empty()) output.data["username"] = psd.username;
-        if (!psd.email.empty()) output.data["email"] = psd.email;
         output.sent_at = std::chrono::system_clock::now();
     } catch (const std::exception& ex) {
         psd.authenticated = false;
         psd.hub_memberships.clear();
+        psd.hub_roles.clear();
         output.success = false;
         output.error_code = "bootstrap_failed";
         output.error_message = ex.what();
@@ -108,20 +159,16 @@ void AuthCommand::fill_psd(net::PerSocketData& psd,
     psd.authenticated_at = std::chrono::system_clock::now();
     psd.email = claims.email;
 
+    psd.username.clear();
     if (!claims.username.empty()) {
         psd.username = claims.username;
     } else if (!claims.full_name.empty()) {
         psd.username = claims.full_name;
-    } else if (!claims.email.empty()) {
-        auto at_pos = claims.email.find('@');
-        psd.username = at_pos == std::string::npos ? claims.email : claims.email.substr(0, at_pos);
-    } else {
-        psd.username = claims.id;
     }
 }
 
 void AuthCommand::subscribe_to_hubs(const net::PerSocketData& psd,
-                                    const std::vector<HubInfo>& hubs) const {
+                                    const std::vector<Hub>& hubs) const {
     for (const auto& hub : hubs) {
         if (!hub.id.value.empty()) {
             gateway_.subscribe(psd.conn_id, HubPublisher::topic_for(hub.id));
@@ -129,7 +176,7 @@ void AuthCommand::subscribe_to_hubs(const net::PerSocketData& psd,
     }
 }
 
-nlohmann::json AuthCommand::collect_online_members(const std::vector<HubInfo>& hubs) const {
+nlohmann::json AuthCommand::collect_online_members(const std::vector<Hub>& hubs) const {
     std::unordered_set<HubId> target_hubs;
     target_hubs.reserve(hubs.size());
     for (const auto& hub : hubs) {
@@ -143,10 +190,7 @@ nlohmann::json AuthCommand::collect_online_members(const std::vector<HubInfo>& h
         if (!other_psd || !other_psd->authenticated) return;
         if (other_psd->user_id.value.empty()) return;
 
-        nlohmann::json member = {{"user_id", other_psd->user_id.value}};
-        if (!other_psd->username.empty()) member["username"] = other_psd->username;
-        if (!other_psd->email.empty()) member["email"] = other_psd->email;
-        member["online"] = true;
+        nlohmann::json member = make_member_payload(*other_psd);
 
         for (const auto& hub_id : other_psd->hub_memberships) {
             if (!target_hubs.empty() && !target_hubs.count(hub_id)) continue;
@@ -169,24 +213,27 @@ nlohmann::json AuthCommand::collect_online_members(const std::vector<HubInfo>& h
 }
 
 nlohmann::json AuthCommand::build_bootstrap_payload(
-    const std::vector<HubInfo>& hubs,
-    const std::unordered_map<HubId, std::vector<ChannelInfo>>& channels_by_hub,
-    const nlohmann::json& online_by_hub) const {
+    const std::vector<Hub>& hubs,
+    const std::unordered_map<HubId, std::vector<Channel>>& channels_by_hub,
+    const nlohmann::json& online_by_hub, const UserId& current_user) const {
     nlohmann::json hubs_json = nlohmann::json::array();
     for (const auto& hub : hubs) {
-        hubs_json.push_back({{"id", hub.id.value}, {"name", hub.name}});
+        nlohmann::json hub_json = {{"id", hub.id.value}, {"name", hub.name}};
+        auto it = hub.members.find(current_user);
+        if (it != hub.members.end()) hub_json["role"] = role_to_string(it->second);
+        hubs_json.push_back(std::move(hub_json));
     }
 
     nlohmann::json channels_json = nlohmann::json::object();
     for (const auto& hub : hubs) {
-        auto it = channels_by_hub.find(hub.id);
         nlohmann::json arr = nlohmann::json::array();
+        auto it = channels_by_hub.find(hub.id);
         if (it != channels_by_hub.end()) {
             for (const auto& channel : it->second) {
-                arr.push_back({{"id", channel.id.value},
+                arr.push_back({{"id", channel.channel_id.value},
                                {"hub_id", channel.hub_id.value},
                                {"name", channel.name},
-                               {"type", channel.type}});
+                               {"type", channel_type_to_string(channel.type)}});
             }
         }
         channels_json[hub.id.value] = std::move(arr);
