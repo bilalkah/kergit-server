@@ -6,71 +6,71 @@ ChatDB::ChatDB(const std::string& conninfo) : conn_(conninfo) {
     if (!conn_.is_open()) throw std::runtime_error("Failed to open database connection");
 }
 
-std::string ChatDB::createHub(const std::string& hubName, const std::string& ownerUuid) {
+HubId ChatDB::createHub(const std::string& hubName, const UserId& ownerUuid) {
     pqxx::work txn(conn_);
     auto res = txn.exec_params(
         "INSERT INTO public.hubs (name, owner_id) VALUES ($1, $2::uuid) RETURNING id::text",
-        hubName, ownerUuid);
+        hubName, ownerUuid.value);
     if (res.empty()) throw std::runtime_error("createHub failed");
-    std::string hubId = res[0][0].as<std::string>();
+    HubId hubId{res[0][0].as<std::string>()};
     txn.commit();
     return hubId;
 }
 
-void ChatDB::addMember(const std::string& hubId, const std::string& userUuid,
+void ChatDB::addMember(const HubId& hubId, const UserId& userUuid,
                        const std::string& role) {
     pqxx::work txn(conn_);
     txn.exec_params(
         "INSERT INTO public.hub_members (hub_id, user_id, role) "
         "VALUES ($1::uuid, $2::uuid, $3) "
         "ON CONFLICT (hub_id, user_id) DO UPDATE SET role = EXCLUDED.role",
-        hubId, userUuid, role);
+        hubId.value, userUuid.value, role);
     txn.commit();
 }
 
-void ChatDB::removeMember(const std::string& hubId, const std::string& userUuid) {
+void ChatDB::removeMember(const HubId& hubId, const UserId& userUuid) {
     pqxx::work txn(conn_);
     txn.exec_params("DELETE FROM public.hub_members WHERE hub_id = $1::uuid AND user_id = $2::uuid",
-                    hubId, userUuid);
+                    hubId.value, userUuid.value);
     txn.commit();
 }
 
-std::string ChatDB::createChannel(const std::string& hubId, const std::string& channelName,
-                                  const std::string& type) {
+ChannelId ChatDB::createChannel(const HubId& hubId, const std::string& channelName,
+                                const std::string& type) {
     pqxx::work txn(conn_);
     auto res = txn.exec_params(
         "INSERT INTO public.channels (hub_id, name, type) VALUES ($1::uuid, $2, $3) RETURNING "
         "id::text",
-        hubId, channelName, type);
+        hubId.value, channelName, type);
     if (res.empty()) throw std::runtime_error("createChannel failed");
-    std::string channelId = res[0][0].as<std::string>();
+    ChannelId channelId{res[0][0].as<std::string>()};
     txn.commit();
     return channelId;
 }
 
-void ChatDB::sendMessage(const std::string& channelId, const std::string& senderUuid,
+void ChatDB::sendMessage(const ChannelId& channelId, const UserId& senderUuid,
                          const std::string& content) {
     pqxx::work txn(conn_);
     txn.exec_params(
         "INSERT INTO public.messages (channel_id, sender_id, content) "
         "VALUES ($1::uuid, $2::uuid, $3)",
-        channelId, senderUuid, content);
+        channelId.value, senderUuid.value, content);
     txn.commit();
 }
 
-std::vector<DbMessage> ChatDB::fetchMessages(const std::string& channelId, int limit) {
+std::vector<DbMessage> ChatDB::fetchMessages(const ChannelId& channelId, int limit) {
     pqxx::work txn(conn_);
     auto res = txn.exec_params(
         "SELECT id::text, channel_id::text, sender_id::text, content, created_at "
         "FROM public.messages WHERE channel_id = $1::uuid "
         "ORDER BY created_at DESC LIMIT $2",
-        channelId, limit);
+        channelId.value, limit);
 
     std::vector<DbMessage> msgs;
     msgs.reserve(res.size());
     for (const auto& row : res) {
-        msgs.push_back({row[0].as<std::string>(), row[1].as<std::string>(),
-                        row[2].as<std::string>(), row[3].as<std::string>(),
+        msgs.push_back({MessageId{row[0].as<std::string>()}, ChannelId{row[1].as<std::string>()},
+                        UserId{row[2].as<std::string>()}, row[3].as<std::string>(),
                         row[4].as<std::string>()});
     }
     return msgs;
@@ -90,45 +90,45 @@ std::vector<HubInfo> ChatDB::getUserHubs(const UserId& userUuid) {
     std::vector<HubInfo> hubs;
     hubs.reserve(res.size());
     for (const auto& row : res) {
-        hubs.push_back({row[0].as<std::string>(), row[1].as<std::string>()});
+        hubs.push_back({HubId{row[0].as<std::string>()}, row[1].as<std::string>()});
     }
     return hubs;
 }
 
-std::vector<ChannelInfo> ChatDB::getHubChannels(const std::string& hubId) {
+std::vector<ChannelInfo> ChatDB::getHubChannels(const HubId& hubId) {
     pqxx::work txn(conn_);
     auto res = txn.exec_params(
         "SELECT id::text, hub_id::text, name, type "
         "FROM public.channels WHERE hub_id = $1::uuid ORDER BY created_at ASC",
-        hubId);
+        hubId.value);
 
     std::vector<ChannelInfo> chans;
     chans.reserve(res.size());
     for (const auto& row : res) {
-        chans.push_back({row[0].as<std::string>(), row[1].as<std::string>(),
+        chans.push_back({ChannelId{row[0].as<std::string>()}, HubId{row[1].as<std::string>()},
                          row[2].as<std::string>(), row[3].as<std::string>()});
     }
     return chans;
 }
 
-std::string ChatDB::ensurePersonalHubWithGeneral(const std::string& ownerUuid,
-                                                 const std::string& hubName) {
+HubId ChatDB::ensurePersonalHubWithGeneral(const UserId& ownerUuid,
+                                           const std::string& hubName) {
     pqxx::work txn(conn_);
     auto existing = txn.exec_params(
-        "SELECT id::text FROM public.hubs WHERE owner_id = $1::uuid LIMIT 1", ownerUuid);
+        "SELECT id::text FROM public.hubs WHERE owner_id = $1::uuid LIMIT 1", ownerUuid.value);
 
     std::string hubId;
     if (existing.empty()) {
         auto res = txn.exec_params(
             "INSERT INTO public.hubs (name, owner_id) VALUES ($1, $2::uuid) RETURNING id::text",
-            hubName, ownerUuid);
+            hubName, ownerUuid.value);
         hubId = res[0][0].as<std::string>();
     } else {
         hubId = existing[0][0].as<std::string>();
         txn.exec_params(
             "INSERT INTO public.hub_members (hub_id, user_id, role) "
             "VALUES ($1::uuid, $2::uuid, 'member') ON CONFLICT DO NOTHING",
-            hubId, ownerUuid);
+            hubId, ownerUuid.value);
     }
 
     // ensure "general" exists
@@ -142,5 +142,5 @@ std::string ChatDB::ensurePersonalHubWithGeneral(const std::string& ownerUuid,
     }
 
     txn.commit();
-    return hubId;
+    return HubId{hubId};
 }

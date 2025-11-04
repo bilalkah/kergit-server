@@ -8,21 +8,21 @@
 #include <vector>
 
 struct DbMessage {
-    std::string id;
-    std::string channel_id;
-    std::string sender_id;
+    MessageId id{""};
+    ChannelId channel_id{""};
+    UserId sender_id{""};
     std::string content;
     std::string created_at;
 };
 
 struct HubInfo {
-    std::string id;
+    HubId id{""};
     std::string name;
 };
 
 struct ChannelInfo {
-    std::string id;
-    std::string hub_id;
+    ChannelId id{""};
+    HubId hub_id{""};
     std::string name;
     std::string type;  // "text" or "voice"
 };
@@ -32,22 +32,21 @@ class ChatDB {
     explicit ChatDB(const std::string& conninfo);
 
     // CRUD
-    std::string createHub(const std::string& hubName, const std::string& ownerUuid);
-    void addMember(const std::string& hubId, const std::string& userUuid,
+    HubId createHub(const std::string& hubName, const UserId& ownerUuid);
+    void addMember(const HubId& hubId, const UserId& userUuid,
                    const std::string& role = "member");
-    void removeMember(const std::string& hubId, const std::string& userUuid);
+    void removeMember(const HubId& hubId, const UserId& userUuid);
 
-    std::string createChannel(const std::string& hubId, const std::string& channelName,
-                              const std::string& type);
-    void sendMessage(const std::string& channelId, const std::string& senderUuid,
+    ChannelId createChannel(const HubId& hubId, const std::string& channelName,
+                            const std::string& type);
+    void sendMessage(const ChannelId& channelId, const UserId& senderUuid,
                      const std::string& content);
 
-    std::vector<DbMessage> fetchMessages(const std::string& channelId, int limit);
+    std::vector<DbMessage> fetchMessages(const ChannelId& channelId, int limit);
     std::vector<HubInfo> getUserHubs(const UserId& userUuid);
-    std::vector<ChannelInfo> getHubChannels(const std::string& hubId);
+    std::vector<ChannelInfo> getHubChannels(const HubId& hubId);
 
-    std::string ensurePersonalHubWithGeneral(const std::string& ownerUuid,
-                                             const std::string& hubName);
+    HubId ensurePersonalHubWithGeneral(const UserId& ownerUuid, const std::string& hubName);
 
     pqxx::connection& getConnection();
 

@@ -9,6 +9,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace app {
 
@@ -19,6 +20,7 @@ class Dispatcher {
     void register_cmd(std::string type, std::unique_ptr<ICommand> cmd);
     void on_auth_success(SetAuthFn fn) { set_auth_ = std::move(fn); }
     std::optional<nlohmann::json> dispatch(const std::string& type, CommandContext& ctx);
+    std::unordered_set<std::string> registered_commands() const;
 
    private:
     std::unordered_map<std::string, std::unique_ptr<ICommand>> map_;

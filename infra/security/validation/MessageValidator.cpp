@@ -19,7 +19,6 @@ MessageValidationResult MessageValidator::validate_message(const std::string_vie
 
     auto message_opt = is_message_format_valid(raw_message);
     if (!message_opt.has_value()) {
-        result.is_valid = false;
         result.error_message = "Invalid message format.";
         return result;
     }
@@ -212,4 +211,4 @@ bool MessageValidator::is_sql_injection_attempt(const std::string& text) {
     return false;
 }
 
-}  // namespace app::validation
+}  // namespace infra::security::validation

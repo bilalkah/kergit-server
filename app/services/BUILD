@@ -14,3 +14,18 @@ cc_library(
         "@nlohmann_json",
     ],
 )
+
+cc_library(
+    name = "hub_publisher",
+    srcs = ["HubPublisher.cpp"],
+    hdrs = ["HubPublisher.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//core:i_app",
+        "//infra/persistence:chatdb_lib",
+        "//net:client_gateway",
+        "//net:connection_manager",
+        "@nlohmann_json",
+        "@uwebsockets",
+    ],
+)

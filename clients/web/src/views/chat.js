@@ -5,7 +5,7 @@ export function renderUsers(root, countEl, arr) {
   arr.forEach(u => {
     const el = document.createElement('div');
     el.className = 'user';
-    el.textContent = u.email || u.user_id;
+    el.textContent = u.username || u.email || u.user_id;
     if (u.online) el.classList.add('online');
     root.appendChild(el);
   });

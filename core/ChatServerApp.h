@@ -13,6 +13,8 @@
 #include "net/WebSocketServer.h"
 #include "utils/Loggable.h"
 
+#include "app/services/HubPublisher.h"
+
 #include <atomic>
 #include <functional>
 #include <memory>
@@ -44,6 +46,7 @@ class ChatServerApp : public utils::Loggable {
     std::unique_ptr<net::ClientGateway> gateway_ptr_;
     std::unique_ptr<net::WebSocketServer> ws_server_;
     std::unique_ptr<ChatDB> chat_db_ptr_;
+    std::unique_ptr<app::services::HubPublisher> hub_publisher_;
 
     ListenToken listen_token_{nullptr};
 

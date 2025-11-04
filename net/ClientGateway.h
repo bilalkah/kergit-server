@@ -30,6 +30,8 @@ class ClientGateway : public utils::Loggable {
     // pub/sub helpers
     void subscribe(const ConnId& cid, const std::string& topic);
     void unsubscribe(const ConnId& cid, const std::string& topic);
+    void unsubscribe_all(const ConnId& cid);
+    void publish(const std::string& topic, const nlohmann::json& payload, OpCode op = OpCode::TEXT);
 
    private:
     ::core::IApp& app_;

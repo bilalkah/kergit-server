@@ -8,6 +8,7 @@ export const state = {
   current: { hubId: null, channelId: null, channelName: '' },
   usersByChannel: {},          // channelId -> [{user_id,email,role,online}]
   messagesByChannel: {},       // channelId -> [{sender,content,sent_at}]
+  membersByHub: {},            // hubId -> [{user_id,email,username}]
   heartbeat: {
     latencyMs: null,
     serverTs: null,
@@ -58,6 +59,25 @@ export const actions = {
     state.heartbeat.latencyMs = latencyMs;
     state.heartbeat.serverTs = serverTs;
     state.heartbeat.receivedAt = receivedAt;
+  },
+
+  setHubPresenceMap(map = {}) {
+    state.membersByHub = {};
+    if (map && typeof map === 'object') {
+      Object.entries(map).forEach(([hubId, members]) => {
+        state.membersByHub[hubId] = Array.isArray(members) ? members : [];
+      });
+    }
+  },
+
+  setHubMembers(hubId, members) {
+    if (!hubId) return;
+    state.membersByHub[hubId] = Array.isArray(members) ? members : [];
+  },
+
+  updateHubChannels(hubId, channels) {
+    if (!hubId) return;
+    state.channelsByHub[hubId] = Array.isArray(channels) ? channels : [];
   },
 
   setSession(info) {

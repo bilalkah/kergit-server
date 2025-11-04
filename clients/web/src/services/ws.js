@@ -71,7 +71,6 @@ export class WSClient {
         this.stalled = false;
         this.lastPingInfo = null;
         this._startHeartbeat();
-        this._startHubList();
         this._flushOutbox();
         this._emit('__ping__', null);
         clearTimeout(timer);

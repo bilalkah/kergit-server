@@ -71,10 +71,7 @@
             <!-- Header -->
             <div class="chat-header">
                 <div class="header-left">
-                    <button id="hub-selector" class="hub-selector">
-                        <span id="current-hub-name">Select Hub</span>
-                        <i class="fas fa-chevron-down"></i>
-                    </button>
+                    <span id="current-hub-name" class="current-hub-label">Select Hub</span>
                 </div>
                 <div class="header-right">
                     <span id="connection-status" class="status-indicator">
@@ -92,40 +89,42 @@
                 </div>
             </div>
 
-            <!-- Hub Switcher -->
-            <div id="hub-list-container" class="hub-list-container hidden">
-                <div class="hub-list-card">
-                    <h3>My Hubs</h3>
-                    <div id="hubs-list" class="hubs-list"></div>
-                    <div class="hub-actions">
-                        <button id="create-hub-btn" class="btn primary">＋ Create Hub</button>
-                        <button id="join-hub-btn" class="btn secondary">Join Hub</button>
-                    </div>
-                </div>
-            </div>
-
-
             <!-- Main Content -->
-            <div class="chat-content">
-                <div class="sidebar left-sidebar">
-                    <!-- Channels -->
+            <div class="chat-body">
+                <nav class="hub-rail">
+                    <div id="hub-rail-list" class="hub-rail__list"></div>
+                    <div class="hub-rail__actions">
+                        <button id="create-hub-btn" class="hub-icon hub-icon--action" title="Create Hub">
+                            <i class="fas fa-plus"></i>
+                        </button>
+                        <button id="join-hub-btn" class="hub-icon hub-icon--action" title="Join Hub">
+                            <i class="fas fa-sign-in-alt"></i>
+                        </button>
+                    </div>
+                </nav>
+
+                <aside class="sidebar channel-sidebar">
                     <div id="channels-section" class="sidebar-section hidden">
                         <div class="section-header">
                             <h3>Channels</h3>
                             <div class="section-actions">
-                                <button id="refresh-channels-btn" class="icon-btn"><i
-                                        class="fas fa-sync-alt"></i></button>
+                                <button id="refresh-channels-btn" class="icon-btn"><i class="fas fa-sync-alt"></i></button>
                                 <button id="create-channel-btn" class="icon-btn"><i class="fas fa-plus"></i></button>
                             </div>
                         </div>
                         <div id="channels-list" class="channels-list"></div>
                     </div>
-                </div>
+                    <div id="channel-empty-state" class="empty-state hidden">
+                        <p>Select a hub to view its channels.</p>
+                    </div>
+                </aside>
 
-                <div class="chat-area">
-                    <div id="hub-list-container" class="hub-list-container"></div>
+                <section class="chat-area">
                     <div id="messages-container" class="messages-container hidden">
                         <div id="messages" class="messages"></div>
+                    </div>
+                    <div class="chat-empty-state hidden" id="chat-empty-state">
+                        <p>Select a channel to start chatting.</p>
                     </div>
                     <div class="input-area hidden">
                         <div class="input-container">
@@ -136,12 +135,12 @@
                             </div>
                         </div>
                     </div>
-                </div>
+                </section>
 
-                <div class="sidebar right-sidebar hidden" id="users-sidebar">
+                <aside class="sidebar members-sidebar hidden" id="members-sidebar">
                     <div class="sidebar-section">
                         <div class="section-header">
-                            <h3>Online Users</h3>
+                            <h3>Members</h3>
                             <div class="section-actions">
                                 <button id="refresh-users-btn" class="icon-btn"><i class="fas fa-sync-alt"></i></button>
                                 <span id="user-count" class="user-count">0</span>
@@ -149,7 +148,7 @@
                         </div>
                         <div id="users-list" class="users-list"></div>
                     </div>
-                </div>
+                </aside>
             </div>
 
 
