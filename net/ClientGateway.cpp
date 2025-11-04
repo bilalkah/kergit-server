@@ -17,7 +17,7 @@ bool ClientGateway::send_now(const ConnId& conn_id, const json& payload, OpCode 
 }
 
 void ClientGateway::send_defer(ConnId conn_id, json payload, OpCode op) {
-    app_.defer([this, conn = std::move(conn_id), data = std::move(payload.dump()), op]() {
+    app_.defer([this, conn = std::move(conn_id), data = std::move(payload), op]() {
         (void)this->send_now(conn, data, op);
     });
 }
@@ -27,6 +27,17 @@ void ClientGateway::subscribe(const ConnId& cid, const std::string& topic) {
 }
 void ClientGateway::unsubscribe(const ConnId& cid, const std::string& topic) {
     pubsub_->unsubscribe(cid, topic);
+}
+void ClientGateway::unsubscribe_all(const ConnId& cid) {
+    pubsub_->unsubscribe_all(cid);
+}
+
+void ClientGateway::publish(const std::string& topic, const json& payload, OpCode op) {
+    auto subs = pubsub_->subscribers(topic);
+    if (subs.empty()) return;
+    for (const auto& conn : subs) {
+        send_defer(conn, payload, op);
+    }
 }
 
 }  // namespace net

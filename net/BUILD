@@ -59,13 +59,15 @@ cc_library(
     deps = [
         ":client_gateway",
         ":connection_manager",
-        ":persocketdata",
         ":heartbeat",
+        ":persocketdata",
         "//app:dispatcher",
+        "//app/services:hub_publisher",
         "//core:i_app",
         "//core:types",
         "//domains/ids:domain_ids",
+        "//infra/security:message_validator",
         "@nlohmann_json",
-        "@uwebsockets",  # or uwebsockets depending on kSslEnabled
+        "@uwebsockets",
     ],
 )

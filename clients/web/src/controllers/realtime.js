@@ -1,9 +1,27 @@
 // src/controllers/realtime.js
 import { sendAuth } from '../api/chatApi.js';
 import { state, actions } from '../store/state.js';
+import { sel } from '../store/selectors.js';
+import { renderChannels } from '../views/sidebar.js';
+import { renderUsers } from '../views/chat.js';
 
 export function wireRealtime({ ws, els }) {
-  const { pingDisplay, connectionLostModal, connectionLostMessage, connectionLostOk, loginScreen, chatScreen } = els;
+  const {
+    pingDisplay,
+    connectionLostModal,
+    connectionLostMessage,
+    connectionLostOk,
+    loginScreen,
+    chatScreen,
+    channelsList,
+    channelsSection,
+    channelEmptyState,
+    chatEmptyState,
+    usersList,
+    userCount,
+    membersSidebar,
+    currentHubName
+  } = els;
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const reconnectAttempts = [
     { waitBefore: 0 },
@@ -75,6 +93,7 @@ export function wireRealtime({ ws, els }) {
     actions.setAuth(false);
     actions.setConnection('disconnected');
     actions.setSession(null);
+    actions.setHubPresenceMap({});
     if (chatScreen) chatScreen.classList.add('hidden');
     if (loginScreen) loginScreen.classList.remove('hidden');
     updatePingDisplay(null);
@@ -202,12 +221,67 @@ export function wireRealtime({ ws, els }) {
     // expect: {type:'hubs_list', hubs:[{id,name,created_at}], channels_by_hub:{[hubId]:[...]}}
     const hubs = Array.isArray(msg?.hubs) ? msg.hubs : [];
     const channels_by_hub = msg?.channels_by_hub || {};
+    const online_by_hub = msg?.online_by_hub || {};
+
+    actions.setHubPresenceMap(online_by_hub);
     actions.setList({ hubs, channels_by_hub });
 
-    // if no hub selected, UI can show the hub grid
-    if (!state.current.hubId && hubs.length) {
-      // let UI decide; no direct DOM here
+    const currentHubId = state.current.hubId;
+    if (currentHubId && channelsList) {
+      renderChannels(channelsList, sel.channels(currentHubId), sel.currentChannelId());
+    }
+    if (currentHubId && usersList && userCount) {
+      renderUsers(usersList, userCount, sel.membersInHub(currentHubId));
+      membersSidebar?.classList.remove('hidden');
+    }
+
+    if (!currentHubId && hubs.length) {
       document.dispatchEvent(new CustomEvent('hubs:ready', { detail: { count: hubs.length } }));
+    }
+
+    if (currentHubName) {
+      const activeHub = hubs.find((h) => h.id === state.current.hubId);
+      currentHubName.textContent = activeHub?.name || 'Select Hub';
+    }
+  });
+
+  ws.on('hub_snapshot', (msg) => {
+    const { hub_id, channels, online } = msg || {};
+    if (!hub_id) return;
+    actions.updateHubChannels(hub_id, Array.isArray(channels) ? channels : []);
+    actions.setHubMembers(hub_id, Array.isArray(online) ? online : []);
+
+    if (state.current.hubId === hub_id) {
+      const list = sel.channels(hub_id);
+      if (channelsList) {
+        renderChannels(channelsList, list, sel.currentChannelId());
+        if (list.length) channelsSection?.classList.remove('hidden');
+      }
+      if (channelEmptyState) {
+        if (list.length) channelEmptyState.classList.add('hidden');
+        else {
+          channelsSection?.classList.add('hidden');
+          const text = channelEmptyState.querySelector('p');
+          if (text) text.textContent = 'No channels yet. Create one to start the conversation.';
+          channelEmptyState.classList.remove('hidden');
+        }
+      }
+      if (usersList && userCount) {
+        renderUsers(usersList, userCount, sel.membersInHub(hub_id));
+        membersSidebar?.classList.remove('hidden');
+      }
+      if (!state.current.channelId && chatEmptyState) {
+        const text = chatEmptyState.querySelector('p');
+        if (text) text.textContent = list.length
+          ? 'Select a channel to start chatting.'
+          : 'Create a channel to start chatting.';
+        chatEmptyState.classList.remove('hidden');
+      }
+    }
+
+    if (currentHubName) {
+      const activeHub = state.hubs.find((h) => h.id === state.current.hubId);
+      currentHubName.textContent = activeHub?.name || 'Select Hub';
     }
   });
 

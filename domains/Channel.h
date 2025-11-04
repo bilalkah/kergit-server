@@ -27,9 +27,7 @@ class Channel {
 
     Channel(const Channel&) = default;
 
-    bool hasMember(const UserId& uid) const {
-        return member_user_ids.find(uid.value) != member_user_ids.end();
-    }
+    bool hasMember(const UserId& uid) const { return member_user_ids.find(uid) != member_user_ids.end(); }
     bool addMember(const UserId& uid) { return member_user_ids.insert(uid).second; }
     bool removeMember(const UserId& uid) { return member_user_ids.erase(uid) > 0; }
 

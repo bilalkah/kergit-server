@@ -97,6 +97,7 @@ cc_library(
         ":types",
         "//app:command_registry",
         "//app:dispatcher",
+        "//app/services:hub_publisher",
         "//infra/persistence:chatdb_lib",
         "//net:websocket_server",
         "//utils:loggable",

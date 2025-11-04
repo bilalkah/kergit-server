@@ -5,9 +5,11 @@ import { wireList } from './controllers/listController.js';
 import { wireChannel } from './controllers/channelController.js';
 import { wireMessaging } from './controllers/messageController.js';
 import { renderStatus } from './views/status.js';
+import { renderHubs, renderChannels } from './views/sidebar.js';
 import { state, actions } from './store/state.js';
 import { CONFIG } from './config.js';
 import { wireRealtime } from './controllers/realtime.js';
+import { sel } from './store/selectors.js';
 
 const qs = (s) => document.querySelector(s);
 
@@ -32,13 +34,13 @@ const els = {
   pingDisplay: qs('#ping-display'),
   currentUser: qs('#current-user'),
 
-  // sidebars
-  channelsSidebar: qs('.left-sidebar'),
-  usersSidebar: qs('#users-sidebar'),
-
-  // hub list inline
-  hubListContainer: qs('#hub-list-container'),
-  hubsListEl: qs('#hubs-list'),
+  // layout
+  hubRailList: qs('#hub-rail-list'),
+  channelSidebar: qs('.channel-sidebar'),
+  channelsSection: qs('#channels-section'),
+  membersSidebar: qs('#members-sidebar'),
+  channelEmptyState: qs('#channel-empty-state'),
+  chatEmptyState: qs('#chat-empty-state'),
 
   // channels
   channelsList: qs('#channels-list'),
@@ -52,7 +54,6 @@ const els = {
   sendBtn: qs('#send-btn'),
 
   // header
-  hubSelector: qs('#hub-selector'),
   currentHubName: qs('#current-hub-name'),
   disconnectBtn: qs('#disconnect-btn'),
 
@@ -77,36 +78,88 @@ function bindStatus() {
   paint();
 }
 
-// render hub list inline (center of page)
-function renderHubList() {
+function renderHubRail() {
   const hubs = state.hubs || [];
-  els.hubsListEl.innerHTML = '';
-
-  hubs.forEach(h => {
-    const item = document.createElement('div');
-    item.className = 'hub-item';
-    item.textContent = h.name;
-    item.addEventListener('click', () => {
-      actions.setCurrentHub(h.id);
-      els.currentHubName.textContent = h.name;
-      els.hubListContainer.classList.add('hidden');
-      els.channelsSidebar.classList.remove('hidden');
-      els.usersSidebar.classList.remove('hidden');
-      els.messagesWrap.classList.remove('hidden');
-      els.inputArea.classList.remove('hidden');
-      document.dispatchEvent(new CustomEvent('hub:selected', { detail: h }));
-    });
-    els.hubsListEl.appendChild(item);
+  renderHubs(els.hubRailList, hubs, state.current.hubId);
+  if (!els.hubRailList) return;
+  els.hubRailList.querySelectorAll('.hub-icon').forEach(btn => {
+    btn.addEventListener('click', () => handleHubSelection(btn.dataset.hubId));
   });
+}
 
-  // show if no hub selected
-  if (!state.current.hubId) {
-    els.hubListContainer.classList.remove('hidden');
-    els.channelsSidebar.classList.add('hidden');
-    els.usersSidebar.classList.add('hidden');
-    els.messagesWrap.classList.add('hidden');
-    els.inputArea.classList.add('hidden');
+function showNoHubState() {
+  if (els.channelEmptyState) {
+    els.channelEmptyState.classList.remove('hidden');
+    const text = els.channelEmptyState.querySelector('p');
+    if (text) text.textContent = 'Create or join a hub to view channels.';
   }
+  if (els.channelsList) els.channelsList.innerHTML = '';
+  els.channelsSection?.classList.add('hidden');
+  if (els.membersSidebar) els.membersSidebar.classList.add('hidden');
+  if (els.usersList) els.usersList.innerHTML = '';
+  if (els.userCount) els.userCount.textContent = '0';
+  if (els.messagesWrap) els.messagesWrap.classList.add('hidden');
+  if (els.chatEmptyState) {
+    const text = els.chatEmptyState.querySelector('p');
+    if (text) text.textContent = 'Create or join a hub to start chatting.';
+    els.chatEmptyState.classList.remove('hidden');
+  }
+  els.inputArea?.classList.add('hidden');
+  els.currentHubName.textContent = 'Select Hub';
+}
+
+function handleHubSelection(hubId) {
+  if (!hubId) return;
+  if (state.current.hubId === hubId) return;
+  actions.setCurrentHub(hubId);
+  updateHubUI();
+}
+
+function updateHubUI() {
+  const hubs = state.hubs || [];
+  const currentHub = hubs.find(h => h.id === state.current.hubId);
+
+  renderHubRail();
+
+  if (!currentHub) {
+    if (hubs.length === 0) showNoHubState();
+    return;
+  }
+
+  els.currentHubName.textContent = currentHub.name || 'Untitled Hub';
+
+  const channels = sel.channels(currentHub.id);
+  if (channels.length) {
+    if (els.channelEmptyState) els.channelEmptyState.classList.add('hidden');
+    els.channelsSection?.classList.remove('hidden');
+    renderChannels(els.channelsList, channels, state.current.channelId);
+  } else {
+    els.channelsList.innerHTML = '';
+    els.channelsSection?.classList.add('hidden');
+    if (els.channelEmptyState) {
+      const text = els.channelEmptyState.querySelector('p');
+      if (text) text.textContent = 'No channels yet. Create one to start the conversation.';
+      els.channelEmptyState.classList.remove('hidden');
+    }
+  }
+
+  if (els.membersSidebar) els.membersSidebar.classList.remove('hidden');
+  const members = sel.membersInHub(currentHub.id);
+  if (els.usersList && els.userCount) {
+    renderUsers(els.usersList, els.userCount, members);
+  }
+
+  if (!state.current.channelId) {
+    if (els.messagesWrap) els.messagesWrap.classList.add('hidden');
+    if (els.chatEmptyState) {
+      const text = els.chatEmptyState.querySelector('p');
+      if (text) text.textContent = 'Select a channel to start chatting.';
+      els.chatEmptyState.classList.remove('hidden');
+    }
+    els.inputArea?.classList.add('hidden');
+  }
+
+  document.dispatchEvent(new CustomEvent('hub:selected', { detail: currentHub }));
 }
 
 function start() {
@@ -125,22 +178,22 @@ function start() {
   const origSetList = actions.setList;
   actions.setList = (payload) => {
     origSetList(payload);
-
-    // if hubs received, render inline hub list
-    if (state.hubs?.length > 0) {
-      renderHubList();
+    const hubs = state.hubs || [];
+    if (!hubs.length) {
+      renderHubRail();
+      showNoHubState();
+      return;
     }
-
-    // default hub selection
-    if (!state.current.hubId && state.hubs.length > 0) {
-      els.hubListContainer.classList.remove('hidden');
-      els.channelsSidebar.classList.add('hidden');
-      els.usersSidebar.classList.add('hidden');
-      els.messagesWrap.classList.add('hidden');
-      els.inputArea.classList.add('hidden');
+    const hasCurrent = hubs.some(h => h.id === state.current.hubId);
+    if (!hasCurrent) {
+      actions.setCurrentHub(hubs[0].id);
     }
+    updateHubUI();
   };
   // --------------------------------------------------------
+
+  renderHubRail();
+  showNoHubState();
 
   console.log('[BOOT] ready');
 }
