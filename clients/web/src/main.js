@@ -29,6 +29,7 @@ const els = {
   // status + user
   statusDot: qs('#connection-status'),
   statusText: qs('#status-text'),
+  pingDisplay: qs('#ping-display'),
   currentUser: qs('#current-user'),
 
   // sidebars
@@ -58,7 +59,12 @@ const els = {
   // misc
   refreshChannelsBtn: qs('#refresh-channels-btn'),
   refreshUsersBtn: qs('#refresh-users-btn'),
-  inputArea: qs('.input-area')
+  inputArea: qs('.input-area'),
+
+  // connection lost modal
+  connectionLostModal: qs('#connection-lost-modal'),
+  connectionLostMessage: qs('#connection-lost-message'),
+  connectionLostOk: qs('#connection-lost-ok')
 };
 
 const config = CONFIG || {};
@@ -105,6 +111,10 @@ function renderHubList() {
 
 function start() {
   bindStatus();
+  if (els.pingDisplay) {
+    els.pingDisplay.textContent = 'Ping: --';
+    els.pingDisplay.classList.add('is-idle');
+  }
   wireRealtime({ ws, els });
   wireAuth({ ws, els, config });
   wireList({ ws, els });

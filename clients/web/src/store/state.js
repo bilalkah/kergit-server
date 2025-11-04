@@ -7,7 +7,17 @@ export const state = {
   channelsByHub: {},           // hubId -> [{id,name,type,created_at}]
   current: { hubId: null, channelId: null, channelName: '' },
   usersByChannel: {},          // channelId -> [{user_id,email,role,online}]
-  messagesByChannel: {}        // channelId -> [{sender,content,sent_at}]
+  messagesByChannel: {},       // channelId -> [{sender,content,sent_at}]
+  heartbeat: {
+    latencyMs: null,
+    serverTs: null,
+    receivedAt: null
+  },
+  session: {
+    url: null,
+    token: null,
+    username: null
+  }
 };
 
 export const actions = {
@@ -42,5 +52,23 @@ export const actions = {
     state.current.hubId = hubId || null;
     state.current.channelId = null;
     state.current.channelName = '';
+  },
+
+  setHeartbeat({ latencyMs = null, serverTs = null, receivedAt = null } = {}) {
+    state.heartbeat.latencyMs = latencyMs;
+    state.heartbeat.serverTs = serverTs;
+    state.heartbeat.receivedAt = receivedAt;
+  },
+
+  setSession(info) {
+    if (!info) {
+      state.session = { url: null, token: null, username: null };
+      return;
+    }
+    state.session = {
+      url: info.url ?? null,
+      token: info.token ?? null,
+      username: info.username ?? null
+    };
   }
 };

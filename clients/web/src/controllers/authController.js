@@ -23,6 +23,7 @@ export function wireAuth({ ws, els, config }) {
   submitBtn?.addEventListener('click', async () => {
     console.log('[CLICK] login button clicked');
     setError('');
+    els.connectionLostModal?.classList.add('hidden');
 
     const em = email?.value?.trim() || '';
     const pw = password?.value?.trim() || '';
@@ -50,19 +51,21 @@ export function wireAuth({ ws, els, config }) {
         throw new Error('Authentication failed');
       }
 
-
       loginScreen?.classList.add('hidden');
       chatScreen?.classList.remove('hidden');
 
       actions.setConnection('connected');
       actions.setAuth(true, { id: user?.id, email: em, username: un });
-    } catch (e) {
+      actions.setSession({ url, token, username: un });
+    } catch (err) {
       console.error('❌ Login/auth failed:', err);
-      alert('Login failed: ' + err.message);
-      
+      ws.disconnect?.(4001, 'auth failed');
       actions.setConnection('disconnected');
       actions.setAuth(false);
-      setError(e?.message || 'Auth failed');
+      actions.setSession(null);
+      const msg = err?.message || 'Authentication failed';
+      const code = err?.code ? ` (${err.code})` : '';
+      setError(`${msg}${code}`);
     } finally {
       setBusy(false);
     }
