@@ -1,6 +1,7 @@
 // .cpp
 #include "net/WebSocketServer.h"
 
+#include <chrono>
 #include <nlohmann/json.hpp>
 
 using nlohmann::json;
@@ -15,7 +16,12 @@ WebSocketServer::WebSocketServer(core::IApp& app, app::Dispatcher& dispatcher,
       conns_(conns),
       gateway_(gateway),
       origins_(std::move(origins)),
-      limits_(limits) {}
+      limits_(limits),
+      heartbeat_(app, conns) {}
+
+WebSocketServer::~WebSocketServer() {
+    shutdown();
+}
 
 void WebSocketServer::wire(const std::string& pattern) {
     // Let dispatcher update PSD on successful auth
@@ -44,6 +50,7 @@ void WebSocketServer::wire(const std::string& pattern) {
                     auto* psd = ws->getUserData();
                     psd->conn_id = make_conn_id(ws);
                     psd->connected_at = std::chrono::system_clock::now();
+                    heartbeat_.on_open(*psd);
                     conns_.attach(psd->conn_id, ws);
 
                     json hello = {{"type", "hello"}, {"conn_id", psd->conn_id.value}};
@@ -52,8 +59,8 @@ void WebSocketServer::wire(const std::string& pattern) {
             .message =
                 [this](UwsSocket* ws, std::string_view data, OpCode op) {
                     if (op != OpCode::TEXT) return;
+                    auto* psd = ws->getUserData();
                     if (hooks_.on_message_raw) {
-                        auto* psd = ws->getUserData();
                         hooks_.on_message_raw(psd->conn_id, data);
                     }
                     if (data.size() > limits_.max_message_bytes) {
@@ -72,12 +79,11 @@ void WebSocketServer::wire(const std::string& pattern) {
                         ws->send(R"({"type":"error","code":"missing_type"})", OpCode::TEXT);
                         return;
                     }
-                    if (type == "ping") {
-                        ws->send(R"({"type":"pong"})", OpCode::TEXT);
+                    if (type == "pong") {
+                        heartbeat_.on_pong(*psd);
                         return;
                     }
 
-                    auto* psd = ws->getUserData();
                     app::CommandContext ctx{*psd};
                     ctx.input.data = j;
                     ctx.input.received_at = std::chrono::system_clock::now();
@@ -102,6 +108,12 @@ void WebSocketServer::wire(const std::string& pattern) {
                     }
                 },
         });
+
+    heartbeat_.start();
+}
+
+void WebSocketServer::shutdown() {
+    heartbeat_.stop();
 }
 
 std::string WebSocketServer::make_conn_id(void* p) {
