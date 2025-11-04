@@ -1,15 +1,18 @@
 // src/main.js
 import { WSClient } from './services/ws.js';
+import { logout as supabaseLogout } from './services/supabase.js';
 import { wireAuth } from './controllers/authController.js';
 import { wireList } from './controllers/listController.js';
 import { wireChannel } from './controllers/channelController.js';
 import { wireMessaging } from './controllers/messageController.js';
 import { renderStatus } from './views/status.js';
 import { renderHubs, renderChannels } from './views/sidebar.js';
+import { renderUsers } from './views/chat.js';
 import { state, actions } from './store/state.js';
 import { CONFIG } from './config.js';
 import { wireRealtime } from './controllers/realtime.js';
 import { sel } from './store/selectors.js';
+import { createChannel } from './api/chatApi.js';
 
 const qs = (s) => document.querySelector(s);
 
@@ -44,6 +47,11 @@ const els = {
 
   // channels
   channelsList: qs('#channels-list'),
+  createChannelBtn: qs('#create-channel-btn'),
+  createChannelModal: qs('#create-channel-modal'),
+  createChannelName: qs('#new-channel-name'),
+  createChannelConfirm: qs('#create-channel-confirm'),
+  createChannelCancel: qs('#create-channel-cancel'),
 
   // users & chat
   usersList: qs('#users-list'),
@@ -58,8 +66,6 @@ const els = {
   disconnectBtn: qs('#disconnect-btn'),
 
   // misc
-  refreshChannelsBtn: qs('#refresh-channels-btn'),
-  refreshUsersBtn: qs('#refresh-users-btn'),
   inputArea: qs('.input-area'),
 
   // connection lost modal
@@ -106,6 +112,11 @@ function showNoHubState() {
   }
   els.inputArea?.classList.add('hidden');
   els.currentHubName.textContent = 'Select Hub';
+  if (els.createChannelBtn) {
+    els.createChannelBtn.style.visibility = 'hidden';
+    els.createChannelBtn.disabled = true;
+  }
+  closeCreateChannelModal();
 }
 
 function handleHubSelection(hubId) {
@@ -124,6 +135,19 @@ function updateHubUI() {
   if (!currentHub) {
     if (hubs.length === 0) showNoHubState();
     return;
+  }
+
+  const role = currentHub.role || sel.currentHubRole() || '';
+  const canCreate = role === 'owner' || role === 'admin';
+  if (els.createChannelBtn) {
+    if (canCreate) {
+      els.createChannelBtn.style.visibility = 'visible';
+      els.createChannelBtn.disabled = false;
+    } else {
+      els.createChannelBtn.style.visibility = 'hidden';
+      els.createChannelBtn.disabled = true;
+      closeCreateChannelModal();
+    }
   }
 
   els.currentHubName.textContent = currentHub.name || 'Untitled Hub';
@@ -162,6 +186,64 @@ function updateHubUI() {
   document.dispatchEvent(new CustomEvent('hub:selected', { detail: currentHub }));
 }
 
+async function performLogout() {
+  const btn = els.disconnectBtn;
+  if (!btn) return;
+  if (btn.disabled) return;
+  btn.disabled = true;
+
+  els.connectionLostModal?.classList.add('hidden');
+
+  try {
+    try {
+      await supabaseLogout();
+    } catch (err) {
+      console.warn('[AUTH] logout warning:', err?.message || err);
+    }
+
+    try {
+      ws.disconnect?.(1000, 'user logout');
+    } catch (err) {
+      console.warn('[WS] error during logout disconnect:', err);
+    }
+
+    actions.reset();
+    actions.setAuth(false, { id: null, email: null, username: null });
+    actions.setSession(null);
+    actions.setConnection('disconnected');
+    actions.setHeartbeat({});
+    actions.setHubPresenceMap({});
+    if (els.currentUser) els.currentUser.textContent = 'User';
+    if (els.messages) els.messages.innerHTML = '';
+    if (els.usersList) els.usersList.innerHTML = '';
+    if (els.userCount) els.userCount.textContent = '0';
+    if (els.messageInput) {
+      els.messageInput.value = '';
+      els.messageInput.disabled = true;
+    }
+    if (els.sendBtn) els.sendBtn.disabled = true;
+    if (els.messagesWrap) els.messagesWrap.classList.add('hidden');
+    if (els.inputArea) els.inputArea.classList.add('hidden');
+    if (els.chatEmptyState) {
+      const text = els.chatEmptyState.querySelector('p');
+      if (text) text.textContent = 'Create or join a hub to start chatting.';
+    }
+    if (els.pingDisplay) {
+      els.pingDisplay.textContent = 'Ping: --';
+      els.pingDisplay.classList.remove('is-good', 'is-warn', 'is-bad');
+      els.pingDisplay.classList.add('is-idle');
+    }
+
+    renderHubRail();
+    showNoHubState();
+
+    if (els.chatScreen) els.chatScreen.classList.add('hidden');
+    if (els.loginScreen) els.loginScreen.classList.remove('hidden');
+  } finally {
+    // keep logout disabled until next successful login
+  }
+}
+
 function start() {
   bindStatus();
   if (els.pingDisplay) {
@@ -173,6 +255,15 @@ function start() {
   wireList({ ws, els });
   wireChannel({ ws, els });
   wireMessaging({ ws, els });
+
+  if (els.disconnectBtn) {
+    els.disconnectBtn.disabled = true;
+    els.disconnectBtn.addEventListener('click', () => {
+      performLogout().catch((err) => console.error('[LOGOUT] unexpected error:', err));
+    });
+  }
+
+  wireCreateChannel();
 
   // ---- Decorate setList so hubs from server update UI ----
   const origSetList = actions.setList;
@@ -196,6 +287,81 @@ function start() {
   showNoHubState();
 
   console.log('[BOOT] ready');
+}
+
+function wireCreateChannel() {
+  const {
+    createChannelBtn,
+    createChannelModal,
+    createChannelName,
+    createChannelConfirm,
+    createChannelCancel
+  } = els;
+  if (!createChannelModal || !createChannelName) return;
+
+  const closeBtn = createChannelModal.querySelector('.close-btn');
+
+  const openModal = () => {
+    if (createChannelModal.classList.contains('hidden')) {
+      createChannelName.value = '';
+      createChannelModal.classList.remove('hidden');
+      queueMicrotask(() => createChannelName.focus());
+    }
+  };
+
+  const hideModal = () => {
+    createChannelModal.classList.add('hidden');
+  };
+
+  const handleCreate = () => {
+    const hubId = state.current.hubId;
+    if (!hubId) {
+      hideModal();
+      return;
+    }
+    const name = (createChannelName.value || '').trim();
+    if (!name) {
+      createChannelName.focus();
+      return;
+    }
+    if (createChannelConfirm) createChannelConfirm.disabled = true;
+    createChannel(ws, hubId, name);
+    hideModal();
+    if (createChannelConfirm) createChannelConfirm.disabled = false;
+  };
+
+  createChannelBtn?.addEventListener('click', () => {
+    if (createChannelBtn.disabled) return;
+    openModal();
+  });
+  createChannelConfirm?.addEventListener('click', (e) => {
+    e.preventDefault();
+    handleCreate();
+  });
+  createChannelCancel?.addEventListener('click', (e) => {
+    e.preventDefault();
+    hideModal();
+  });
+  closeBtn?.addEventListener('click', hideModal);
+  createChannelModal.addEventListener('click', (e) => {
+    if (e.target === createChannelModal) hideModal();
+  });
+  createChannelName?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleCreate();
+    } else if (e.key === 'Escape') {
+      hideModal();
+    }
+  });
+
+  els._closeCreateChannelModal = hideModal;
+}
+
+function closeCreateChannelModal() {
+  if (els._closeCreateChannelModal) {
+    els._closeCreateChannelModal();
+  }
 }
 
 document.addEventListener('DOMContentLoaded', start);

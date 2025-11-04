@@ -2,10 +2,11 @@
 #define APP_SERVICES_HUBPUBLISHER_H
 
 #include "core/IApp.h"
-#include "net/ConnectionManager.h"
-#include "net/ClientGateway.h"
-#include "infra/persistence/chatdb.h"
+#include "domains/Channel.h"
 #include "domains/ids/Ids.h"
+#include "infra/persistence/chatdb.h"
+#include "net/ClientGateway.h"
+#include "net/ConnectionManager.h"
 
 #include <chrono>
 #include <string>
@@ -39,9 +40,9 @@ class HubPublisher {
 
     std::unordered_set<HubId> collect_all_hubs() const;
     nlohmann::json collect_online_for_hub(const HubId& hub_id) const;
-    std::vector<ChannelInfo> load_channels(const HubId& hub_id) const;
+    std::vector<Channel> load_channels(const HubId& hub_id) const;
     nlohmann::json build_snapshot(const HubId& hub_id,
-                                  const std::vector<ChannelInfo>& channels,
+                                  const std::vector<Channel>& channels,
                                   const nlohmann::json& online) const;
 
     core::IApp& app_;

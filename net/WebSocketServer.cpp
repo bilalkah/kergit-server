@@ -9,6 +9,16 @@
 
 using nlohmann::json;
 using namespace infra::security::validation;
+namespace {
+std::string channel_topic(const ChannelId& channel_id) {
+    return "channel:" + channel_id.value;
+}
+
+std::string safe_display(const net::PerSocketData& psd) {
+    if (!psd.username.empty()) return psd.username;
+    return "Member";
+}
+}
 namespace net {
 
 WebSocketServer::WebSocketServer(core::IApp& app, app::Dispatcher& dispatcher,
@@ -106,6 +116,16 @@ void WebSocketServer::wire(const std::string& pattern) {
                              auto* psd = ws->getUserData();
                              if (psd) {
                                  const auto hubs = psd->hub_memberships;
+                                 const auto display = safe_display(*psd);
+                                 for (const auto& ch : psd->channel_subscriptions) {
+                                     json update = {{"type", "presence_update"},
+                                                    {"channel_id", ch.value},
+                                                    {"handle", display},
+                                                    {"display_name", display},
+                                                    {"online", false}};
+                                     gateway_.publish(channel_topic(ch), update);
+                                 }
+                                 psd->channel_subscriptions.clear();
                                  gateway_.unsubscribe_all(psd->conn_id);
                                  conns_.detach(psd->conn_id);
                                  if (hub_publisher_ && !hubs.empty()) {
@@ -114,6 +134,7 @@ void WebSocketServer::wire(const std::string& pattern) {
                                  if (hooks_.on_close) hooks_.on_close(psd->conn_id, code, reason);
                                  psd->authenticated = false;
                                  psd->hub_memberships.clear();
+                                 psd->hub_roles.clear();
                              }
                          },
                  });

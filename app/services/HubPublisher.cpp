@@ -9,6 +9,22 @@
 
 namespace app::services {
 
+namespace {
+std::string safe_display(const net::PerSocketData& psd) {
+    if (!psd.username.empty()) return psd.username;
+    return "Member";
+}
+
+nlohmann::json make_member_payload(const net::PerSocketData& psd) {
+    const auto name = safe_display(psd);
+    return nlohmann::json{{"handle", name}, {"display_name", name}, {"online", true}};
+}
+
+std::string channel_type_to_string(ChannelType type) {
+    return type == ChannelType::VOICE ? "voice" : "text";
+}
+}  // namespace
+
 HubPublisher::HubPublisher(core::IApp& app, ChatDB& db, net::ConnectionManager& connections,
                            net::ClientGateway& gateway, std::chrono::milliseconds interval)
     : app_(app),
@@ -112,29 +128,24 @@ nlohmann::json HubPublisher::collect_online_for_hub(const HubId& hub_id) const {
         auto* psd = ws->getUserData();
         if (!psd || !psd->authenticated) return;
         if (psd->hub_memberships.find(hub_id) == psd->hub_memberships.end()) return;
-
-        nlohmann::json member = {{"user_id", psd->user_id.value}};
-        if (!psd->username.empty()) member["username"] = psd->username;
-        if (!psd->email.empty()) member["email"] = psd->email;
-        member["online"] = true;
-        arr.push_back(std::move(member));
+        arr.push_back(make_member_payload(*psd));
     });
     return arr;
 }
 
-std::vector<ChannelInfo> HubPublisher::load_channels(const HubId& hub_id) const {
+std::vector<Channel> HubPublisher::load_channels(const HubId& hub_id) const {
     return db_.getHubChannels(hub_id);
 }
 
 nlohmann::json HubPublisher::build_snapshot(const HubId& hub_id,
-                                            const std::vector<ChannelInfo>& channels,
+                                            const std::vector<Channel>& channels,
                                             const nlohmann::json& online) const {
     nlohmann::json chan = nlohmann::json::array();
     for (const auto& c : channels) {
-        chan.push_back({{"id", c.id.value},
+        chan.push_back({{"id", c.channel_id.value},
                         {"hub_id", c.hub_id.value},
                         {"name", c.name},
-                        {"type", c.type}});
+                        {"type", channel_type_to_string(c.type)}});
     }
     return {
         {"type", "hub_snapshot"},
