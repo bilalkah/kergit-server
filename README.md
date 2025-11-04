@@ -8,6 +8,7 @@ bazel run //clients/web:web_server
 
 Ensure that you have the necessary environment variables set in a `.env` file or your system environment for `SERVER_HOST` and `SERVER_PORT`.
 
+```bash
 server/
 ├─ core/                              # process lifecycle, config, app factory
 │  ├─ ChatServerApp.{h,cpp}           # owns IApp, start/stop/join, signal handling
@@ -80,3 +81,4 @@ server/
 ├─ main_plain.cc                      # optional entry for non-TLS
 ├─ main_tls.cc                        # optional entry for TLS
 └─ BUILD
+```
