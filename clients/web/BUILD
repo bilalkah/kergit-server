@@ -26,15 +26,15 @@ filegroup(
         "src/controllers/listController.js",
         "src/controllers/messageController.js",
         "src/controllers/realtime.js",
+        "src/main.js",
         "src/services/supabase.js",
         "src/services/ws.js",
         "src/store/selectors.js",
         "src/store/state.js",
         "src/views/chat.js",
+        "src/views/hubSwitcher.js",
         "src/views/sidebar.js",
         "src/views/status.js",
-        "src/views/hubSwitcher.js",
-        "src/main.js",
         "styles.css",
         ":config_js",
     ],
@@ -58,10 +58,21 @@ filegroup(
 # )
 
 py_binary(
-    name = "web_server",
-    srcs = ["server.py"],
+    name = "http_server",
+    srcs = ["http_server.py"],
     data = [
         ":static_files",
     ],
-    main = "server.py",
+    main = "http_server.py",
+)
+
+py_binary(
+    name = "https_server",
+    srcs = ["https_server.py"],
+    data = [
+        ":static_files",
+        "//certs:cert.pem",
+        "//certs:key.pem",
+    ],
+    main = "https_server.py",
 )
