@@ -14,6 +14,7 @@ struct PerSocketData {
     HubId current_hub_id{""};
     ChannelId current_channel_id{""};
     std::chrono::system_clock::time_point connected_at = std::chrono::system_clock::now();
+    std::chrono::steady_clock::time_point last_pong_at = std::chrono::steady_clock::now();
     bool authenticated = false;
 };
 

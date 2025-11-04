@@ -22,6 +22,21 @@ cc_library(
 )
 
 cc_library(
+    name = "heartbeat",
+    srcs = ["Heartbeat.cpp"],
+    hdrs = ["Heartbeat.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":connection_manager",
+        ":persocketdata",
+        "//core:i_app",
+        "//core:types",
+        "@nlohmann_json",
+        "@uwebsockets",
+    ],
+)
+
+cc_library(
     name = "client_gateway",
     srcs = ["ClientGateway.cpp"],
     hdrs = ["ClientGateway.h"],
@@ -45,6 +60,7 @@ cc_library(
         ":client_gateway",
         ":connection_manager",
         ":persocketdata",
+        ":heartbeat",
         "//app:dispatcher",
         "//core:i_app",
         "//core:types",

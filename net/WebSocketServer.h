@@ -7,6 +7,7 @@
 #include "net/ClientGateway.h"
 #include "net/ConnectionManager.h"
 #include "net/PerSocketData.h"
+#include "net/Heartbeat.h"
 
 #include <functional>
 #include <memory>
@@ -36,8 +37,10 @@ class WebSocketServer {
    public:
     WebSocketServer(core::IApp& app, app::Dispatcher& dispatcher, ConnectionManager& conns,
                     ClientGateway& gateway, OriginAllowlist origins = {}, WsLimits limits = {});
+    ~WebSocketServer();
 
     void wire(const std::string& pattern = "/ws");
+    void shutdown();
 
     void set_hooks(WsHooks hooks) { hooks_ = std::move(hooks); }
 
@@ -51,6 +54,7 @@ class WebSocketServer {
     OriginAllowlist origins_;
     WsLimits limits_;
     WsHooks hooks_{};
+    Heartbeat heartbeat_;
 };
 
 }  // namespace net
