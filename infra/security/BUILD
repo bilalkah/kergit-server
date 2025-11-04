@@ -15,3 +15,14 @@ cc_library(
         "@nlohmann_json",
     ],
 )
+
+cc_library(
+    name = "message_validator",
+    srcs = ["validation/MessageValidator.cpp"],
+    hdrs = ["validation/MessageValidator.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//app:dispatcher",
+        "@nlohmann_json",
+    ],
+)
