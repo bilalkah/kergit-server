@@ -226,6 +226,37 @@ body {
     gap: 16px;
 }
 
+.ping-indicator {
+    font-size: 12px;
+    font-weight: 500;
+    color: #2d3748;
+    background: #edf2f7;
+    padding: 4px 10px;
+    border-radius: 999px;
+    min-width: 80px;
+    text-align: center;
+}
+
+.ping-indicator.is-good {
+    color: #2f855a;
+    background: #f0fff4;
+}
+
+.ping-indicator.is-warn {
+    color: #b7791f;
+    background: #fffaf0;
+}
+
+.ping-indicator.is-bad {
+    color: #c53030;
+    background: #fff5f5;
+}
+
+.ping-indicator.is-idle {
+    color: #718096;
+    background: #edf2f7;
+}
+
 .user-info {
     display: flex;
     align-items: center;

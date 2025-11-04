@@ -13,9 +13,15 @@ export class WSClient {
     this.anyHandlers = new Set(); // raw handler for all messages
     this.heartbeatTimer = null;
     this.lastPongAt = 0;
+    this.lastPingInfo = null;
     this.heartbeatMs = 2500;
-    this.missToleranceMs = 60000; // ~2 missed pings
+    this.missToleranceMs = 9000; // tolerate ~3 missed heartbeats
     this.outbox = []; // <— NEW (optional)
+    this.stalled = false;
+    this.manualClose = false;
+    this.currentUrl = null;
+    this.lastHeaders = undefined;
+    this.lastTimeoutMs = 7000;
   }
 
 
@@ -30,6 +36,10 @@ export class WSClient {
   connect(url, { headers, timeoutMs = 7000 } = {}) {
     return new Promise((resolve, reject) => {
       let settled = false;
+      this.manualClose = false;
+      this.currentUrl = url;
+      this.lastHeaders = headers;
+      this.lastTimeoutMs = timeoutMs;
       this.ws = new WebSocket(url);
 
       const onMessage = (ev) => {
@@ -37,10 +47,19 @@ export class WSClient {
         let msg;
         try { msg = JSON.parse(ev.data); } catch { return; }
         if (msg?.type === 'ping') {
-          this.lastPongAt = Date.now();
-          this.send({ type: 'pong', ts: msg?.ts ?? Date.now() });
+          const receivedAt = Date.now();
+          this.lastPongAt = receivedAt;
+          this.stalled = false;
+          const latencyMs = typeof msg.ts === 'number' ? Math.max(0, receivedAt - msg.ts) : null;
+          this.lastPingInfo = { latencyMs, serverTs: msg?.ts ?? null, receivedAt };
+          if (latencyMs != null) {
+            console.log(`[WS<=] ping latency ${latencyMs}ms`);
+          } else {
+            console.log('[WS<=] ping received');
+          }
+          this.send({ type: 'pong', ts: msg?.ts ?? receivedAt });
+          this._emit('__ping__', this.lastPingInfo);
         }
-        if (msg?.type === 'pong') this.lastPongAt = Date.now();
         this._emit('*', msg);
         if (msg?.type) this._emit(msg.type, msg);
       };
@@ -49,8 +68,12 @@ export class WSClient {
         if (settled) return;
         settled = true;
         this._emit('__open__');
+        this.stalled = false;
+        this.lastPingInfo = null;
         this._startHeartbeat();
         this._startHubList();
+        this._flushOutbox();
+        this._emit('__ping__', null);
         clearTimeout(timer);
         resolve();
       };
@@ -62,9 +85,16 @@ export class WSClient {
         reject(e instanceof Error ? e : new Error('WebSocket error'));
       };
 
-      const onClose = () => {
+      const onClose = (event) => {
+        const wasManual = this.manualClose;
+        this.manualClose = false;
         this._stopHeartbeat();
-        this._emit('__close__');
+        this.stalled = false;
+        this.lastPingInfo = null;
+        this.lastPongAt = 0;
+        this._emit('__close__', { manual: wasManual, code: event?.code, reason: event?.reason });
+        this._emit('__ping__', null);
+        this.ws = null;
         if (!settled) {
           settled = true;
           clearTimeout(timer);
@@ -97,6 +127,16 @@ export class WSClient {
     }
   }
 
+  disconnect(code = 1000, reason = 'client disconnect') {
+    if (!this.ws) return;
+    this.manualClose = true;
+    try {
+      this.ws.close(code, reason);
+    } catch (err) {
+      console.warn('[WS] disconnect error', err);
+    }
+  }
+
   on(type, fn) {
     if (type === '*') { this.anyHandlers.add(fn); return () => this.anyHandlers.delete(fn); }
     if (!this.handlers.has(type)) this.handlers.set(type, new Set());
@@ -111,13 +151,30 @@ export class WSClient {
     if (set) set.forEach(fn => fn(payload));
   }
 
+  _flushOutbox() {
+    if (!this.ws || this.ws.readyState !== 1) return;
+    while (this.outbox.length) {
+      const next = this.outbox.shift();
+      try {
+        this.ws.send(JSON.stringify(next));
+      } catch (err) {
+        console.warn('[WS] failed to flush queued message', err);
+        break;
+      }
+    }
+  }
+
   _startHeartbeat() {
     this.lastPongAt = Date.now();
     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
     this.heartbeatTimer = setInterval(() => {
       const missFor = Date.now() - this.lastPongAt;
       if (missFor > this.missToleranceMs) {
-        this._emit('__stalled__', { missFor });
+        if (!this.stalled) {
+          this.stalled = true;
+          this._emit('__stalled__', { missFor });
+          try { this.ws?.close(4000, 'heartbeat timeout'); } catch { }
+        }
       }
     }, this.heartbeatMs);
   }
@@ -125,6 +182,7 @@ export class WSClient {
   _stopHeartbeat() {
     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
     this.heartbeatTimer = null;
+    this.stalled = false;
   }
 
   _startHubList() {

@@ -81,6 +81,7 @@
                         <i class="fas fa-circle"></i>
                         <span id="status-text">Connecting...</span>
                     </span>
+                    <span id="ping-display" class="ping-indicator">Ping: --</span>
                     <div class="user-info">
                         <span id="current-user">User</span>
                         <i class="fas fa-user-circle"></i>
@@ -216,6 +217,20 @@
                         <button id="reject-call-btn" class="btn secondary">
                             <i class="fas fa-phone-slash"></i> Reject
                         </button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="connection-lost-modal" class="modal hidden">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>Connection Lost</h3>
+                    </div>
+                    <div class="modal-body">
+                        <p id="connection-lost-message">We lost contact with the server. Please sign in again.</p>
+                    </div>
+                    <div class="modal-footer">
+                        <button id="connection-lost-ok" class="btn primary">Back to Login</button>
                     </div>
                 </div>
             </div>
