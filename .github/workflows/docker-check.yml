@@ -1,0 +1,41 @@
+name: Docker Compose CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  docker-compose-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Make docker scripts executable
+        run: chmod +x docker/*.sh
+
+      - name: Show Docker & Compose versions
+        run: |
+          docker version
+          docker compose version
+
+      - name: Build Docker image(s)
+        run: ./docker/build.sh
+
+      - name: Run Docker container(s)
+        run: ./docker/run.sh
+
+      # Optional: wait a bit / do basic checks
+      - name: Wait for services to start
+        run: sleep 10
+
+      - name: List running containers
+        run: docker ps
+
+      # This will always run, even if previous steps fail
+      - name: Stop Docker container(s)
+        if: always()
+        run: ./docker/stop.sh
