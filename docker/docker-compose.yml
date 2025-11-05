@@ -1,0 +1,28 @@
+services:
+  dev:
+    build: .
+    container_name: sercom-dev-macos
+    volumes:
+      - ..:/home/sercom/workspace:cached
+      - ccache:/home/sercom/.ccache
+    working_dir: /home/sercom/workspace
+    tty: true
+    stdin_open: true
+    environment:
+      - CCACHE_DIR=/home/sercom/.ccache
+    ports:
+      - "9001:9001"
+      - "8080:8080"
+      - "8081:8081"
+      - "8443:8443"
+    command: bash -lc "sleep infinity"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+      
+volumes:
+  ccache:
+
+networks:
+  default:
+    enable_ipv6: true
+    
