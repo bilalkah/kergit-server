@@ -4,7 +4,7 @@ import { sendAuth } from '../api/chatApi.js';
 import { actions } from '../store/state.js';
 
 function resolveWebSocketUrl() {
-  const defaultLocal = 'ws://192.168.0.10:9001';
+  const defaultLocal = 'ws://localhost:9001';
   if (typeof window === 'undefined' || !window.location) return defaultLocal;
 
   const host = window.location.hostname || '';
