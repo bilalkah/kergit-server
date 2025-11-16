@@ -1,13 +1,13 @@
 """ Bazel extension for uSockets."""
-
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+load("//third_party:versions.bzl", "USOCKETS_VERSION", "USOCKETS_SHA256")
 
 def _usockets_impl(ctx):
     http_archive(
         name = "usockets",
-        url = "https://github.com/uNetworking/uSockets/archive/refs/tags/v0.8.8.tar.gz",
-        strip_prefix = "uSockets-0.8.8",
-        sha256 = "d14d2efe1df767dbebfb8d6f5b52aa952faf66b30c822fbe464debaa0c5c0b17",
+        url = "https://github.com/uNetworking/uSockets/archive/refs/tags/v{}.tar.gz".format(USOCKETS_VERSION),
+        strip_prefix = "uSockets-{}".format(USOCKETS_VERSION),
+        sha256 = "{}".format(USOCKETS_SHA256),
         build_file_content = """
 # ===== Feature switches via --define =====
 config_setting(name = "with_boringssl", define_values = {"WITH_BORINGSSL": "1"})
