@@ -11,7 +11,8 @@ using nlohmann::json;
 
 namespace app {
 
-GetHubInviteCommand::GetHubInviteCommand(PersistenceGateway& db, app::services::PublicIdService& ids)
+GetHubInviteCommand::GetHubInviteCommand(PersistenceGateway& db,
+                                         app::services::PublicIdService& ids)
     : db_(db), ids_(ids) {}
 
 bool GetHubInviteCommand::has_privilege(net::PerSocketData& psd, const HubId& hub_id) {
@@ -49,9 +50,8 @@ void GetHubInviteCommand::execute(CommandContext& ctx) {
         output.success = false;
         output.error_code = "missing_hub_id";
         output.error_message = "hub_id is required.";
-        output.data = {{"type", "error"},
-                       {"code", "missing_hub_id"},
-                       {"message", "hub_id is required"}};
+        output.data = {
+            {"type", "error"}, {"code", "missing_hub_id"}, {"message", "hub_id is required"}};
         return;
     }
 
@@ -60,9 +60,8 @@ void GetHubInviteCommand::execute(CommandContext& ctx) {
         output.success = false;
         output.error_code = "hub_not_found";
         output.error_message = "Hub not found.";
-        output.data = {{"type", "error"},
-                       {"code", "hub_not_found"},
-                       {"message", "Hub does not exist"}};
+        output.data = {
+            {"type", "error"}, {"code", "hub_not_found"}, {"message", "Hub does not exist"}};
         return;
     }
 

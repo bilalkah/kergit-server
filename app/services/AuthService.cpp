@@ -4,7 +4,6 @@ using namespace infra::security::token;
 
 namespace app::services {
 
-
 AuthServiceResult AuthService::authenticate(const std::string& token) {
     AuthServiceResult result;
     const auto& user_claims = token_verifier_.verify_token(token);

@@ -28,11 +28,12 @@ RenameHubCommand::RenameHubCommand(PersistenceGateway& db, net::ClientGateway& g
 
 std::string RenameHubCommand::sanitize(std::string name) {
     auto trim = [](std::string& s) {
-        s.erase(s.begin(),
-                std::find_if(s.begin(), s.end(), [](unsigned char ch) { return !std::isspace(ch); }));
-        s.erase(std::find_if(s.rbegin(), s.rend(), [](unsigned char ch) { return !std::isspace(ch); })
-                    .base(),
-                s.end());
+        s.erase(s.begin(), std::find_if(s.begin(), s.end(),
+                                        [](unsigned char ch) { return !std::isspace(ch); }));
+        s.erase(
+            std::find_if(s.rbegin(), s.rend(), [](unsigned char ch) { return !std::isspace(ch); })
+                .base(),
+            s.end());
     };
     trim(name);
     if (name.size() > 64) name.resize(64);
@@ -76,9 +77,8 @@ void RenameHubCommand::execute(CommandContext& ctx) {
         output.success = false;
         output.error_code = "missing_hub_id";
         output.error_message = "hub_id is required.";
-        output.data = {{"type", "error"},
-                       {"code", "missing_hub_id"},
-                       {"message", "hub_id is required"}};
+        output.data = {
+            {"type", "error"}, {"code", "missing_hub_id"}, {"message", "hub_id is required"}};
         return;
     }
 
@@ -87,9 +87,8 @@ void RenameHubCommand::execute(CommandContext& ctx) {
         output.success = false;
         output.error_code = "invalid_hub_name";
         output.error_message = "Hub name is required.";
-        output.data = {{"type", "error"},
-                       {"code", "invalid_hub_name"},
-                       {"message", "Hub name is required"}};
+        output.data = {
+            {"type", "error"}, {"code", "invalid_hub_name"}, {"message", "Hub name is required"}};
         return;
     }
 
@@ -98,9 +97,8 @@ void RenameHubCommand::execute(CommandContext& ctx) {
         output.success = false;
         output.error_code = "hub_not_found";
         output.error_message = "Hub not found.";
-        output.data = {{"type", "error"},
-                       {"code", "hub_not_found"},
-                       {"message", "Hub does not exist"}};
+        output.data = {
+            {"type", "error"}, {"code", "hub_not_found"}, {"message", "Hub does not exist"}};
         return;
     }
 
@@ -130,27 +128,25 @@ void RenameHubCommand::execute(CommandContext& ctx) {
     try {
         if (!db_.hubs().renameHub(*internal_hub, requested_name)) {
             output.success = false;
-        output.error_code = "rename_hub_failed";
-        output.error_message = "Unable to rename hub.";
-        output.data = {{"type", "error"},
-                       {"code", "rename_hub_failed"},
-                       {"message", "Unable to rename hub"}};
+            output.error_code = "rename_hub_failed";
+            output.error_message = "Unable to rename hub.";
+            output.data = {{"type", "error"},
+                           {"code", "rename_hub_failed"},
+                           {"message", "Unable to rename hub"}};
             return;
         }
 
         const auto public_hub_id = ids_.to_public(*internal_hub);
         hub_publisher_.publish_hub(*internal_hub);
 
-        json event = {{"type", "hub_renamed"},
-                      {"hub_id", public_hub_id.value},
-                      {"name", requested_name}};
+        json event = {
+            {"type", "hub_renamed"}, {"hub_id", public_hub_id.value}, {"name", requested_name}};
 
         connections_.for_each([&](UwsSocket* ws) {
             if (!ws) return;
             auto* other = ws->getUserData();
             if (!other || !other->authenticated) return;
-            if (other->hub_memberships.find(*internal_hub) == other->hub_memberships.end())
-                return;
+            if (other->hub_memberships.find(*internal_hub) == other->hub_memberships.end()) return;
             if (other->conn_id.value == psd.conn_id.value) return;
             gateway_.send_now(other->conn_id, event);
         });
@@ -164,8 +160,7 @@ void RenameHubCommand::execute(CommandContext& ctx) {
         output.success = false;
         output.error_code = "rename_hub_failed";
         output.error_message = ex.what();
-        output.data = {
-            {"type", "error"}, {"code", "rename_hub_failed"}, {"message", ex.what()}};
+        output.data = {{"type", "error"}, {"code", "rename_hub_failed"}, {"message", ex.what()}};
     }
 }
 

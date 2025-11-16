@@ -15,7 +15,8 @@ using nlohmann::json;
 
 namespace app {
 
-CreateChannelCommand::CreateChannelCommand(PersistenceGateway& db, app::services::HubPublisher& hub_publisher,
+CreateChannelCommand::CreateChannelCommand(PersistenceGateway& db,
+                                           app::services::HubPublisher& hub_publisher,
                                            app::services::PublicIdService& ids)
     : db_(db), hub_publisher_(hub_publisher), ids_(ids) {}
 

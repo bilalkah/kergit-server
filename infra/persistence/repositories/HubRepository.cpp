@@ -14,8 +14,7 @@ HubId HubRepository::createHub(const std::string& hubName, const UserId& ownerUu
     });
 }
 
-void HubRepository::addMember(const HubId& hubId, const UserId& userUuid,
-                              const std::string& role) {
+void HubRepository::addMember(const HubId& hubId, const UserId& userUuid, const std::string& role) {
     mux_.run(Repository::Hub, [&](pqxx::work& txn) {
         txn.exec(
             "INSERT INTO public.hub_members (hub_id, user_id, role) "
@@ -85,8 +84,7 @@ bool HubRepository::isHubMember(const HubId& hubId, const UserId& userUuid) {
     });
 }
 
-std::optional<Role> HubRepository::getMembershipRole(const HubId& hubId,
-                                                     const UserId& userUuid) {
+std::optional<Role> HubRepository::getMembershipRole(const HubId& hubId, const UserId& userUuid) {
     return mux_.run(Repository::Hub, [&](pqxx::work& txn) -> std::optional<Role> {
         auto res = txn.exec(
             "SELECT role FROM public.hub_members WHERE hub_id = $1::uuid AND user_id = $2::uuid "
@@ -97,8 +95,7 @@ std::optional<Role> HubRepository::getMembershipRole(const HubId& hubId,
     });
 }
 
-std::vector<std::pair<UserId, std::string>> HubRepository::getHubMembers(
-    const HubId& hubId) {
+std::vector<std::pair<UserId, std::string>> HubRepository::getHubMembers(const HubId& hubId) {
     return mux_.run(Repository::Hub, [&](pqxx::work& txn) {
         auto res = txn.exec(
             "SELECT hm.user_id::text, COALESCE(u.raw_user_meta_data->>'username',"
@@ -137,9 +134,9 @@ bool HubRepository::deleteHub(const HubId& hubId, const UserId& ownerUuid) {
 HubId HubRepository::ensurePersonalHubWithGeneral(const UserId& ownerUuid,
                                                   const std::string& hubName) {
     return mux_.run(Repository::Hub, [&](pqxx::work& txn) {
-        auto existing = txn.exec(
-            "SELECT id::text FROM public.hubs WHERE owner_id = $1::uuid LIMIT 1",
-            pqxx::params{ownerUuid.value});
+        auto existing =
+            txn.exec("SELECT id::text FROM public.hubs WHERE owner_id = $1::uuid LIMIT 1",
+                     pqxx::params{ownerUuid.value});
 
         std::string hubId;
         if (existing.empty()) {

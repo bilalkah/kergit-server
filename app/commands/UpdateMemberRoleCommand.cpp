@@ -8,14 +8,14 @@
 #include "net/PerSocketData.h"
 
 #include <nlohmann/json.hpp>
-
 #include <unordered_set>
 
 using nlohmann::json;
 
 namespace app {
 
-UpdateMemberRoleCommand::UpdateMemberRoleCommand(PersistenceGateway& db, net::ClientGateway& gateway,
+UpdateMemberRoleCommand::UpdateMemberRoleCommand(PersistenceGateway& db,
+                                                 net::ClientGateway& gateway,
                                                  net::ConnectionManager& connections,
                                                  app::services::PublicIdService& ids,
                                                  app::services::HubPublisher& hub_publisher)
@@ -148,9 +148,8 @@ void UpdateMemberRoleCommand::execute(CommandContext& ctx) {
             if (!other || !other->authenticated) return;
             if (!(other->user_id == *internal_user)) return;
             other->hub_roles[*internal_hub] = new_role;
-            json notice = {{"type", "member_role_updated"},
-                           {"hub_id", hub_id_str},
-                           {"role", new_role_str}};
+            json notice = {
+                {"type", "member_role_updated"}, {"hub_id", hub_id_str}, {"role", new_role_str}};
             gateway_.send_now(other->conn_id, notice);
         });
 
@@ -168,9 +167,7 @@ void UpdateMemberRoleCommand::execute(CommandContext& ctx) {
         output.success = false;
         output.error_code = "update_failed";
         output.error_message = ex.what();
-        output.data = {{"type", "error"},
-                       {"code", "update_failed"},
-                       {"message", ex.what()}};
+        output.data = {{"type", "error"}, {"code", "update_failed"}, {"message", ex.what()}};
     }
 }
 

@@ -13,7 +13,7 @@ class ConnectionManager;
 namespace app::services {
 class PublicIdService;
 class HubPublisher;
-}
+}  // namespace app::services
 
 namespace app {
 

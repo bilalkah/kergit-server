@@ -28,11 +28,12 @@ RenameChannelCommand::RenameChannelCommand(PersistenceGateway& db, net::ClientGa
 
 std::string RenameChannelCommand::sanitize(std::string name) {
     auto trim = [](std::string& s) {
-        s.erase(s.begin(),
-                std::find_if(s.begin(), s.end(), [](unsigned char ch) { return !std::isspace(ch); }));
-        s.erase(std::find_if(s.rbegin(), s.rend(), [](unsigned char ch) { return !std::isspace(ch); })
-                    .base(),
-                s.end());
+        s.erase(s.begin(), std::find_if(s.begin(), s.end(),
+                                        [](unsigned char ch) { return !std::isspace(ch); }));
+        s.erase(
+            std::find_if(s.rbegin(), s.rend(), [](unsigned char ch) { return !std::isspace(ch); })
+                .base(),
+            s.end());
     };
     trim(name);
     if (name.size() > 48) name.resize(48);
@@ -138,11 +139,11 @@ void RenameChannelCommand::execute(CommandContext& ctx) {
     try {
         if (!db_.channels().renameChannel(channel->channel_id, requested_name)) {
             output.success = false;
-        output.error_code = "rename_channel_failed";
-        output.error_message = "Unable to rename channel.";
-        output.data = {{"type", "error"},
-                       {"code", "rename_channel_failed"},
-                       {"message", "Unable to rename channel"}};
+            output.error_code = "rename_channel_failed";
+            output.error_message = "Unable to rename channel.";
+            output.data = {{"type", "error"},
+                           {"code", "rename_channel_failed"},
+                           {"message", "Unable to rename channel"}};
             return;
         }
 

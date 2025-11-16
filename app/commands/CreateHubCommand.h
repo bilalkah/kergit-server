@@ -14,7 +14,7 @@ class ClientGateway;
 namespace app::services {
 class HubPublisher;
 class PublicIdService;
-}
+}  // namespace app::services
 
 namespace app {
 
