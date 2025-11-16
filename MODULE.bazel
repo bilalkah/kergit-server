@@ -27,6 +27,12 @@ use_repo(libdeflate_ext, "libdeflate")
 uwebsockets_ext = use_extension("//third_party/uwebsockets:extension.bzl", "uwebsockets")
 use_repo(uwebsockets_ext, "uwebsockets")
 
+redis_plus_plus_ext = use_extension("//third_party/redis_plus_plus:extension.bzl", "redis_plus_plus")
+use_repo(redis_plus_plus_ext, "redis_plus_plus")
+
+hiredis_ext = use_extension("//third_party/hiredis:extension.bzl", "hiredis")
+use_repo(hiredis_ext, "hiredis")
+
 
 # Bazel rules dependencies.
 bazel_dep(name = "rules_python", version = "1.5.3")

@@ -1,0 +1,5 @@
+alias(
+    name = "redis_plus_plus",
+    actual = "@redis_plus_plus//:redis_plus_plus",
+    visibility = ["//visibility:public"],
+)
