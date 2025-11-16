@@ -20,7 +20,8 @@ namespace {
 constexpr std::size_t kMaxNameLength = 48;
 }  // namespace
 
-UpdateProfileCommand::UpdateProfileCommand(PersistenceGateway& db, app::services::HubPublisher& hub_publisher,
+UpdateProfileCommand::UpdateProfileCommand(PersistenceGateway& db,
+                                           app::services::HubPublisher& hub_publisher,
                                            app::services::PublicIdService& ids)
     : db_(db), hub_publisher_(hub_publisher), ids_(ids) {}
 

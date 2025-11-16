@@ -8,7 +8,6 @@
 #include "net/PerSocketData.h"
 
 #include <nlohmann/json.hpp>
-
 #include <unordered_set>
 #include <vector>
 
@@ -171,9 +170,7 @@ void DeleteChannelCommand::execute(CommandContext& ctx) {
         output.success = false;
         output.error_code = "delete_failed";
         output.error_message = ex.what();
-        output.data = {{"type", "error"},
-                       {"code", "delete_failed"},
-                       {"message", ex.what()}};
+        output.data = {{"type", "error"}, {"code", "delete_failed"}, {"message", ex.what()}};
     }
 }
 

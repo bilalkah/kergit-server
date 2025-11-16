@@ -14,8 +14,7 @@ refresh_compile_commands(
     # Specify the targets of interest.
     # For example, specify a dict of targets and any flags required to build.
     targets = {
-        "//app:server_app": "--config=sslquic_dbg",
-        "//clients/web:http_server": "",
+        "//...": "--config=vanilla",
     },
     # No need to add flags already in .bazelrc. They're automatically picked up.
     # If you don't need flags, a list of targets is also okay, as is a single target string.

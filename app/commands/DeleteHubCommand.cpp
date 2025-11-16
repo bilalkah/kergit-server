@@ -8,7 +8,6 @@
 #include "net/PerSocketData.h"
 
 #include <nlohmann/json.hpp>
-
 #include <unordered_set>
 #include <vector>
 
@@ -61,9 +60,8 @@ void DeleteHubCommand::execute(CommandContext& ctx) {
         output.success = false;
         output.error_code = "missing_hub_id";
         output.error_message = "hub_id is required.";
-        output.data = {{"type", "error"},
-                       {"code", "missing_hub_id"},
-                       {"message", "hub_id is required"}};
+        output.data = {
+            {"type", "error"}, {"code", "missing_hub_id"}, {"message", "hub_id is required"}};
         return;
     }
 
@@ -72,9 +70,8 @@ void DeleteHubCommand::execute(CommandContext& ctx) {
         output.success = false;
         output.error_code = "hub_not_found";
         output.error_message = "Hub not found.";
-        output.data = {{"type", "error"},
-                       {"code", "hub_not_found"},
-                       {"message", "Hub does not exist"}};
+        output.data = {
+            {"type", "error"}, {"code", "hub_not_found"}, {"message", "Hub does not exist"}};
         return;
     }
 
@@ -171,14 +168,13 @@ void DeleteHubCommand::execute(CommandContext& ctx) {
             for (const auto& channel_id : note.channel_ids) {
                 gateway_.unsubscribe(note.conn_id, "channel:" + channel_id.value);
                 const auto public_channel_id = ids_.to_public(channel_id);
-                gateway_.send_now(
-                    note.conn_id,
-                    {{"type", "channel_closed"},
-                     {"channel_id", public_channel_id.value},
-                     {"reason", "hub_deleted"}});
+                gateway_.send_now(note.conn_id, {{"type", "channel_closed"},
+                                                 {"channel_id", public_channel_id.value},
+                                                 {"reason", "hub_deleted"}});
             }
             if (note.send_hub_deleted) {
-                gateway_.send_now(note.conn_id, {{"type", "hub_deleted"}, {"hub_id", public_hub_id.value}});
+                gateway_.send_now(note.conn_id,
+                                  {{"type", "hub_deleted"}, {"hub_id", public_hub_id.value}});
             }
         }
 

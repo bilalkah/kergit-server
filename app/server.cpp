@@ -6,9 +6,23 @@
 
 #include <csignal>
 #include <iostream>
+#include <sw/redis++/redis++.h>
 #include <thread>
 
 using namespace core;
+
+void test_redis_connection(const std::string& host, int port) {
+    try {
+        std::string uri = "tcp://" + host + ":" + std::to_string(port);
+
+        sw::redis::Redis redis(uri);
+
+        auto reply = redis.ping();
+        std::cout << "[Redis] PING reply: " << reply << std::endl;
+    } catch (const sw::redis::Error& e) {
+        std::cerr << "[Redis] Connection error: " << e.what() << std::endl;
+    }
+}
 
 std::atomic<bool> g_shutdown_requested{false};
 
@@ -24,6 +38,15 @@ int main() {
     try {
         std::unique_ptr<ChatServerApp> g_server;
         utils::EnvLoader::load_env_file();
+
+        log_line(utils::LogLevel::INFO,
+                 "Redis host: " + utils::EnvLoader::get_env("REDIS_HOST", "not_set") +
+                     ", port: " + utils::EnvLoader::get_env("REDIS_PORT", "not_set"));
+
+        std::string redis_host = utils::EnvLoader::get_env("REDIS_HOST", "not_set");
+        int redis_port = std::stoi(utils::EnvLoader::get_env("REDIS_PORT", "not_set"));
+
+        test_redis_connection(redis_host, redis_port);
 
         ServerConfig cfg;
         ServerConfigFiller::fill_from_env(cfg);

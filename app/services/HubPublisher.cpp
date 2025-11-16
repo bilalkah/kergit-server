@@ -22,9 +22,9 @@ std::string channel_type_to_string(ChannelType type) {
 }
 }  // namespace
 
-HubPublisher::HubPublisher(core::IApp& app, PersistenceGateway& db, net::ConnectionManager& connections,
-                           net::ClientGateway& gateway, PublicIdService& ids,
-                           std::chrono::milliseconds interval)
+HubPublisher::HubPublisher(core::IApp& app, PersistenceGateway& db,
+                           net::ConnectionManager& connections, net::ClientGateway& gateway,
+                           PublicIdService& ids, std::chrono::milliseconds interval)
     : app_(app),
       db_(db),
       connections_(connections),

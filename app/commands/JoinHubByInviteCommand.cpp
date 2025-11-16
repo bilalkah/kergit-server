@@ -96,9 +96,8 @@ void JoinHubByInviteCommand::execute(CommandContext& ctx) {
         output.success = false;
         output.error_code = "invalid_invite";
         output.error_message = "Invite code is required.";
-        output.data = {{"type", "error"},
-                       {"code", "invalid_invite"},
-                       {"message", "Invite code is required"}};
+        output.data = {
+            {"type", "error"}, {"code", "invalid_invite"}, {"message", "Invite code is required"}};
         return;
     }
 
@@ -107,9 +106,8 @@ void JoinHubByInviteCommand::execute(CommandContext& ctx) {
         output.success = false;
         output.error_code = "invite_not_found";
         output.error_message = "Invite code is invalid.";
-        output.data = {{"type", "error"},
-                       {"code", "invite_not_found"},
-                       {"message", "Invite code is invalid"}};
+        output.data = {
+            {"type", "error"}, {"code", "invite_not_found"}, {"message", "Invite code is invalid"}};
         return;
     }
 
@@ -118,13 +116,12 @@ void JoinHubByInviteCommand::execute(CommandContext& ctx) {
         output.success = false;
         output.error_code = "hub_not_found";
         output.error_message = "Hub not found.";
-        output.data = {{"type", "error"},
-                       {"code", "hub_not_found"},
-                       {"message", "Hub not found"}};
+        output.data = {{"type", "error"}, {"code", "hub_not_found"}, {"message", "Hub not found"}};
         return;
     }
 
-    if (psd.hub_memberships.count(*internal_hub) || db_.hubs().isHubMember(*internal_hub, psd.user_id)) {
+    if (psd.hub_memberships.count(*internal_hub) ||
+        db_.hubs().isHubMember(*internal_hub, psd.user_id)) {
         output.success = true;
         output.error_code.clear();
         output.error_message.clear();
@@ -168,9 +165,7 @@ void JoinHubByInviteCommand::execute(CommandContext& ctx) {
         output.success = false;
         output.error_code = "join_hub_failed";
         output.error_message = ex.what();
-        output.data = {{"type", "error"},
-                       {"code", "join_hub_failed"},
-                       {"message", ex.what()}};
+        output.data = {{"type", "error"}, {"code", "join_hub_failed"}, {"message", ex.what()}};
     }
 }
 

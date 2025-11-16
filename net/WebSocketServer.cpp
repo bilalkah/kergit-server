@@ -85,7 +85,7 @@ void WebSocketServer::wire(const std::string& pattern) {
 
                              const auto& validated = validation.message;
                              auto type = validated.value("type", std::string{});
-                             
+
                              if (type == "pong") {
                                  heartbeat_.on_pong(*psd);
                                  return;

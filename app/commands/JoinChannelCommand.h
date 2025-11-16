@@ -25,8 +25,8 @@ namespace app {
 
 class JoinChannelCommand : public ICommand {
    public:
-    JoinChannelCommand(PersistenceGateway& db, net::ClientGateway& gateway, net::ConnectionManager& connections,
-                       app::services::PublicIdService& ids);
+    JoinChannelCommand(PersistenceGateway& db, net::ClientGateway& gateway,
+                       net::ConnectionManager& connections, app::services::PublicIdService& ids);
     void execute(CommandContext&) override;
 
    private:

@@ -3,13 +3,16 @@ services:
     build: .
     container_name: sercom-dev-macos
     volumes:
-      - ..:/home/sercom/workspace:cached
+      - ./:/home/sercom/workspace:cached
       - ccache:/home/sercom/.ccache
     working_dir: /home/sercom/workspace
     tty: true
     stdin_open: true
     environment:
       - CCACHE_DIR=/home/sercom/.ccache
+      - REDIS_URL=redis://redis:6379
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     ports:
       - "9001:9001"
       - "8080:8080"
@@ -18,11 +21,26 @@ services:
     command: bash -lc "sleep infinity"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    depends_on:
+      - redis
+      
+  
+  redis:
+    image: redis:7-alpine
+    container_name: sercom-redis
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+
       
 volumes:
   ccache:
+  redis-data:
 
 networks:
   default:
     enable_ipv6: true
     
+

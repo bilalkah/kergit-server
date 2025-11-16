@@ -102,9 +102,8 @@ std::optional<Channel> ChannelRepository::getChannel(const ChannelId& channelId)
 
 bool ChannelRepository::renameChannel(const ChannelId& channelId, const std::string& name) {
     return mux_.run(Repository::Channel, [&](pqxx::work& txn) {
-        auto res = txn.exec(
-            "UPDATE public.channels SET name = $2 WHERE id = $1::uuid RETURNING id",
-            pqxx::params{channelId.value, name});
+        auto res = txn.exec("UPDATE public.channels SET name = $2 WHERE id = $1::uuid RETURNING id",
+                            pqxx::params{channelId.value, name});
         return !res.empty();
     });
 }
