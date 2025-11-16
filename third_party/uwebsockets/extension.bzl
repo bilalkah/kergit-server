@@ -1,12 +1,13 @@
-"""Bazel extension for uWebSockets v20.74.0 (http_archive)."""
+"""Bazel extension for uWebSockets (http_archive)."""
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+load("//third_party:versions.bzl", "UWEBSOCKETS_VERSION", "UWEBSOCKETS_SHA256")
 
 def _uwebsockets_impl(ctx):
     http_archive(
         name = "uwebsockets",
-        url = "https://github.com/uNetworking/uWebSockets/archive/refs/tags/v20.74.0.tar.gz",
-        strip_prefix = "uWebSockets-20.74.0",
-        # sha256 = "<optional-but-recommended>",
+        url = "https://github.com/uNetworking/uWebSockets/archive/refs/tags/v{}.tar.gz".format(UWEBSOCKETS_VERSION),
+        strip_prefix = "uWebSockets-{}".format(UWEBSOCKETS_VERSION),
+        sha256 = "{}".format(UWEBSOCKETS_SHA256),
         build_file_content = r"""
 # === Feature toggles (match upstream build.c env flags) ===
 config_setting(name = "with_zlib",       define_values = {"WITH_ZLIB": "1"})
