@@ -14,14 +14,37 @@ export function renderHubs(root, hubs, currentId) {
   });
 }
 
-export function renderChannels(root, channels, currentId) {
+export function renderChannels(root, channels, currentId, options = {}) {
+  if (!root) return;
+  const { canDelete = false } = options;
   root.innerHTML = '';
-  channels.forEach(c => {
+  channels.forEach((c) => {
     const el = document.createElement('div');
     el.className = `channel ${c.id === currentId ? 'active' : ''}`;
-    el.textContent = `# ${c.name}`;
     el.dataset.channelId = c.id;
     el.dataset.channelName = c.name;
+
+    const label = document.createElement('span');
+    label.className = 'channel-label';
+    label.textContent = `# ${c.name}`;
+    el.appendChild(label);
+
+    if (canDelete) {
+      const actions = document.createElement('div');
+      actions.className = 'channel-actions';
+
+      const btn = document.createElement('button');
+      btn.className = 'channel-menu-btn';
+      btn.type = 'button';
+      btn.dataset.action = 'channel-settings';
+      btn.dataset.channelId = c.id;
+      btn.title = 'Channel settings';
+      btn.innerHTML = '<i class="fas fa-ellipsis-h"></i>';
+      actions.appendChild(btn);
+
+      el.appendChild(actions);
+    }
+
     root.appendChild(el);
   });
 }

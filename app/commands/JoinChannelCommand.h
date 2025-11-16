@@ -6,11 +6,10 @@
 #include "domains/Message.h"
 
 #include <nlohmann/json.hpp>
-
 #include <unordered_set>
 #include <vector>
 
-class ChatDB;
+class PersistenceGateway;
 
 namespace net {
 class ClientGateway;
@@ -18,11 +17,16 @@ class ConnectionManager;
 struct PerSocketData;
 }  // namespace net
 
+namespace app::services {
+class PublicIdService;
+}
+
 namespace app {
 
 class JoinChannelCommand : public ICommand {
    public:
-    JoinChannelCommand(ChatDB& db, net::ClientGateway& gateway, net::ConnectionManager& connections);
+    JoinChannelCommand(PersistenceGateway& db, net::ClientGateway& gateway, net::ConnectionManager& connections,
+                       app::services::PublicIdService& ids);
     void execute(CommandContext&) override;
 
    private:
@@ -31,11 +35,12 @@ class JoinChannelCommand : public ICommand {
     static std::string channel_topic(const ChannelId& channel_id);
     std::string resolve_display_name(const UserId& user_id) const;
     void publish_presence_update(const ChannelId& channel_id, const net::PerSocketData& psd,
-                                 bool online) const;
+                                 bool online);
 
-    ChatDB& db_;
+    PersistenceGateway& db_;
     net::ClientGateway& gateway_;
     net::ConnectionManager& connections_;
+    app::services::PublicIdService& ids_;
 };
 
 }  // namespace app

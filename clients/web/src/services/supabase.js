@@ -10,14 +10,37 @@ export function initSupabase(url, anon) {
   console.log('[Supabase] client initialized');
 }
 
+async function requireClient() {
+  if (!supabase) throw new Error('[Supabase] client not initialized');
+  return supabase;
+}
+
+function ensureSession(data, action) {
+  const { session, user } = data || {};
+  if (!session?.access_token) throw new Error(`[Supabase] ${action} did not return a session/access token`);
+  return { token: session.access_token, user };
+}
+
 export async function loginWithPassword(email, password) {
   if (!supabase) throw new Error('[Supabase] client not initialized');
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) throw new Error(`[Supabase] ${error.message}`);
-  const { session, user } = data || {};
-  if (!session?.access_token) throw new Error('[Supabase] no access token');
-  console.log('[Supabase] login ok for', user?.email);
-  return { token: session.access_token, user };
+  const result = ensureSession(data, 'login');
+  console.log('[Supabase] login ok for', result.user?.email);
+  return result;
+}
+
+export async function signUpWithPassword(email, password, metadata = {}) {
+  await requireClient();
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: { data: metadata }
+  });
+  if (error) throw new Error(`[Supabase] ${error.message}`);
+  const result = ensureSession(data, 'signup');
+  console.log('[Supabase] signup ok for', result.user?.email);
+  return result;
 }
 
 export async function logout() {

@@ -24,27 +24,12 @@ cc_library(
         ":i_command",
         "//app/services:auth_service",
         "//app/services:hub_publisher",
-        "//infra/persistence:chatdb_lib",
+        "//app/services:public_id_service",
         "//domains:channel_domain",
         "//domains:hub_domain",
+        "//infra/persistence:persistence_gateway_lib",
         "//net:client_gateway",
         "//net:connection_manager",
-    ],
-)
-
-cc_library(
-    name = "list_command",
-    srcs = ["ListCommand.cpp"],
-    hdrs = ["ListCommand.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":i_command",
-        "//app/services:hub_publisher",
-        "//infra/persistence:chatdb_lib",
-        "//net:connection_manager",
-        "//domains:channel_domain",
-        "//domains:hub_domain",
-        "@nlohmann_json",
     ],
 )
 
@@ -55,22 +40,11 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":i_command",
-        "//infra/persistence:chatdb_lib",
-        "//net:client_gateway",
-        "//net:connection_manager",
+        "//app/services:public_id_service",
         "//domains:channel_domain",
         "//domains:message_domain",
-        "@nlohmann_json",
-    ],
-)
-
-cc_library(
-    name = "channel_users_command",
-    srcs = ["ChannelUsersCommand.cpp"],
-    hdrs = ["ChannelUsersCommand.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":i_command",
+        "//infra/persistence:persistence_gateway_lib",
+        "//net:client_gateway",
         "//net:connection_manager",
         "@nlohmann_json",
     ],
@@ -83,9 +57,10 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":i_command",
-        "//infra/persistence:chatdb_lib",
-        "//net:client_gateway",
+        "//app/services:public_id_service",
         "//domains:message_domain",
+        "//infra/persistence:persistence_gateway_lib",
+        "//net:client_gateway",
         "@nlohmann_json",
     ],
 )
@@ -97,9 +72,165 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":i_command",
-        "//infra/persistence:chatdb_lib",
         "//app/services:hub_publisher",
+        "//app/services:public_id_service",
         "//domains:hub_domain",
+        "//infra/persistence:persistence_gateway_lib",
+        "@nlohmann_json",
+    ],
+)
+
+cc_library(
+    name = "create_hub_command",
+    srcs = ["CreateHubCommand.cpp"],
+    hdrs = ["CreateHubCommand.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":i_command",
+        "//app/services:hub_publisher",
+        "//app/services:public_id_service",
+        "//domains:channel_domain",
+        "//infra/persistence:persistence_gateway_lib",
+        "//net:client_gateway",
+        "@nlohmann_json",
+    ],
+)
+
+cc_library(
+    name = "update_profile_command",
+    srcs = ["UpdateProfileCommand.cpp"],
+    hdrs = ["UpdateProfileCommand.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":i_command",
+        "//app/services:hub_publisher",
+        "//app/services:public_id_service",
+        "//infra/persistence:persistence_gateway_lib",
+        "@nlohmann_json",
+    ],
+)
+
+cc_library(
+    name = "delete_channel_command",
+    srcs = ["DeleteChannelCommand.cpp"],
+    hdrs = ["DeleteChannelCommand.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":i_command",
+        "//app/services:hub_publisher",
+        "//app/services:public_id_service",
+        "//infra/persistence:persistence_gateway_lib",
+        "//net:client_gateway",
+        "//net:connection_manager",
+        "@nlohmann_json",
+    ],
+)
+
+cc_library(
+    name = "rename_channel_command",
+    srcs = ["RenameChannelCommand.cpp"],
+    hdrs = ["RenameChannelCommand.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":i_command",
+        "//app/services:hub_publisher",
+        "//app/services:public_id_service",
+        "//domains:channel_domain",
+        "//infra/persistence:persistence_gateway_lib",
+        "//net:client_gateway",
+        "@nlohmann_json",
+    ],
+)
+
+cc_library(
+    name = "rename_hub_command",
+    srcs = ["RenameHubCommand.cpp"],
+    hdrs = ["RenameHubCommand.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":i_command",
+        "//app/services:hub_publisher",
+        "//app/services:public_id_service",
+        "//infra/persistence:persistence_gateway_lib",
+        "//net:client_gateway",
+        "//net:connection_manager",
+        "@nlohmann_json",
+    ],
+)
+
+cc_library(
+    name = "delete_hub_command",
+    srcs = ["DeleteHubCommand.cpp"],
+    hdrs = ["DeleteHubCommand.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":i_command",
+        "//app/services:hub_publisher",
+        "//app/services:public_id_service",
+        "//infra/persistence:persistence_gateway_lib",
+        "//net:client_gateway",
+        "//net:connection_manager",
+        "@nlohmann_json",
+    ],
+)
+
+cc_library(
+    name = "leave_hub_command",
+    srcs = ["LeaveHubCommand.cpp"],
+    hdrs = ["LeaveHubCommand.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":i_command",
+        "//app/services:hub_publisher",
+        "//app/services:public_id_service",
+        "//infra/persistence:persistence_gateway_lib",
+        "//net:client_gateway",
+        "//net:connection_manager",
+        "@nlohmann_json",
+    ],
+)
+
+cc_library(
+    name = "get_hub_invite_command",
+    srcs = ["GetHubInviteCommand.cpp"],
+    hdrs = ["GetHubInviteCommand.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":i_command",
+        "//app/services:public_id_service",
+        "//infra/persistence:persistence_gateway_lib",
+        "@nlohmann_json",
+    ],
+)
+
+cc_library(
+    name = "join_hub_by_invite_command",
+    srcs = ["JoinHubByInviteCommand.cpp"],
+    hdrs = ["JoinHubByInviteCommand.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":i_command",
+        "//app/services:hub_publisher",
+        "//app/services:public_id_service",
+        "//infra/persistence:persistence_gateway_lib",
+        "//net:client_gateway",
+        "//net:connection_manager",
+        "@nlohmann_json",
+    ],
+)
+
+cc_library(
+    name = "update_member_role_command",
+    srcs = ["UpdateMemberRoleCommand.cpp"],
+    hdrs = ["UpdateMemberRoleCommand.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":i_command",
+        "//app/services:hub_publisher",
+        "//app/services:public_id_service",
+        "//infra/persistence:persistence_gateway_lib",
+        "//net:client_gateway",
+        "//net:connection_manager",
         "@nlohmann_json",
     ],
 )

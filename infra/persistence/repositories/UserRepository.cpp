@@ -1,0 +1,51 @@
+#include "infra/persistence/repositories/UserRepository.h"
+
+#include <nlohmann/json.hpp>
+#include <stdexcept>
+
+std::optional<std::string> UserRepository::getUserDisplayName(const UserId& userUuid) {
+    return mux_.run(Repository::User, [&](pqxx::work& txn) -> std::optional<std::string> {
+        auto res = txn.exec(
+            "SELECT COALESCE(raw_user_meta_data->>'username', "
+            "raw_user_meta_data->>'preferred_username',"
+            " raw_user_meta_data->>'full_name', '') AS display FROM auth.users WHERE id = $1::uuid",
+            pqxx::params{userUuid.value});
+        if (res.empty()) return std::nullopt;
+        auto display = res[0][0].as<std::string>();
+        if (display.empty()) return std::nullopt;
+        return display;
+    });
+}
+
+std::pair<std::string, std::string> UserRepository::updateUserProfile(
+    const UserId& userUuid, const std::optional<std::string>& username,
+    const std::optional<std::string>& full_name) {
+    if (!username.has_value() && !full_name.has_value()) return {std::string{}, std::string{}};
+
+    return mux_.run(Repository::User, [&](pqxx::work& txn) {
+        auto res = txn.exec(
+            "SELECT COALESCE(raw_user_meta_data::text, '{}') FROM auth.users WHERE id = $1::uuid "
+            "FOR UPDATE",
+            pqxx::params{userUuid.value});
+        if (res.empty()) throw std::runtime_error("User not found");
+
+        nlohmann::json meta;
+        try {
+            meta = nlohmann::json::parse(res[0][0].as<std::string>(), nullptr, false);
+            if (!meta.is_object()) meta = nlohmann::json::object();
+        } catch (...) {
+            meta = nlohmann::json::object();
+        }
+
+        if (username.has_value()) meta["username"] = *username;
+        if (full_name.has_value()) meta["full_name"] = *full_name;
+
+        const std::string payload = meta.dump();
+        txn.exec("UPDATE auth.users SET raw_user_meta_data = $2::jsonb WHERE id = $1::uuid",
+                 pqxx::params{userUuid.value, payload});
+
+        std::string final_username = meta.value("username", std::string{});
+        std::string final_full_name = meta.value("full_name", std::string{});
+        return std::make_pair(std::move(final_username), std::move(final_full_name));
+    });
+}

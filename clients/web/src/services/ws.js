@@ -40,23 +40,19 @@ export class WSClient {
       this.currentUrl = url;
       this.lastHeaders = headers;
       this.lastTimeoutMs = timeoutMs;
-      this.ws = new WebSocket(url);
+    const socket = new WebSocket(url);
+    this.ws = socket;
 
-      const onMessage = (ev) => {
-        console.log('[WS<= RAW]', ev.data);
-        let msg;
-        try { msg = JSON.parse(ev.data); } catch { return; }
+    const onMessage = (ev) => {
+      if (this.ws !== socket) return;
+      let msg;
+      try { msg = JSON.parse(ev.data); } catch { return; }
         if (msg?.type === 'ping') {
           const receivedAt = Date.now();
           this.lastPongAt = receivedAt;
           this.stalled = false;
           const latencyMs = typeof msg.ts === 'number' ? Math.max(0, receivedAt - msg.ts) : null;
           this.lastPingInfo = { latencyMs, serverTs: msg?.ts ?? null, receivedAt };
-          if (latencyMs != null) {
-            console.log(`[WS<=] ping latency ${latencyMs}ms`);
-          } else {
-            console.log('[WS<=] ping received');
-          }
           this.send({ type: 'pong', ts: msg?.ts ?? receivedAt });
           this._emit('__ping__', this.lastPingInfo);
         }
@@ -65,6 +61,7 @@ export class WSClient {
       };
 
       const onOpen = () => {
+        if (this.ws !== socket) return;
         if (settled) return;
         settled = true;
         this._emit('__open__');
@@ -78,6 +75,7 @@ export class WSClient {
       };
 
       const onError = (e) => {
+        if (this.ws !== socket) return;
         if (settled) return;
         settled = true;
         clearTimeout(timer);
@@ -85,15 +83,18 @@ export class WSClient {
       };
 
       const onClose = (event) => {
-        const wasManual = this.manualClose;
-        this.manualClose = false;
-        this._stopHeartbeat();
-        this.stalled = false;
-        this.lastPingInfo = null;
-        this.lastPongAt = 0;
+        const isCurrent = this.ws === socket;
+        const wasManual = this.manualClose && isCurrent;
+        if (isCurrent) {
+          this.manualClose = false;
+          this._stopHeartbeat();
+          this.stalled = false;
+          this.lastPingInfo = null;
+          this.lastPongAt = 0;
+          this.ws = null;
+        }
         this._emit('__close__', { manual: wasManual, code: event?.code, reason: event?.reason });
-        this._emit('__ping__', null);
-        this.ws = null;
+        if (isCurrent) this._emit('__ping__', null);
         if (!settled) {
           settled = true;
           clearTimeout(timer);
@@ -109,10 +110,10 @@ export class WSClient {
       }, timeoutMs);
 
       // Attach all listeners once, permanently for this connection
-      this.ws.addEventListener('message', onMessage);
-      this.ws.addEventListener('open', onOpen);
-      this.ws.addEventListener('error', onError);
-      this.ws.addEventListener('close', onClose);
+      socket.addEventListener('message', onMessage);
+      socket.addEventListener('open', onOpen);
+      socket.addEventListener('error', onError);
+      socket.addEventListener('close', onClose);
     });
   }
 
@@ -167,13 +168,21 @@ export class WSClient {
     this.lastPongAt = Date.now();
     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
     this.heartbeatTimer = setInterval(() => {
-      const missFor = Date.now() - this.lastPongAt;
+      const now = Date.now();
+      const missFor = now - this.lastPongAt;
+      const isHidden = typeof document !== 'undefined' && document.hidden;
       if (missFor > this.missToleranceMs) {
         if (!this.stalled) {
           this.stalled = true;
           this._emit('__stalled__', { missFor });
-          try { this.ws?.close(4000, 'heartbeat timeout'); } catch { }
         }
+        if (isHidden) {
+          this.lastPongAt = now;
+        }
+        return;
+      }
+      if (this.stalled && missFor <= this.missToleranceMs) {
+        this.stalled = false;
       }
     }, this.heartbeatMs);
   }

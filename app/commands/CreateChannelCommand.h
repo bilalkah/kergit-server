@@ -6,24 +6,27 @@
 
 #include <string>
 
-class ChatDB;
+class PersistenceGateway;
 
 namespace app::services {
 class HubPublisher;
-}
+class PublicIdService;
+}  // namespace app::services
 
 namespace app {
 
 class CreateChannelCommand : public ICommand {
    public:
-    CreateChannelCommand(ChatDB& db, app::services::HubPublisher& hub_publisher);
+    CreateChannelCommand(PersistenceGateway& db, app::services::HubPublisher& hub_publisher,
+                         app::services::PublicIdService& ids);
     void execute(CommandContext&) override;
 
    private:
     bool has_privilege(net::PerSocketData& psd, const HubId& hub_id);
 
-    ChatDB& db_;
+    PersistenceGateway& db_;
     app::services::HubPublisher& hub_publisher_;
+    app::services::PublicIdService& ids_;
 };
 
 }  // namespace app
