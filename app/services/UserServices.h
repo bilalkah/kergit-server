@@ -16,12 +16,10 @@ namespace app::services {
 
 class UserServices {
    public:
-   UserServices(PersistenceGateway& db, net::ClientGateway& gateway,
-                net::ConnectionManager& connections,
-                app::services::PublicIdService& ids)
-       : db_(db), gateway_(gateway), connections_(connections), ids_(ids) {}
+    UserServices(PersistenceGateway& db, net::ClientGateway& gateway,
+                 net::ConnectionManager& connections, app::services::PublicIdService& ids)
+        : db_(db), gateway_(gateway), connections_(connections), ids_(ids) {}
 
-    
    private:
     PersistenceGateway& db_;
     net::ClientGateway& gateway_;

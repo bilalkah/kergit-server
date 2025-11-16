@@ -8,7 +8,6 @@
 #include "net/PerSocketData.h"
 
 #include <nlohmann/json.hpp>
-
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -88,9 +87,8 @@ void LeaveHubCommand::execute(CommandContext& ctx) {
         output.success = false;
         output.error_code = "missing_hub_id";
         output.error_message = "hub_id is required.";
-        output.data = {{"type", "error"},
-                       {"code", "missing_hub_id"},
-                       {"message", "hub_id is required"}};
+        output.data = {
+            {"type", "error"}, {"code", "missing_hub_id"}, {"message", "hub_id is required"}};
         return;
     }
 
@@ -99,9 +97,8 @@ void LeaveHubCommand::execute(CommandContext& ctx) {
         output.success = false;
         output.error_code = "hub_not_found";
         output.error_message = "Hub not found.";
-        output.data = {{"type", "error"},
-                       {"code", "hub_not_found"},
-                       {"message", "Hub does not exist"}};
+        output.data = {
+            {"type", "error"}, {"code", "hub_not_found"}, {"message", "Hub does not exist"}};
         return;
     }
 
@@ -208,9 +205,7 @@ void LeaveHubCommand::execute(CommandContext& ctx) {
         output.success = false;
         output.error_code = "leave_hub_failed";
         output.error_message = ex.what();
-        output.data = {{"type", "error"},
-                       {"code", "leave_hub_failed"},
-                       {"message", ex.what()}};
+        output.data = {{"type", "error"}, {"code", "leave_hub_failed"}, {"message", ex.what()}};
     }
 }
 

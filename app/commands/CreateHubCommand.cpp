@@ -2,17 +2,15 @@
 
 #include "app/services/HubPublisher.h"
 #include "app/services/PublicIdService.h"
+#include "domains/Channel.h"
 #include "infra/persistence/PersistenceGateway.h"
 #include "net/ClientGateway.h"
 #include "net/PerSocketData.h"
 
-#include <nlohmann/json.hpp>
-
 #include <algorithm>
 #include <cctype>
+#include <nlohmann/json.hpp>
 #include <string>
-
-#include "domains/Channel.h"
 
 using nlohmann::json;
 
@@ -22,7 +20,7 @@ namespace {
 std::string channel_type_to_string(ChannelType type) {
     return type == ChannelType::VOICE ? "voice" : "text";
 }
-}
+}  // namespace
 
 CreateHubCommand::CreateHubCommand(PersistenceGateway& db, net::ClientGateway& gateway,
                                    app::services::HubPublisher& hub_publisher,
@@ -31,11 +29,12 @@ CreateHubCommand::CreateHubCommand(PersistenceGateway& db, net::ClientGateway& g
 
 std::string CreateHubCommand::sanitize_name(std::string name) {
     auto trim = [](std::string& s) {
-        s.erase(s.begin(),
-                std::find_if(s.begin(), s.end(), [](unsigned char ch) { return !std::isspace(ch); }));
-        s.erase(std::find_if(s.rbegin(), s.rend(), [](unsigned char ch) { return !std::isspace(ch); })
-                    .base(),
-                s.end());
+        s.erase(s.begin(), std::find_if(s.begin(), s.end(),
+                                        [](unsigned char ch) { return !std::isspace(ch); }));
+        s.erase(
+            std::find_if(s.rbegin(), s.rend(), [](unsigned char ch) { return !std::isspace(ch); })
+                .base(),
+            s.end());
     };
     trim(name);
     if (name.size() > 64) name.resize(64);
@@ -62,9 +61,8 @@ void CreateHubCommand::execute(CommandContext& ctx) {
         output.success = false;
         output.error_code = "invalid_name";
         output.error_message = "Hub name is required.";
-        output.data = {{"type", "error"},
-                       {"code", "invalid_name"},
-                       {"message", "Hub name is required"}};
+        output.data = {
+            {"type", "error"}, {"code", "invalid_name"}, {"message", "Hub name is required"}};
         return;
     }
 
@@ -100,19 +98,16 @@ void CreateHubCommand::execute(CommandContext& ctx) {
         output.success = true;
         output.error_code.clear();
         output.error_message.clear();
-        output.data = json{{"type", "hub_created"},
-                           {"hub", json{{"id", public_hub_id.value},
-                                         {"name", name},
-                                         {"role", "owner"}}},
-                           {"channels", std::move(channels)}};
+        output.data =
+            json{{"type", "hub_created"},
+                 {"hub", json{{"id", public_hub_id.value}, {"name", name}, {"role", "owner"}}},
+                 {"channels", std::move(channels)}};
         output.sent_at = std::chrono::system_clock::now();
     } catch (const std::exception& ex) {
         output.success = false;
         output.error_code = "create_hub_failed";
         output.error_message = ex.what();
-        output.data = {{"type", "error"},
-                       {"code", "create_hub_failed"},
-                       {"message", ex.what()}};
+        output.data = {{"type", "error"}, {"code", "create_hub_failed"}, {"message", ex.what()}};
     }
 }
 

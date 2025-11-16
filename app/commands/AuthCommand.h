@@ -24,8 +24,9 @@ namespace app {
 
 class AuthCommand : public ICommand {
    public:
-    AuthCommand(PersistenceGateway& db, net::ClientGateway& gateway, net::ConnectionManager& connections,
-                app::services::HubPublisher& hub_publisher, app::services::PublicIdService& ids);
+    AuthCommand(PersistenceGateway& db, net::ClientGateway& gateway,
+                net::ConnectionManager& connections, app::services::HubPublisher& hub_publisher,
+                app::services::PublicIdService& ids);
     void execute(CommandContext&) override;
 
    private:

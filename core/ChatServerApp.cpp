@@ -36,7 +36,8 @@ bool ChatServerApp::wire_components() {
             },
         .on_auth =
             [&](const ConnId& cid, const UserId& uid) {
-                // log(LogLevel::INFO, "auth success conn_id:" + cid.value + " user_id:" + uid.value);
+                // log(LogLevel::INFO, "auth success conn_id:" + cid.value + " user_id:" +
+                // uid.value);
             }});
 
     // 3) Register ws endpoint
