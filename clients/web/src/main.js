@@ -6,15 +6,15 @@ import { wireList } from './controllers/listController.js';
 import { wireChannel } from './controllers/channelController.js';
 import { wireMessaging } from './controllers/messageController.js';
 import { renderStatus } from './views/status.js';
-import { renderHubs, renderChannels } from './views/sidebar.js';
-import { renderUsers } from './views/chat.js';
 import { state, actions } from './store/state.js';
 import { CONFIG } from './config.js';
 import { wireRealtime } from './controllers/realtime.js';
-import { sel } from './store/selectors.js';
-import { createChannel } from './api/chatApi.js';
+import { createHubController } from './controllers/hubController.js';
+import { createHubManagementController } from './controllers/hubManagementController.js';
+import { createProfileController } from './controllers/profileController.js';
 
 const qs = (s) => document.querySelector(s);
+const qsa = (s) => Array.from(document.querySelectorAll(s));
 
 const els = {
   // screens
@@ -26,7 +26,13 @@ const els = {
   email: qs('#email'),
   password: qs('#password'),
   username: qs('#username'),
+  fullName: qs('#full-name'),
   serverUrl: qs('#server-url'),
+  signupFields: qsa('.auth-signup-fields'),
+  switchToSignup: qs('#switch-to-signup'),
+  switchToSignin: qs('#switch-to-signin'),
+  toggleToSignup: qs('#toggle-to-signup'),
+  toggleToSignin: qs('#toggle-to-signin'),
   submitBtn: qs('#auth-submit-btn'),
   submitText: qs('#auth-submit-text'),
   authError: qs('#auth-error'),
@@ -36,14 +42,26 @@ const els = {
   statusText: qs('#status-text'),
   pingDisplay: qs('#ping-display'),
   currentUser: qs('#current-user'),
+  userInfo: qs('.user-info'),
+  profileModal: qs('#profile-modal'),
+  profileModalClose: qs('#profile-modal .close-btn'),
+  profileUsername: qs('#profile-username'),
+  profileFullName: qs('#profile-full-name'),
+  profileSave: qs('#profile-save'),
+  profileCancel: qs('#profile-cancel'),
+  profileError: qs('#profile-error'),
 
   // layout
   hubRailList: qs('#hub-rail-list'),
+  createHubBtn: qs('#create-hub-btn'),
   channelSidebar: qs('.channel-sidebar'),
   channelsSection: qs('#channels-section'),
   membersSidebar: qs('#members-sidebar'),
   channelEmptyState: qs('#channel-empty-state'),
   chatEmptyState: qs('#chat-empty-state'),
+  hubActions: qs('#hub-actions'),
+  leaveHubBtn: qs('#leave-hub-btn'),
+  leaveHubError: qs('#leave-hub-error'),
 
   // channels
   channelsList: qs('#channels-list'),
@@ -52,6 +70,11 @@ const els = {
   createChannelName: qs('#new-channel-name'),
   createChannelConfirm: qs('#create-channel-confirm'),
   createChannelCancel: qs('#create-channel-cancel'),
+  createHubModal: qs('#create-hub-modal'),
+  createHubName: qs('#new-hub-name'),
+  createHubConfirm: qs('#create-hub-confirm'),
+  createHubCancel: qs('#create-hub-cancel'),
+  createHubError: qs('#hub-error'),
 
   // users & chat
   usersList: qs('#users-list'),
@@ -71,11 +94,54 @@ const els = {
   // connection lost modal
   connectionLostModal: qs('#connection-lost-modal'),
   connectionLostMessage: qs('#connection-lost-message'),
-  connectionLostOk: qs('#connection-lost-ok')
+  connectionLostOk: qs('#connection-lost-ok'),
+
+  // generic confirm modal
+  confirmModal: qs('#confirm-modal'),
+  confirmModalTitle: qs('#confirm-modal-title'),
+  confirmModalMessage: qs('#confirm-modal-message'),
+  confirmModalPrimary: qs('#confirm-modal-primary'),
+  confirmModalSecondary: qs('#confirm-modal-secondary'),
+  channelSettingsModal: qs('#channel-settings-modal'),
+  channelSettingsName: qs('#channel-settings-name'),
+  channelSettingsSave: qs('#channel-settings-save'),
+  channelSettingsDelete: qs('#channel-settings-delete'),
+  channelSettingsError: qs('#channel-settings-error'),
+  hubSettingsInviteCode: qs('#hub-settings-invite-code'),
+  hubSettingsCopy: qs('#hub-settings-copy'),
+  hubSettingsRefresh: qs('#hub-settings-refresh'),
+  hubSettingsInviteError: qs('#hub-settings-invite-error'),
+
+  // member role modal
+  memberRoleModal: qs('#member-role-modal'),
+  memberRoleTitle: qs('#member-role-title'),
+  memberRoleMessage: qs('#member-role-message'),
+  memberRoleMakeAdmin: qs('#member-role-make-admin'),
+  memberRoleMakeMember: qs('#member-role-make-member'),
+  memberRoleError: qs('#member-role-error'),
+
+  // hub settings
+  hubSettingsBtn: qs('#hub-settings-btn'),
+  hubSettingsModal: qs('#hub-settings-modal'),
+  hubSettingsName: qs('#hub-settings-name'),
+  hubSettingsSave: qs('#hub-settings-save'),
+  hubSettingsDelete: qs('#hub-settings-delete'),
+  hubSettingsError: qs('#hub-settings-error'),
+
+  // join hub
+  openJoinHubBtn: qs('#open-join-hub-btn'),
+  joinHubModal: qs('#join-hub-modal'),
+  joinHubCodeInput: qs('#join-hub-code'),
+  joinHubConfirm: qs('#join-hub-confirm'),
+  joinHubCancel: qs('#join-hub-cancel'),
+  joinHubError: qs('#join-hub-error')
 };
 
 const config = CONFIG || {};
 const ws = new WSClient();
+let hubController = null;
+let hubManagementController = null;
+let profileController = null;
 
 function bindStatus() {
   const paint = () => renderStatus(els.statusDot, els.statusText, state.connection);
@@ -84,107 +150,6 @@ function bindStatus() {
   paint();
 }
 
-function renderHubRail() {
-  const hubs = state.hubs || [];
-  renderHubs(els.hubRailList, hubs, state.current.hubId);
-  if (!els.hubRailList) return;
-  els.hubRailList.querySelectorAll('.hub-icon').forEach(btn => {
-    btn.addEventListener('click', () => handleHubSelection(btn.dataset.hubId));
-  });
-}
-
-function showNoHubState() {
-  if (els.channelEmptyState) {
-    els.channelEmptyState.classList.remove('hidden');
-    const text = els.channelEmptyState.querySelector('p');
-    if (text) text.textContent = 'Create or join a hub to view channels.';
-  }
-  if (els.channelsList) els.channelsList.innerHTML = '';
-  els.channelsSection?.classList.add('hidden');
-  if (els.membersSidebar) els.membersSidebar.classList.add('hidden');
-  if (els.usersList) els.usersList.innerHTML = '';
-  if (els.userCount) els.userCount.textContent = '0';
-  if (els.messagesWrap) els.messagesWrap.classList.add('hidden');
-  if (els.chatEmptyState) {
-    const text = els.chatEmptyState.querySelector('p');
-    if (text) text.textContent = 'Create or join a hub to start chatting.';
-    els.chatEmptyState.classList.remove('hidden');
-  }
-  els.inputArea?.classList.add('hidden');
-  els.currentHubName.textContent = 'Select Hub';
-  if (els.createChannelBtn) {
-    els.createChannelBtn.style.visibility = 'hidden';
-    els.createChannelBtn.disabled = true;
-  }
-  closeCreateChannelModal();
-}
-
-function handleHubSelection(hubId) {
-  if (!hubId) return;
-  if (state.current.hubId === hubId) return;
-  actions.setCurrentHub(hubId);
-  updateHubUI();
-}
-
-function updateHubUI() {
-  const hubs = state.hubs || [];
-  const currentHub = hubs.find(h => h.id === state.current.hubId);
-
-  renderHubRail();
-
-  if (!currentHub) {
-    if (hubs.length === 0) showNoHubState();
-    return;
-  }
-
-  const role = currentHub.role || sel.currentHubRole() || '';
-  const canCreate = role === 'owner' || role === 'admin';
-  if (els.createChannelBtn) {
-    if (canCreate) {
-      els.createChannelBtn.style.visibility = 'visible';
-      els.createChannelBtn.disabled = false;
-    } else {
-      els.createChannelBtn.style.visibility = 'hidden';
-      els.createChannelBtn.disabled = true;
-      closeCreateChannelModal();
-    }
-  }
-
-  els.currentHubName.textContent = currentHub.name || 'Untitled Hub';
-
-  const channels = sel.channels(currentHub.id);
-  if (channels.length) {
-    if (els.channelEmptyState) els.channelEmptyState.classList.add('hidden');
-    els.channelsSection?.classList.remove('hidden');
-    renderChannels(els.channelsList, channels, state.current.channelId);
-  } else {
-    els.channelsList.innerHTML = '';
-    els.channelsSection?.classList.add('hidden');
-    if (els.channelEmptyState) {
-      const text = els.channelEmptyState.querySelector('p');
-      if (text) text.textContent = 'No channels yet. Create one to start the conversation.';
-      els.channelEmptyState.classList.remove('hidden');
-    }
-  }
-
-  if (els.membersSidebar) els.membersSidebar.classList.remove('hidden');
-  const members = sel.membersInHub(currentHub.id);
-  if (els.usersList && els.userCount) {
-    renderUsers(els.usersList, els.userCount, members);
-  }
-
-  if (!state.current.channelId) {
-    if (els.messagesWrap) els.messagesWrap.classList.add('hidden');
-    if (els.chatEmptyState) {
-      const text = els.chatEmptyState.querySelector('p');
-      if (text) text.textContent = 'Select a channel to start chatting.';
-      els.chatEmptyState.classList.remove('hidden');
-    }
-    els.inputArea?.classList.add('hidden');
-  }
-
-  document.dispatchEvent(new CustomEvent('hub:selected', { detail: currentHub }));
-}
 
 async function performLogout() {
   const btn = els.disconnectBtn;
@@ -208,11 +173,13 @@ async function performLogout() {
     }
 
     actions.reset();
-    actions.setAuth(false, { id: null, email: null, username: null });
+    actions.setAuth(false);
     actions.setSession(null);
     actions.setConnection('disconnected');
     actions.setHeartbeat({});
     actions.setHubPresenceMap({});
+    profileController?.reset();
+    hubManagementController?.reset();
     if (els.currentUser) els.currentUser.textContent = 'User';
     if (els.messages) els.messages.innerHTML = '';
     if (els.usersList) els.usersList.innerHTML = '';
@@ -234,8 +201,7 @@ async function performLogout() {
       els.pingDisplay.classList.add('is-idle');
     }
 
-    renderHubRail();
-    showNoHubState();
+    hubController?.reset();
 
     if (els.chatScreen) els.chatScreen.classList.add('hidden');
     if (els.loginScreen) els.loginScreen.classList.remove('hidden');
@@ -263,105 +229,30 @@ function start() {
     });
   }
 
-  wireCreateChannel();
+  hubManagementController = createHubManagementController({ ws, els });
+  profileController = createProfileController({ ws, els });
+  hubController = createHubController({
+    els,
+    onNoHubState: () => {
+      hubManagementController?.reset();
+      profileController?.reset();
+    }
+  });
+  hubController.bind();
 
   // ---- Decorate setList so hubs from server update UI ----
   const origSetList = actions.setList;
   actions.setList = (payload) => {
     origSetList(payload);
-    const hubs = state.hubs || [];
-    if (!hubs.length) {
-      renderHubRail();
-      showNoHubState();
-      return;
-    }
-    const hasCurrent = hubs.some(h => h.id === state.current.hubId);
-    if (!hasCurrent) {
-      actions.setCurrentHub(hubs[0].id);
-    }
-    updateHubUI();
+    hubController?.handleHubListUpdate();
   };
   // --------------------------------------------------------
 
-  renderHubRail();
-  showNoHubState();
+  hubController?.reset();
 
   console.log('[BOOT] ready');
 }
 
-function wireCreateChannel() {
-  const {
-    createChannelBtn,
-    createChannelModal,
-    createChannelName,
-    createChannelConfirm,
-    createChannelCancel
-  } = els;
-  if (!createChannelModal || !createChannelName) return;
 
-  const closeBtn = createChannelModal.querySelector('.close-btn');
-
-  const openModal = () => {
-    if (createChannelModal.classList.contains('hidden')) {
-      createChannelName.value = '';
-      createChannelModal.classList.remove('hidden');
-      queueMicrotask(() => createChannelName.focus());
-    }
-  };
-
-  const hideModal = () => {
-    createChannelModal.classList.add('hidden');
-  };
-
-  const handleCreate = () => {
-    const hubId = state.current.hubId;
-    if (!hubId) {
-      hideModal();
-      return;
-    }
-    const name = (createChannelName.value || '').trim();
-    if (!name) {
-      createChannelName.focus();
-      return;
-    }
-    if (createChannelConfirm) createChannelConfirm.disabled = true;
-    createChannel(ws, hubId, name);
-    hideModal();
-    if (createChannelConfirm) createChannelConfirm.disabled = false;
-  };
-
-  createChannelBtn?.addEventListener('click', () => {
-    if (createChannelBtn.disabled) return;
-    openModal();
-  });
-  createChannelConfirm?.addEventListener('click', (e) => {
-    e.preventDefault();
-    handleCreate();
-  });
-  createChannelCancel?.addEventListener('click', (e) => {
-    e.preventDefault();
-    hideModal();
-  });
-  closeBtn?.addEventListener('click', hideModal);
-  createChannelModal.addEventListener('click', (e) => {
-    if (e.target === createChannelModal) hideModal();
-  });
-  createChannelName?.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      handleCreate();
-    } else if (e.key === 'Escape') {
-      hideModal();
-    }
-  });
-
-  els._closeCreateChannelModal = hideModal;
-}
-
-function closeCreateChannelModal() {
-  if (els._closeCreateChannelModal) {
-    els._closeCreateChannelModal();
-  }
-}
 
 document.addEventListener('DOMContentLoaded', start);

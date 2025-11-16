@@ -57,7 +57,6 @@ bool EnvLoader::load_env_file(const std::string& file_path) {
 
         if (!key.empty()) {
             env_vars_[key] = value;
-            logger().log(LogLevel::INFO, "Loaded: ", key);
         }
     }
 

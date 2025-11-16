@@ -1,28 +1,55 @@
-// domain/ids/Ids.h
-#pragma once
+#ifndef DOMAINS_IDS_IDS_H_
+#define DOMAINS_IDS_IDS_H_
+
 #include <functional>
 #include <string>
 
 struct HubId {
     std::string value;
+    HubId() = default;
     HubId(std::string v) : value(std::move(v)) {}
 };
 struct ChannelId {
     std::string value;
+    ChannelId() = default;
     ChannelId(std::string v) : value(std::move(v)) {}
 };
 struct UserId {
     std::string value;
+    UserId() = default;
     UserId(std::string v) : value(std::move(v)) {}
 };
 struct MessageId {
     std::string value;
+    MessageId() = default;
     MessageId(std::string v) : value(std::move(v)) {}
 };
 
 struct ConnId {
     std::string value;
+    ConnId() = default;
     ConnId(std::string v) : value(std::move(v)) {}
+};
+
+struct PublicHubId {
+    std::string value;
+    PublicHubId() = default;
+    PublicHubId(std::string v) : value(std::move(v)) {}
+};
+struct PublicChannelId {
+    std::string value;
+    PublicChannelId() = default;
+    PublicChannelId(std::string v) : value(std::move(v)) {}
+};
+struct PublicUserId {
+    std::string value;
+    PublicUserId() = default;
+    PublicUserId(std::string v) : value(std::move(v)) {}
+};
+struct PublicMessageId {
+    std::string value;
+    PublicMessageId() = default;
+    PublicMessageId(std::string v) : value(std::move(v)) {}
 };
 
 inline bool operator==(const HubId& a, const HubId& b) { return a.value == b.value; }
@@ -30,6 +57,14 @@ inline bool operator==(const ChannelId& a, const ChannelId& b) { return a.value 
 inline bool operator==(const UserId& a, const UserId& b) { return a.value == b.value; }
 inline bool operator==(const MessageId& a, const MessageId& b) { return a.value == b.value; }
 inline bool operator==(const ConnId& a, const ConnId& b) { return a.value == b.value; }
+inline bool operator==(const PublicHubId& a, const PublicHubId& b) { return a.value == b.value; }
+inline bool operator==(const PublicChannelId& a, const PublicChannelId& b) {
+    return a.value == b.value;
+}
+inline bool operator==(const PublicUserId& a, const PublicUserId& b) { return a.value == b.value; }
+inline bool operator==(const PublicMessageId& a, const PublicMessageId& b) {
+    return a.value == b.value;
+}
 
 namespace std {
 template <>
@@ -50,4 +85,30 @@ template <>
 struct hash<ConnId> {
     size_t operator()(const ConnId& x) const noexcept { return std::hash<std::string>{}(x.value); }
 };
+template <>
+struct hash<PublicHubId> {
+    size_t operator()(const PublicHubId& x) const noexcept {
+        return std::hash<std::string>{}(x.value);
+    }
+};
+template <>
+struct hash<PublicChannelId> {
+    size_t operator()(const PublicChannelId& x) const noexcept {
+        return std::hash<std::string>{}(x.value);
+    }
+};
+template <>
+struct hash<PublicUserId> {
+    size_t operator()(const PublicUserId& x) const noexcept {
+        return std::hash<std::string>{}(x.value);
+    }
+};
+template <>
+struct hash<PublicMessageId> {
+    size_t operator()(const PublicMessageId& x) const noexcept {
+        return std::hash<std::string>{}(x.value);
+    }
+};
 }  // namespace std
+
+#endif  // DOMAINS_IDS_IDS_H_

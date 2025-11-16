@@ -1,16 +1,16 @@
 #include "app/commands/JoinChannelCommand.h"
 
-#include "infra/persistence/chatdb.h"
+#include "app/services/PublicIdService.h"
+#include "infra/persistence/PersistenceGateway.h"
 #include "net/ClientGateway.h"
 #include "net/ConnectionManager.h"
 #include "net/PerSocketData.h"
-
-#include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <chrono>
 #include <ctime>
 #include <iomanip>
+#include <nlohmann/json.hpp>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
@@ -27,11 +27,6 @@ std::string display_from_psd(const net::PerSocketData& psd) {
     return "Member";
 }
 
-json make_member_payload(const net::PerSocketData& psd) {
-    const auto name = display_from_psd(psd);
-    return json{{"handle", name}, {"display_name", name}, {"online", true}};
-}
-
 std::string format_time_point(const std::chrono::system_clock::time_point& tp) {
     if (tp.time_since_epoch().count() == 0) return std::string{};
     std::time_t t = std::chrono::system_clock::to_time_t(tp);
@@ -42,9 +37,10 @@ std::string format_time_point(const std::chrono::system_clock::time_point& tp) {
 }
 }  // namespace
 
-JoinChannelCommand::JoinChannelCommand(ChatDB& db, net::ClientGateway& gateway,
-                                       net::ConnectionManager& connections)
-    : db_(db), gateway_(gateway), connections_(connections) {}
+JoinChannelCommand::JoinChannelCommand(PersistenceGateway& db, net::ClientGateway& gateway,
+                                       net::ConnectionManager& connections,
+                                       app::services::PublicIdService& ids)
+    : db_(db), gateway_(gateway), connections_(connections), ids_(ids) {}
 
 void JoinChannelCommand::execute(CommandContext& ctx) {
     auto& psd = ctx.psd;
@@ -72,8 +68,19 @@ void JoinChannelCommand::execute(CommandContext& ctx) {
         return;
     }
 
-    ChannelId channel_id{channel_id_str};
-    auto channel_info_opt = db_.getChannel(channel_id);
+    auto channel_id_opt = ids_.to_internal(PublicChannelId{channel_id_str});
+    if (!channel_id_opt.has_value()) {
+        output.success = false;
+        output.error_code = "channel_not_found";
+        output.error_message = "Channel does not exist";
+        output.data = {{"type", "error"},
+                       {"code", "channel_not_found"},
+                       {"message", "Channel does not exist"}};
+        return;
+    }
+
+    ChannelId channel_id = *channel_id_opt;
+    auto channel_info_opt = db_.channels().getChannel(channel_id);
     if (!channel_info_opt.has_value()) {
         output.success = false;
         output.error_code = "channel_not_found";
@@ -86,9 +93,11 @@ void JoinChannelCommand::execute(CommandContext& ctx) {
 
     const Channel& channel_info = channel_info_opt.value();
     const HubId hub_id = channel_info.hub_id;
+    const auto public_channel_id = ids_.to_public(channel_id);
+    const auto public_hub_id = ids_.to_public(hub_id);
 
     if (!psd.hub_memberships.count(hub_id)) {
-        if (!db_.isHubMember(hub_id, psd.user_id)) {
+        if (!db_.hubs().isHubMember(hub_id, psd.user_id)) {
             output.success = false;
             output.error_code = "not_in_hub";
             output.error_message = "User is not a member of the hub.";
@@ -119,7 +128,7 @@ void JoinChannelCommand::execute(CommandContext& ctx) {
     json history_json = json::array();
     for (const auto& msg : history) {
         const auto sent_at = format_time_point(msg.sent_at);
-        history_json.push_back({{"channel_id", msg.channel_id.value},
+        history_json.push_back({{"channel_id", public_channel_id.value},
                                 {"sender", resolve_display_name(msg.sender_id)},
                                 {"content", msg.text},
                                 {"sent_at", sent_at}});
@@ -132,12 +141,9 @@ void JoinChannelCommand::execute(CommandContext& ctx) {
     output.error_code.clear();
     output.error_message.clear();
     output.data = {
-        {"type", "joined_channel"},
-        {"channel_id", channel_id.value},
-        {"channel_name", channel_info.name},
-        {"hub_id", hub_id.value},
-        {"members", std::move(members)},
-        {"history", std::move(history_json)},
+        {"type", "joined_channel"},          {"channel_id", public_channel_id.value},
+        {"channel_name", channel_info.name}, {"hub_id", public_hub_id.value},
+        {"members", std::move(members)},     {"history", std::move(history_json)},
     };
     output.sent_at = std::chrono::system_clock::now();
 }
@@ -149,14 +155,19 @@ json JoinChannelCommand::collect_channel_presence(const ChannelId& channel_id) c
         auto* other = ws->getUserData();
         if (!other || !other->authenticated) return;
         if (other->current_channel_id.value != channel_id.value) return;
-
-        members.push_back(make_member_payload(*other));
+        const auto name = display_from_psd(*other);
+        if (!name.empty()) ids_.remember_display(other->user_id, name);
+        const auto public_user = ids_.to_public(other->user_id);
+        members.push_back({{"handle", name},
+                           {"display_name", name},
+                           {"online", true},
+                           {"user_id", public_user.value}});
     });
     return members;
 }
 
 std::vector<Message> JoinChannelCommand::fetch_history(const ChannelId& channel_id) {
-    return db_.fetchMessages(channel_id, kHistoryLimit);
+    return db_.channels().fetchMessages(channel_id, kHistoryLimit);
 }
 
 std::string JoinChannelCommand::channel_topic(const ChannelId& channel_id) {
@@ -174,21 +185,33 @@ std::string JoinChannelCommand::resolve_display_name(const UserId& user_id) cons
         }
     });
     if (name.empty()) {
-        name = "Member";
+        name = ids_.display_for(user_id);
     }
+    if (name.empty()) {
+        if (auto db_name = db_.users().getUserDisplayName(user_id)) {
+            if (!db_name->empty()) {
+                name = *db_name;
+                ids_.remember_display(user_id, name);
+            }
+        }
+    }
+    if (name.empty()) name = "Member";
     return name;
 }
 
 void JoinChannelCommand::publish_presence_update(const ChannelId& channel_id,
-                                                 const net::PerSocketData& psd,
-                                                 bool online) const {
+                                                 const net::PerSocketData& psd, bool online) {
     if (channel_id.value.empty()) return;
     const auto name = display_from_psd(psd);
+    if (!name.empty()) ids_.remember_display(psd.user_id, name);
+    const auto public_channel_id = ids_.to_public(channel_id);
+    const auto public_user_id = ids_.to_public(psd.user_id);
     json payload = {{"type", "presence_update"},
-                    {"channel_id", channel_id.value},
+                    {"channel_id", public_channel_id.value},
                     {"handle", name},
                     {"display_name", name},
-                    {"online", online}};
+                    {"online", online},
+                    {"user_id", public_user_id.value}};
     gateway_.publish(channel_topic(channel_id), payload);
 }
 

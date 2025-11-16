@@ -20,7 +20,9 @@ export function wireRealtime({ ws, els }) {
     usersList,
     userCount,
     membersSidebar,
-    currentHubName
+    currentHubName,
+    messagesWrap,
+    inputArea
   } = els;
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const reconnectAttempts = [
@@ -69,6 +71,19 @@ export function wireRealtime({ ws, els }) {
     }
   };
 
+  const formatCloseReason = (info) => {
+    if (!info) {
+      return 'Connection to the server was lost. Attempting to reconnect…';
+    }
+    if (info.reason) {
+      return `Disconnected: ${info.reason}. Attempting to reconnect…`;
+    }
+    if (info.code) {
+      return `Disconnected (code ${info.code}). Attempting to reconnect…`;
+    }
+    return 'Connection to the server was lost. Attempting to reconnect…';
+  };
+
   const showConnectionLost = (message) => {
     if (!connectionLostModal) return;
     stalled = true;
@@ -88,6 +103,7 @@ export function wireRealtime({ ws, els }) {
   };
 
   const goToLogin = () => {
+    cancelReconnect = true;
     hideConnectionLost();
     stalled = false;
     actions.setAuth(false);
@@ -103,21 +119,16 @@ export function wireRealtime({ ws, els }) {
     if (reconnectTask) return reconnectTask;
     cancelReconnect = false;
     reconnectTask = (async () => {
-      if (!state.authed) {
-        resetReconnectState();
-        return false;
-      }
-      const { url, token, username } = state.session || {};
-      if (!url || !token || !username) {
-        updateReconnectMessage('Server connection lost. Please sign in again.');
-        await wait(1500);
-        goToLogin();
-        resetReconnectState();
-        return false;
-      }
-
       for (let i = 0; i < reconnectAttempts.length; i += 1) {
         if (cancelReconnect) break;
+        if (!state.authed) {
+          break;
+        }
+        const { url, token, username } = state.session || {};
+        if (!url || !token || !username) {
+          goToLogin();
+          break;
+        }
         const attemptNo = i + 1;
         const waitBefore = reconnectAttempts[i].waitBefore || 0;
         if (waitBefore > 0 && attemptNo > 1) {
@@ -154,8 +165,10 @@ export function wireRealtime({ ws, els }) {
       }
 
       if (!cancelReconnect) {
-        updateReconnectMessage('Server connection lost. Please sign in again.');
-        await wait(2000);
+        if (state.authed) {
+          updateReconnectMessage('Server connection lost. Please sign in again.');
+          await wait(2000);
+        }
         goToLogin();
       }
       resetReconnectState();
@@ -185,24 +198,23 @@ export function wireRealtime({ ws, els }) {
     updatePingDisplay(null);
     if (info?.manual) {
       cancelReconnect = true;
+      resetReconnectState();
       return;
     }
     if (!state.authed) {
+      resetReconnectState();
       return;
     }
-    showConnectionLost('Connection to the server was lost. Attempting to reconnect…');
+    if (!state.session || !state.session.token) {
+      goToLogin();
+      return;
+    }
+    showConnectionLost(formatCloseReason(info));
     attemptReconnect();
   });
   ws.on('__stalled__', ({ missFor } = {}) => {
-    actions.setConnection('connecting'); // missed pong, warn UI
-    actions.setHeartbeat({});
-    updatePingDisplay(null);
     const seconds = missFor ? Math.round(missFor / 1000) : null;
-    const message = seconds
-      ? `No heartbeat received for ${seconds}s. Attempting to reconnect…`
-      : 'Heartbeat timed out. Attempting to reconnect…';
-    showConnectionLost(message);
-    attemptReconnect();
+    console.warn('[WS] heartbeat stalled', seconds != null ? `${seconds}s` : '');
   });
 
   ws.on('__ping__', (info) => {
@@ -228,10 +240,15 @@ export function wireRealtime({ ws, els }) {
 
     const currentHubId = state.current.hubId;
     if (currentHubId && channelsList) {
-      renderChannels(channelsList, sel.channels(currentHubId), sel.currentChannelId());
+      const role = sel.currentHubRole();
+      const canDelete = role === 'owner' || role === 'admin';
+      renderChannels(channelsList, sel.channels(currentHubId), sel.currentChannelId(), { canDelete });
     }
     if (currentHubId && usersList && userCount) {
-      renderUsers(usersList, userCount, sel.membersInHub(currentHubId));
+      const roster = state.current.channelId
+        ? sel.usersInChannel(state.current.channelId)
+        : sel.membersInHub(currentHubId);
+      renderUsers(usersList, userCount, roster);
       membersSidebar?.classList.remove('hidden');
     }
 
@@ -254,7 +271,9 @@ export function wireRealtime({ ws, els }) {
     if (state.current.hubId === hub_id) {
       const list = sel.channels(hub_id);
       if (channelsList) {
-        renderChannels(channelsList, list, sel.currentChannelId());
+        const role = sel.currentHubRole();
+        const canDelete = role === 'owner' || role === 'admin';
+        renderChannels(channelsList, list, sel.currentChannelId(), { canDelete });
         if (list.length) channelsSection?.classList.remove('hidden');
       }
       if (channelEmptyState) {
@@ -267,7 +286,10 @@ export function wireRealtime({ ws, els }) {
         }
       }
       if (usersList && userCount) {
-        renderUsers(usersList, userCount, sel.membersInHub(hub_id));
+        const roster = state.current.channelId
+          ? sel.usersInChannel(state.current.channelId)
+          : sel.membersInHub(hub_id);
+        renderUsers(usersList, userCount, roster);
         membersSidebar?.classList.remove('hidden');
       }
       if (!state.current.channelId && chatEmptyState) {
@@ -292,7 +314,9 @@ export function wireRealtime({ ws, els }) {
     if (state.current.hubId === hub_id) {
       const list = sel.channels(hub_id);
       if (channelsList) {
-        renderChannels(channelsList, list, sel.currentChannelId());
+        const role = sel.currentHubRole();
+        const canDelete = role === 'owner' || role === 'admin';
+        renderChannels(channelsList, list, sel.currentChannelId(), { canDelete });
       }
       if (channelEmptyState && list.length) {
         channelEmptyState.classList.add('hidden');
@@ -306,7 +330,7 @@ export function wireRealtime({ ws, els }) {
     // expect: {type:'presence_snapshot', channel_id, members:[{handle,display_name,online}]}
     const { channel_id, members } = msg || {};
     if (!channel_id || !Array.isArray(members)) return;
-    actions.setJoinedChannel({ channel_id, channel_name: state.current.channelName, members, history: [] });
+    actions.setChannelPresence(channel_id, members);
     // notify UI to render users sidebar if needed
     document.dispatchEvent(new CustomEvent('presence:updated', { detail: { channel_id } }));
   });
@@ -332,5 +356,169 @@ export function wireRealtime({ ws, els }) {
       sent_at: msg.sent_at || new Date().toISOString()
     });
     document.dispatchEvent(new CustomEvent('messages:updated', { detail: { channel_id: ch } }));
+  });
+
+  ws.on('profile_updated', (msg = {}) => {
+    actions.updateSelfProfile({
+      username: typeof msg.username === 'string' ? msg.username : undefined,
+      full_name: typeof msg.full_name === 'string' ? msg.full_name : undefined,
+      display_name: msg.display_name
+    });
+    document.dispatchEvent(new CustomEvent('profile:update:success', { detail: msg }));
+  });
+
+  ws.on('hub_created', (msg = {}) => {
+    const hub = msg.hub;
+    if (!hub || !hub.id) return;
+    actions.addHub(hub);
+    const channels = Array.isArray(msg.channels) ? msg.channels : [];
+    actions.updateHubChannels(hub.id, channels);
+    actions.setHubMembers(hub.id, []);
+    actions.setCurrentHub(hub.id);
+    document.dispatchEvent(new CustomEvent('hubs:changed', { detail: { hub } }));
+  });
+
+  ws.on('channel_deleted', (msg = {}) => {
+    const hubId = msg.hub_id;
+    const channelId = msg.channel_id;
+    if (!hubId || !channelId) return;
+    actions.removeChannel(hubId, channelId);
+    document.dispatchEvent(new CustomEvent('channel:deleted', { detail: { hubId, channelId } }));
+    document.dispatchEvent(new CustomEvent('hubs:changed', { detail: { hubId } }));
+  });
+
+  ws.on('hub_invite', (msg = {}) => {
+    const hubId = msg.hub_id || msg.hubId;
+    const code = msg.invite_code || msg.code || msg.inviteCode;
+    if (!hubId || !code) return;
+    document.dispatchEvent(new CustomEvent('hub:invite', { detail: { hubId, inviteCode: code } }));
+  });
+
+  ws.on('hub_joined', (msg = {}) => {
+    const hub = msg.hub;
+    if (!hub || !hub.id) return;
+    const channels = Array.isArray(msg.channels) ? msg.channels : [];
+    const members = Array.isArray(msg.members) ? msg.members : [];
+    actions.addHub(hub);
+    actions.updateHubChannels(hub.id, channels);
+    actions.setHubMembers(hub.id, members);
+    actions.setCurrentHub(hub.id);
+    document.dispatchEvent(new CustomEvent('hub:join:success', { detail: msg }));
+    document.dispatchEvent(new CustomEvent('hubs:changed', { detail: { hubId: hub.id } }));
+  });
+
+  ws.on('channel_renamed', (msg = {}) => {
+    const hubId = msg.hub_id;
+    const channel = msg.channel;
+    if (!hubId || !channel || !channel.id) return;
+    actions.renameChannel(hubId, channel.id, channel.name || '');
+    document.dispatchEvent(new CustomEvent('channel:renamed', { detail: { hubId, channel } }));
+    if (state.current.hubId === hubId) {
+      const list = sel.channels(hubId);
+      if (channelsList) {
+        const role = sel.currentHubRole();
+        const canDelete = role === 'owner' || role === 'admin';
+        renderChannels(channelsList, list, sel.currentChannelId(), { canDelete });
+      }
+      if (state.current.channelId === channel.id) {
+        state.current.channelName = channel.name || state.current.channelName;
+        if (currentHubName) currentHubName.textContent = (state.hubs.find((h) => h.id === hubId)?.name) || 'Select Hub';
+      }
+    }
+    document.dispatchEvent(new CustomEvent('hubs:changed', { detail: { hubId } }));
+  });
+
+  ws.on('channel_closed', (msg = {}) => {
+    const { channel_id } = msg;
+    if (!channel_id) return;
+    if (state.current.channelId === channel_id) {
+      state.current.channelId = null;
+      state.current.channelName = '';
+      if (messagesWrap) messagesWrap.classList.add('hidden');
+      if (inputArea) inputArea.classList.add('hidden');
+      if (chatEmptyState) {
+        const text = chatEmptyState.querySelector('p');
+        if (text) text.textContent = 'This channel has been deleted.';
+        chatEmptyState.classList.remove('hidden');
+      }
+    }
+  });
+
+  ws.on('member_role_updated', (msg = {}) => {
+    const hubId = msg.hub_id;
+    const role = msg.role;
+    if (!hubId || !role) return;
+
+    if (!msg.user_id) {
+      actions.updateHubRole(hubId, role);
+      document.dispatchEvent(new CustomEvent('hubs:changed', { detail: { hubId } }));
+    }
+  });
+
+  ws.on('hub_renamed', (msg = {}) => {
+    const hubId = msg.hub_id;
+    const name = msg.name;
+    if (!hubId || typeof name !== 'string') return;
+    actions.renameHub(hubId, name);
+    document.dispatchEvent(new CustomEvent('hub:renamed', { detail: { hubId, name } }));
+    document.dispatchEvent(new CustomEvent('hubs:changed', { detail: { hubId } }));
+    if (state.current.hubId === hubId && currentHubName) {
+      currentHubName.textContent = name;
+    }
+  });
+
+  ws.on('hub_deleted', (msg = {}) => {
+    const hubId = msg.hub_id;
+    if (!hubId) return;
+    const nextHubId = actions.removeHub(hubId);
+    document.dispatchEvent(new CustomEvent('hub:deleted', { detail: { hubId } }));
+    document.dispatchEvent(new CustomEvent('hubs:changed', { detail: { hubId: nextHubId } }));
+    if (nextHubId) {
+      actions.setCurrentHub(nextHubId);
+    } else {
+      actions.setCurrentHub(null);
+    }
+  });
+
+  ws.on('hub_left', (msg = {}) => {
+    const hubId = msg.hub_id;
+    if (!hubId) return;
+    const nextHubId = actions.removeHub(hubId);
+    document.dispatchEvent(new CustomEvent('hub:left:success', { detail: { hubId } }));
+    document.dispatchEvent(new CustomEvent('hubs:changed', { detail: { hubId: nextHubId } }));
+    if (nextHubId) {
+      actions.setCurrentHub(nextHubId);
+    } else {
+      actions.setCurrentHub(null);
+    }
+  });
+
+  ws.on('error', (msg = {}) => {
+    if (msg.code === 'update_failed' || msg.code === 'invalid_profile') {
+      document.dispatchEvent(new CustomEvent('profile:update:error', { detail: msg }));
+    }
+    document.dispatchEvent(new CustomEvent('ws:error', { detail: msg }));
+    if (
+      msg.code === 'invite_not_found' ||
+      msg.code === 'invalid_invite' ||
+      msg.code === 'hub_not_found' ||
+      msg.code === 'join_hub_failed'
+    ) {
+      document.dispatchEvent(new CustomEvent('hub:join:error', { detail: msg }));
+    }
+    if (
+      msg.code === 'insufficient_privilege' ||
+      msg.code === 'not_in_hub' ||
+      msg.code === 'missing_hub_id'
+    ) {
+      document.dispatchEvent(new CustomEvent('hub:invite:error', { detail: msg }));
+    }
+    if (
+      msg.code === 'leave_hub_failed' ||
+      msg.code === 'hub_owner_must_transfer' ||
+      msg.code === 'not_in_hub'
+    ) {
+      document.dispatchEvent(new CustomEvent('hub:left:error', { detail: msg }));
+    }
   });
 }

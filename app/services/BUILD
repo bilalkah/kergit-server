@@ -1,6 +1,16 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
 cc_library(
+    name = "public_id_service",
+    srcs = ["PublicIdService.cpp"],
+    hdrs = ["PublicIdService.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//domains/ids:domain_ids",
+    ],
+)
+
+cc_library(
     name = "auth_service",
     srcs = ["AuthService.cpp"],
     hdrs = [
@@ -21,8 +31,9 @@ cc_library(
     hdrs = ["HubPublisher.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":public_id_service",
         "//core:i_app",
-        "//infra/persistence:chatdb_lib",
+        "//infra/persistence:persistence_gateway_lib",
         "//net:client_gateway",
         "//net:connection_manager",
         "@nlohmann_json",

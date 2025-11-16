@@ -1,14 +1,33 @@
 // src/views/chat.js
 export function renderUsers(root, countEl, arr) {
+  if (!root || !countEl) return;
+  const members = Array.isArray(arr) ? arr : [];
+  const online = members.filter((m) => m.online);
+  const offline = members.filter((m) => !m.online);
+
   root.innerHTML = '';
-  countEl.textContent = String(arr.length);
-  arr.forEach(u => {
+  countEl.textContent = String(members.length);
+
+  const appendHeader = (label, amount, sectionClass) => {
+    const header = document.createElement('div');
+    header.className = `users-section ${sectionClass}`.trim();
+    header.textContent = `${label} — ${amount}`;
+    root.appendChild(header);
+  };
+
+  const appendUser = (user, isOnline) => {
     const el = document.createElement('div');
-    el.className = 'user';
-    el.textContent = u.display_name || u.handle || 'Member';
-    if (u.online) el.classList.add('online');
+    el.className = `user ${isOnline ? 'online' : 'offline'}`.trim();
+    el.textContent = user.display_name || user.handle || 'Member';
+    if (user.user_id) el.dataset.userId = user.user_id;
     root.appendChild(el);
-  });
+  };
+
+  appendHeader('Online', online.length, 'online');
+  online.forEach((member) => appendUser(member, true));
+
+  appendHeader('Offline', offline.length, 'offline');
+  offline.forEach((member) => appendUser(member, false));
 }
 
 export function renderHistory(rootWrap, root, msgs) {

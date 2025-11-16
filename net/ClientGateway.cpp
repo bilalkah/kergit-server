@@ -28,9 +28,7 @@ void ClientGateway::subscribe(const ConnId& cid, const std::string& topic) {
 void ClientGateway::unsubscribe(const ConnId& cid, const std::string& topic) {
     pubsub_->unsubscribe(cid, topic);
 }
-void ClientGateway::unsubscribe_all(const ConnId& cid) {
-    pubsub_->unsubscribe_all(cid);
-}
+void ClientGateway::unsubscribe_all(const ConnId& cid) { pubsub_->unsubscribe_all(cid); }
 
 void ClientGateway::publish(const std::string& topic, const json& payload, OpCode op) {
     auto subs = pubsub_->subscribers(topic);

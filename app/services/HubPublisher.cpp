@@ -1,11 +1,13 @@
 #include "app/services/HubPublisher.h"
 
+#include "app/services/PublicIdService.h"
 #include "utils/Logger.h"
-
-#include <libusockets.h>
 
 #include <algorithm>
 #include <exception>
+#include <libusockets.h>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace app::services {
 
@@ -15,22 +17,19 @@ std::string safe_display(const net::PerSocketData& psd) {
     return "Member";
 }
 
-nlohmann::json make_member_payload(const net::PerSocketData& psd) {
-    const auto name = safe_display(psd);
-    return nlohmann::json{{"handle", name}, {"display_name", name}, {"online", true}};
-}
-
 std::string channel_type_to_string(ChannelType type) {
     return type == ChannelType::VOICE ? "voice" : "text";
 }
 }  // namespace
 
-HubPublisher::HubPublisher(core::IApp& app, ChatDB& db, net::ConnectionManager& connections,
-                           net::ClientGateway& gateway, std::chrono::milliseconds interval)
+HubPublisher::HubPublisher(core::IApp& app, PersistenceGateway& db, net::ConnectionManager& connections,
+                           net::ClientGateway& gateway, PublicIdService& ids,
+                           std::chrono::milliseconds interval)
     : app_(app),
       db_(db),
       connections_(connections),
       gateway_(gateway),
+      ids_(ids),
       interval_(interval) {}
 
 HubPublisher::~HubPublisher() { stop(); }
@@ -93,9 +92,7 @@ void HubPublisher::publish_hubs(const std::unordered_set<HubId>& hub_ids) {
     }
 }
 
-std::string HubPublisher::topic_for(const HubId& hub_id) {
-    return "hub:" + hub_id.value;
-}
+std::string HubPublisher::topic_for(const HubId& hub_id) { return "hub:" + hub_id.value; }
 
 void HubPublisher::on_timer(us_timer_t* timer) {
     auto** slot = reinterpret_cast<HubPublisher**>(us_timer_ext(timer));
@@ -122,34 +119,85 @@ std::unordered_set<HubId> HubPublisher::collect_all_hubs() const {
 }
 
 nlohmann::json HubPublisher::collect_online_for_hub(const HubId& hub_id) const {
-    nlohmann::json arr = nlohmann::json::array();
+    std::unordered_map<UserId, std::string> online_display;
     connections_.for_each([&](UwsSocket* ws) {
         if (!ws) return;
         auto* psd = ws->getUserData();
         if (!psd || !psd->authenticated) return;
         if (psd->hub_memberships.find(hub_id) == psd->hub_memberships.end()) return;
-        arr.push_back(make_member_payload(*psd));
+        const auto display = safe_display(*psd);
+        if (!display.empty()) ids_.remember_display(psd->user_id, display);
+        online_display.emplace(psd->user_id, display);
     });
+
+    nlohmann::json arr = nlohmann::json::array();
+    const auto members = db_.hubs().getHubMembers(hub_id);
+    std::unordered_set<UserId> seen;
+    for (const auto& [member_id, stored_display] : members) {
+        const bool is_online = online_display.find(member_id) != online_display.end();
+        if (!stored_display.empty()) ids_.remember_display(member_id, stored_display);
+        std::string display = ids_.display_for(member_id);
+        if (display.empty() && is_online) display = online_display[member_id];
+        if (display.empty() && !stored_display.empty()) display = stored_display;
+        if (display.empty()) {
+            if (auto db_name = db_.users().getUserDisplayName(member_id)) {
+                if (!db_name->empty()) {
+                    display = *db_name;
+                    ids_.remember_display(member_id, display);
+                }
+            }
+        }
+        if (display.empty()) display = "Member";
+        const auto public_user = ids_.to_public(member_id);
+        arr.push_back({{"handle", display},
+                       {"display_name", display},
+                       {"online", is_online},
+                       {"user_id", public_user.value}});
+        seen.insert(member_id);
+    }
+
+    for (const auto& [user_id, display] : online_display) {
+        if (seen.find(user_id) != seen.end()) continue;
+        const auto public_user = ids_.to_public(user_id);
+        std::string name = display.empty() ? ids_.display_for(user_id) : display;
+        if (name.empty()) {
+            if (auto db_name = db_.users().getUserDisplayName(user_id)) {
+                if (!db_name->empty()) {
+                    name = *db_name;
+                    ids_.remember_display(user_id, name);
+                }
+            }
+        }
+        if (name.empty()) name = "Member";
+        arr.push_back({{"handle", name},
+                       {"display_name", name},
+                       {"online", true},
+                       {"user_id", public_user.value}});
+    }
+
     return arr;
 }
 
 std::vector<Channel> HubPublisher::load_channels(const HubId& hub_id) const {
-    return db_.getHubChannels(hub_id);
+    return db_.channels().getHubChannels(hub_id);
 }
 
 nlohmann::json HubPublisher::build_snapshot(const HubId& hub_id,
                                             const std::vector<Channel>& channels,
                                             const nlohmann::json& online) const {
+    const auto public_hub_id = ids_.to_public(hub_id);
     nlohmann::json chan = nlohmann::json::array();
     for (const auto& c : channels) {
-        chan.push_back({{"id", c.channel_id.value},
-                        {"hub_id", c.hub_id.value},
+        const auto public_channel_id = ids_.to_public(c.channel_id);
+        const auto public_channel_hub_id = ids_.to_public(c.hub_id);
+        chan.push_back({{"id", public_channel_id.value},
+                        {"hub_id", public_channel_hub_id.value},
                         {"name", c.name},
                         {"type", channel_type_to_string(c.type)}});
     }
     return {
         {"type", "hub_snapshot"},
-        {"hub_id", hub_id.value},
+        {"hub_id", public_hub_id.value},
         {"channels", std::move(chan)},
         {"online", online},
     };

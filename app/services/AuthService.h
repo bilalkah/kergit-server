@@ -13,7 +13,7 @@ struct AuthServiceResult {
 
 class AuthService {
    public:
-    AuthService();
+    AuthService() = default;
 
     AuthServiceResult authenticate(const std::string& token);
 
