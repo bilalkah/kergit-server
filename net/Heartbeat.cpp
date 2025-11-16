@@ -55,13 +55,9 @@ void Heartbeat::stop() {
     }
 }
 
-void Heartbeat::on_open(PerSocketData& psd) {
-    psd.last_pong_at = std::chrono::steady_clock::now();
-}
+void Heartbeat::on_open(PerSocketData& psd) { psd.last_pong_at = std::chrono::steady_clock::now(); }
 
-void Heartbeat::on_pong(PerSocketData& psd) {
-    psd.last_pong_at = std::chrono::steady_clock::now();
-}
+void Heartbeat::on_pong(PerSocketData& psd) { psd.last_pong_at = std::chrono::steady_clock::now(); }
 
 void Heartbeat::on_timer(us_timer_t* timer) {
     auto** slot = reinterpret_cast<Heartbeat**>(us_timer_ext(timer));

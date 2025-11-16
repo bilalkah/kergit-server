@@ -3,17 +3,16 @@
 
 #include "app/CommandRegistery.h"
 #include "app/Dispatcher.h"
+#include "app/services/HubPublisher.h"
 #include "core/AppFactory.h"
 #include "core/IApp.h"
 #include "core/ServerConfig.h"
 #include "core/Types.h"
-#include "infra/persistence/chatdb.h"
+#include "infra/persistence/PersistenceGateway.h"
 #include "net/ClientGateway.h"
 #include "net/ConnectionManager.h"
 #include "net/WebSocketServer.h"
 #include "utils/Loggable.h"
-
-#include "app/services/HubPublisher.h"
 
 #include <atomic>
 #include <functional>
@@ -45,7 +44,7 @@ class ChatServerApp : public utils::Loggable {
     std::unique_ptr<net::ConnectionManager> connections_ptr_;
     std::unique_ptr<net::ClientGateway> gateway_ptr_;
     std::unique_ptr<net::WebSocketServer> ws_server_;
-    std::unique_ptr<ChatDB> chat_db_ptr_;
+    std::unique_ptr<PersistenceGateway> persistence_gateway_ptr_;
     std::unique_ptr<app::services::HubPublisher> hub_publisher_;
 
     ListenToken listen_token_{nullptr};

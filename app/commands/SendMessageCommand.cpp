@@ -1,14 +1,14 @@
 #include "app/commands/SendMessageCommand.h"
 
-#include "infra/persistence/chatdb.h"
+#include "app/services/PublicIdService.h"
+#include "infra/persistence/PersistenceGateway.h"
 #include "net/ClientGateway.h"
 #include "net/PerSocketData.h"
-
-#include <nlohmann/json.hpp>
 
 #include <chrono>
 #include <ctime>
 #include <iomanip>
+#include <nlohmann/json.hpp>
 #include <sstream>
 #include <string>
 
@@ -25,10 +25,11 @@ std::string format_time_point(const std::chrono::system_clock::time_point& tp) {
     oss << std::put_time(&tm, "%Y-%m-%dT%H:%M:%SZ");
     return oss.str();
 }
-}
+}  // namespace
 
-SendMessageCommand::SendMessageCommand(ChatDB& db, net::ClientGateway& gateway)
-    : db_(db), gateway_(gateway) {}
+SendMessageCommand::SendMessageCommand(PersistenceGateway& db, net::ClientGateway& gateway,
+                                       app::services::PublicIdService& ids)
+    : db_(db), gateway_(gateway), ids_(ids) {}
 
 void SendMessageCommand::execute(CommandContext& ctx) {
     auto& psd = ctx.psd;
@@ -56,7 +57,18 @@ void SendMessageCommand::execute(CommandContext& ctx) {
         return;
     }
 
-    ChannelId channel_id{channel_id_str};
+    auto channel_id_opt = ids_.to_internal(PublicChannelId{channel_id_str});
+    if (!channel_id_opt.has_value()) {
+        output.success = false;
+        output.error_code = "channel_not_found";
+        output.error_message = "Channel does not exist.";
+        output.data = {{"type", "error"},
+                       {"code", "channel_not_found"},
+                       {"message", "Channel does not exist"}};
+        return;
+    }
+
+    ChannelId channel_id = *channel_id_opt;
     if (psd.current_channel_id.value != channel_id.value) {
         // Ensure user is subscribed to the channel
         if (!psd.channel_subscriptions.count(channel_id)) {
@@ -91,10 +103,17 @@ void SendMessageCommand::execute(CommandContext& ctx) {
         return;
     }
 
-    auto db_message = db_.sendMessage(channel_id, psd.user_id, content);
-    const std::string display = psd.username.empty() ? std::string("Member") : psd.username;
+    auto db_message = db_.channels().sendMessage(channel_id, psd.user_id, content);
+    const auto public_channel_id = ids_.to_public(channel_id);
+    std::string display = psd.username;
+    if (display.empty()) display = ids_.display_for(psd.user_id);
+    if (display.empty()) {
+        if (auto db_name = db_.users().getUserDisplayName(psd.user_id)) display = *db_name;
+    }
+    if (display.empty()) display = "Member";
+    ids_.remember_display(psd.user_id, display);
     json event = {{"type", "message"},
-                  {"channel_id", db_message.channel_id.value},
+                  {"channel_id", public_channel_id.value},
                   {"sender", display},
                   {"content", db_message.text},
                   {"sent_at", format_time_point(db_message.sent_at)}};
@@ -104,8 +123,7 @@ void SendMessageCommand::execute(CommandContext& ctx) {
     output.success = true;
     output.error_code.clear();
     output.error_message.clear();
-    output.data = {{"type", "send_message_ack"},
-                   {"channel_id", channel_id.value}};
+    output.data = {{"type", "send_message_ack"}, {"channel_id", public_channel_id.value}};
     output.sent_at = std::chrono::system_clock::now();
 }
 

@@ -28,8 +28,6 @@ SupabaseJWTVerifier::SupabaseJWTVerifier() {
     }
     current_key_ = parse_jwk(current_jwk);
     standby_key_ = parse_jwk(standby_jwk);
-
-    log(LogLevel::INFO, "SupabaseJWTVerifier initialized with current and standby keys");
 }
 
 SupabaseJWTVerifier::~SupabaseJWTVerifier() {}
@@ -206,9 +204,8 @@ bool SupabaseJWTVerifier::verify_es256_signature(const std::string& header_paylo
         // ES256 signatures in JWT are raw R and S components concatenated (not DER encoded)
         // Each component is 32 bytes for P-256 curve
         if (signature.length() != 64) {
-            log(LogLevel::ERROR,
-                "ES256 verification - signature length should be 64 bytes, got " +
-                    std::to_string(signature.length()));
+            log(LogLevel::ERROR, "ES256 verification - signature length should be 64 bytes, got " +
+                                     std::to_string(signature.length()));
             return false;
         }
 

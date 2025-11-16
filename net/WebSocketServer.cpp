@@ -10,15 +10,13 @@
 using nlohmann::json;
 using namespace infra::security::validation;
 namespace {
-std::string channel_topic(const ChannelId& channel_id) {
-    return "channel:" + channel_id.value;
-}
+std::string channel_topic(const ChannelId& channel_id) { return "channel:" + channel_id.value; }
 
 std::string safe_display(const net::PerSocketData& psd) {
     if (!psd.username.empty()) return psd.username;
     return "Member";
 }
-}
+}  // namespace
 namespace net {
 
 WebSocketServer::WebSocketServer(core::IApp& app, app::Dispatcher& dispatcher,
@@ -81,12 +79,13 @@ void WebSocketServer::wire(const std::string& pattern) {
                                  json error = {{"type", "error"},
                                                {"code", "invalid_message"},
                                                {"message", validation.error_message}};
-                                 ws->send(error.dump(), OpCode::TEXT);
+                                 gateway_.send_now(psd->conn_id, error);
                                  return;
                              }
 
                              const auto& validated = validation.message;
                              auto type = validated.value("type", std::string{});
+                             
                              if (type == "pong") {
                                  heartbeat_.on_pong(*psd);
                                  return;

@@ -34,12 +34,6 @@
                         <input type="text" id="username" placeholder="Username">
                     </div>
 
-                    <!-- Login fields -->
-                    <div class="input-group auth-login-fields hidden">
-                        <i class="fas fa-user"></i>
-                        <input type="text" id="login-username" placeholder="Username or Email">
-                    </div>
-
                     <!-- Common fields -->
                     <div class="input-group auth-email">
                         <i class="fas fa-envelope"></i>
@@ -72,6 +66,9 @@
             <div class="chat-header">
                 <div class="header-left">
                     <span id="current-hub-name" class="current-hub-label">Select Hub</span>
+                    <button id="hub-settings-btn" class="icon-btn hub-settings-btn" title="Hub settings">
+                        <i class="fas fa-ellipsis-h"></i>
+                    </button>
                 </div>
                 <div class="header-right">
                     <span id="connection-status" class="status-indicator">
@@ -79,7 +76,7 @@
                         <span id="status-text">Connecting...</span>
                     </span>
                     <span id="ping-display" class="ping-indicator">Ping: --</span>
-                    <div class="user-info">
+                    <div class="user-info" title="Edit profile">
                         <span id="current-user">User</span>
                         <i class="fas fa-user-circle"></i>
                     </div>
@@ -92,12 +89,16 @@
             <!-- Main Content -->
             <div class="chat-body">
                 <nav class="hub-rail">
-                    <div id="hub-rail-list" class="hub-rail__list"></div>
                     <div class="hub-rail__actions">
                         <button id="create-hub-btn" class="hub-icon hub-icon--action" title="Create Hub">
                             <i class="fas fa-plus"></i>
                         </button>
+                        <button id="open-join-hub-btn" class="hub-icon hub-icon--action" title="Join Hub">
+                            <i class="fas fa-link"></i>
+                        </button>
+                        <div class="hub-rail__divider"></div>
                     </div>
+                    <div id="hub-rail-list" class="hub-rail__list"></div>
                 </nav>
 
                 <aside class="sidebar channel-sidebar">
@@ -112,6 +113,10 @@
                     </div>
                     <div id="channel-empty-state" class="empty-state hidden">
                         <p>Select a hub to view its channels.</p>
+                    </div>
+                    <div id="hub-actions" class="sidebar-section hidden">
+                        <button id="leave-hub-btn" class="btn secondary hub-leave-btn" type="button">Leave Hub</button>
+                        <div id="leave-hub-error" class="form-error hidden"></div>
                     </div>
                 </aside>
 
@@ -145,40 +150,6 @@
                     </div>
                 </aside>
             </div>
-
-
-            <!-- Call Interface -->
-            <div id="call-interface" class="call-interface hidden">
-                <div class="call-container">
-                    <div class="call-header">
-                        <h3 id="call-title">Voice Call</h3>
-                        <span id="call-duration">00:00</span>
-                    </div>
-                    <div class="call-content">
-                        <div class="call-participants">
-                            <div class="participant">
-                                <i class="fas fa-user-circle"></i>
-                                <span id="caller-name">Caller</span>
-                            </div>
-                        </div>
-                        <div class="call-controls">
-                            <button id="mute-btn" class="call-control-btn">
-                                <i class="fas fa-microphone"></i>
-                            </button>
-                            <button id="video-btn" class="call-control-btn">
-                                <i class="fas fa-video"></i>
-                            </button>
-                            <button id="screen-share-btn" class="call-control-btn">
-                                <i class="fas fa-desktop"></i>
-                            </button>
-                            <button id="end-call-btn-large" class="call-control-btn end-call">
-                                <i class="fas fa-phone-slash"></i>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
             <!-- Modals -->
             <div id="create-channel-modal" class="modal hidden">
                 <div class="modal-content">
@@ -192,6 +163,44 @@
                     <div class="modal-footer">
                         <button id="create-channel-confirm" class="btn primary">Create</button>
                         <button id="create-channel-cancel" class="btn secondary">Cancel</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="create-hub-modal" class="modal hidden">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>Create New Hub</h3>
+                        <button class="close-btn">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <label for="new-hub-name">Hub Name</label>
+                        <input type="text" id="new-hub-name" maxlength="64" placeholder="Hub name">
+                        <div id="hub-error" class="form-error hidden"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button id="create-hub-confirm" class="btn primary">Create</button>
+                        <button id="create-hub-cancel" class="btn secondary">Cancel</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="profile-modal" class="modal hidden">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>Edit Profile</h3>
+                        <button class="close-btn">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <label for="profile-username">Username</label>
+                        <input type="text" id="profile-username" maxlength="48" placeholder="Username">
+                        <label for="profile-full-name">Full Name</label>
+                        <input type="text" id="profile-full-name" maxlength="48" placeholder="Full name">
+                        <div id="profile-error" class="form-error hidden"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button id="profile-save" class="btn primary">Save</button>
+                        <button id="profile-cancel" class="btn secondary">Cancel</button>
                     </div>
                 </div>
             </div>
@@ -225,6 +234,118 @@
                     </div>
                     <div class="modal-footer">
                         <button id="connection-lost-ok" class="btn primary">Back to Login</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="channel-settings-modal" class="modal hidden">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>Channel Settings</h3>
+                        <button class="close-btn" data-close="channel-settings-modal">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="modal-section">
+                            <label for="channel-settings-name">Rename Channel</label>
+                            <input type="text" id="channel-settings-name" maxlength="48" placeholder="Channel name">
+                            <div id="channel-settings-error" class="form-error hidden"></div>
+                        </div>
+                        <div class="modal-section danger-zone">
+                            <div>
+                                <h4>Delete Channel</h4>
+                                <p>Deleting a channel removes its history and disconnects everyone inside.</p>
+                            </div>
+                            <button id="channel-settings-delete" class="btn danger" type="button">Delete Channel</button>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button id="channel-settings-save" class="btn primary">Save</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="hub-settings-modal" class="modal hidden">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>Hub Settings</h3>
+                        <button class="close-btn" data-close="hub-settings-modal">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="modal-section">
+                            <label for="hub-settings-name">Rename Hub</label>
+                            <input type="text" id="hub-settings-name" maxlength="64" placeholder="Hub name">
+                            <div id="hub-settings-error" class="form-error hidden"></div>
+                        </div>
+                        <div class="modal-section">
+                            <label for="hub-settings-invite-code">Invite Code</label>
+                            <div class="invite-row">
+                                <input type="text" id="hub-settings-invite-code" readonly placeholder="Generate invite…">
+                                <button id="hub-settings-copy" class="btn secondary btn-small">Copy</button>
+                                <button id="hub-settings-refresh" class="btn secondary btn-small">Refresh</button>
+                            </div>
+                            <div id="hub-settings-invite-error" class="form-error hidden"></div>
+                        </div>
+                        <div class="modal-section danger-zone">
+                            <div>
+                                <h4>Delete Hub</h4>
+                                <p>Deleting a hub removes all channels and history for everyone.</p>
+                            </div>
+                            <button id="hub-settings-delete" class="btn danger" type="button">Delete Hub</button>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button id="hub-settings-save" class="btn primary">Save</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="join-hub-modal" class="modal hidden">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>Join Hub</h3>
+                        <button class="close-btn" data-close="join-hub-modal">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <label for="join-hub-code">Invite Code</label>
+                        <input type="text" id="join-hub-code" placeholder="Paste invite code">
+                        <div id="join-hub-error" class="form-error hidden"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button id="join-hub-confirm" class="btn primary">Join</button>
+                        <button id="join-hub-cancel" class="btn secondary">Cancel</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="confirm-modal" class="modal hidden">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3 id="confirm-modal-title">Confirm Action</h3>
+                        <button class="close-btn" data-close="confirm-modal">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <p id="confirm-modal-message">Are you sure?</p>
+                    </div>
+                    <div class="modal-footer">
+                        <button id="confirm-modal-primary" class="btn danger">Confirm</button>
+                        <button id="confirm-modal-secondary" class="btn secondary">Cancel</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="member-role-modal" class="modal hidden">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3 id="member-role-title">Update Member Role</h3>
+                        <button class="close-btn" data-close="member-role-modal">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <p id="member-role-message">Choose a new role for this member.</p>
+                        <div class="role-actions">
+                            <button id="member-role-make-admin" class="btn primary">Make Admin</button>
+                            <button id="member-role-make-member" class="btn secondary">Make Member</button>
+                        </div>
+                        <div id="member-role-error" class="form-error hidden"></div>
                     </div>
                 </div>
             </div>

@@ -12,9 +12,9 @@ enum class ChannelType { CHAT, VOICE };
 class Channel {
    public:
     std::string name{};
-    ChannelId channel_id{""};             // in-class default
-    HubId hub_id{""};                     // in-class default
-    ChannelType type{ChannelType::CHAT};  // in-class default
+    ChannelId channel_id{""};
+    HubId hub_id{""};
+    ChannelType type{ChannelType::CHAT};
     std::unordered_set<UserId> member_user_ids{};
 
     Channel() = default;  // now trivial and fine
@@ -27,7 +27,9 @@ class Channel {
 
     Channel(const Channel&) = default;
 
-    bool hasMember(const UserId& uid) const { return member_user_ids.find(uid) != member_user_ids.end(); }
+    bool hasMember(const UserId& uid) const {
+        return member_user_ids.find(uid) != member_user_ids.end();
+    }
     bool addMember(const UserId& uid) { return member_user_ids.insert(uid).second; }
     bool removeMember(const UserId& uid) { return member_user_ids.erase(uid) > 0; }
 
