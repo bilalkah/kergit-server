@@ -73,8 +73,8 @@ int main() {
             std::cout << "[ERROR] " << j["message"] << std::endl;
         } else if (j["type"] == "pong") {
             if (j.contains("timestamp")) {
-                auto now = steady_clock::now();
-                auto sent = static_cast<steady_clock::rep>(j["timestamp"]);
+                auto now = system_clock::now();
+                auto sent = static_cast<system_clock::rep>(j["timestamp"]);
                 auto ms = duration_cast<milliseconds>(now.time_since_epoch()).count() - sent;
                 std::cout << "[Ping] Round-trip time: " << ms << " ms" << std::endl;
             } else {

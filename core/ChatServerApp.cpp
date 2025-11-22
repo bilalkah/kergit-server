@@ -55,9 +55,9 @@ bool ChatServerApp::start() {
     loop_thread_ = std::thread(&ChatServerApp::run_server, this);
 
     auto timeout = std::chrono::seconds(5);
-    auto start_time = std::chrono::steady_clock::now();
+    auto start_time = std::chrono::system_clock::now();
     while (!started_.load()) {
-        if (std::chrono::steady_clock::now() - start_time > timeout) {
+        if (std::chrono::system_clock::now() - start_time > timeout) {
             log(LogLevel::ERROR, "Failed to start event loop within timeout.");
             running_.store(false);
             started_.store(false);

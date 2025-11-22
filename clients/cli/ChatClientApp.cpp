@@ -64,9 +64,9 @@ void ChatClientApp::disconnect() {
 
         // Wait for thread to finish with a short timeout
         if (client_thread.joinable()) {
-            auto start = std::chrono::steady_clock::now();
+            auto start = std::chrono::system_clock::now();
             while (client_thread.joinable() &&
-                   std::chrono::steady_clock::now() - start < std::chrono::milliseconds(500)) {
+                   std::chrono::system_clock::now() - start < std::chrono::milliseconds(500)) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
             }
 
@@ -172,7 +172,7 @@ bool ChatClientApp::list_users() {
 bool ChatClientApp::ping() {
     if (!connected) return false;
 
-    auto now = steady_clock::now();
+    auto now = system_clock::now();
     auto ms = duration_cast<milliseconds>(now.time_since_epoch()).count();
 
     json msg = {{"type", "ping"}, {"timestamp", ms}};
