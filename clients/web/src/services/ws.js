@@ -40,13 +40,20 @@ export class WSClient {
       this.currentUrl = url;
       this.lastHeaders = headers;
       this.lastTimeoutMs = timeoutMs;
-    const socket = new WebSocket(url);
-    this.ws = socket;
+      const socket = new WebSocket(url);
+      this.ws = socket;
 
-    const onMessage = (ev) => {
-      if (this.ws !== socket) return;
-      let msg;
-      try { msg = JSON.parse(ev.data); } catch { return; }
+      const onMessage = (ev) => {
+        if (this.ws !== socket) return;
+        let msg;
+        console.log('[WS] recv', ev.data);
+        try { msg = JSON.parse(ev.data); } catch { return; }
+
+        if (msg.type === "conn_status") {
+          this._onConnStatus(msg);
+          return;
+        }
+
         if (msg?.type === 'ping') {
           const receivedAt = Date.now();
           this.lastPongAt = receivedAt;
@@ -164,25 +171,50 @@ export class WSClient {
     }
   }
 
+  _onConnStatus({ status, rtt_ms }) {
+    const now = Date.now();
+    this.lastStatusAt = now;
+    this.lastRttMs = typeof rtt_ms === "number" ? rtt_ms : this.lastRttMs;
+
+    if (status === "alive") {
+      if (this.stalled) {
+        this.stalled = false;
+        this._emit("__unstalled__", { rtt_ms: this.lastRttMs });
+      }
+    } else if (status === "stale") {
+      if (!this.stalled) {
+        this.stalled = true;
+        this._emit("__stalled__", { missFor: now - (this.lastStatusAt ?? now) });
+      }
+    }
+  }
+
   _startHeartbeat() {
-    this.lastPongAt = Date.now();
+    this.lastStatusAt = Date.now();
     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
+
     this.heartbeatTimer = setInterval(() => {
       const now = Date.now();
-      const missFor = now - this.lastPongAt;
-      const isHidden = typeof document !== 'undefined' && document.hidden;
-      if (missFor > this.missToleranceMs) {
+      const sinceStatus = now - this.lastStatusAt;
+      const isHidden = typeof document !== "undefined" && document.hidden;
+
+      // if we haven't heard any conn_status for too long
+      if (sinceStatus > this.missToleranceMs) {
         if (!this.stalled) {
           this.stalled = true;
-          this._emit('__stalled__', { missFor });
+          this._emit("__stalled__", { missFor: sinceStatus });
         }
+
+        // if tab hidden, don't spam-stall; tolerate backgrounding
         if (isHidden) {
-          this.lastPongAt = now;
+          this.lastStatusAt = now;
         }
         return;
       }
-      if (this.stalled && missFor <= this.missToleranceMs) {
+
+      if (this.stalled && sinceStatus <= this.missToleranceMs) {
         this.stalled = false;
+        this._emit("__unstalled__", { rtt_ms: this.lastRttMs });
       }
     }, this.heartbeatMs);
   }
