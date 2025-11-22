@@ -55,9 +55,16 @@ void Heartbeat::stop() {
     }
 }
 
-void Heartbeat::on_open(PerSocketData& psd) { psd.last_pong_at = std::chrono::steady_clock::now(); }
+void Heartbeat::on_open(PerSocketData& psd) { psd.last_pong_at = std::chrono::system_clock::now(); }
 
-void Heartbeat::on_pong(PerSocketData& psd) { psd.last_pong_at = std::chrono::steady_clock::now(); }
+void Heartbeat::on_pong(PerSocketData& psd) {
+    psd.last_pong_at = std::chrono::system_clock::now();
+    psd.alive = true;
+    psd.rtt_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(psd.last_pong_at - psd.last_ping_at);
+    conn_status_msg_["rtt_ms"] = psd.rtt_ms.count();
+    conn_status_msg_["status"] = psd.alive ? "alive" : "dead";
+}
 
 void Heartbeat::on_timer(us_timer_t* timer) {
     auto** slot = reinterpret_cast<Heartbeat**>(us_timer_ext(timer));
@@ -66,10 +73,7 @@ void Heartbeat::on_timer(us_timer_t* timer) {
 }
 
 void Heartbeat::tick() {
-    const auto now = std::chrono::steady_clock::now();
-    const auto epoch_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::system_clock::now().time_since_epoch());
-    const std::string payload = json{{"type", "ping"}, {"ts", epoch_ms.count()}}.dump();
+    const auto now = std::chrono::system_clock::now();
 
     auto sockets = conns_.get_all();
     for (auto* ws : sockets) {
@@ -77,12 +81,14 @@ void Heartbeat::tick() {
         auto* psd = ws->getUserData();
         if (!psd) continue;
 
-        if (now - psd->last_pong_at > cfg_.timeout) {
+        if (psd->rtt_ms > cfg_.timeout) {
             ws->end(cfg_.close_code, cfg_.close_reason);
             continue;
         }
 
-        ws->send(payload, OpCode::TEXT);
+        psd->last_ping_at = now;
+
+        ws->send("", OpCode::PING);
     }
 }
 

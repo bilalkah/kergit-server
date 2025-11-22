@@ -44,6 +44,7 @@ void WebSocketServer::wire(const std::string& pattern) {
 
     app_.uws().ws<PerSocketData>(
         pattern, {
+                     .sendPingsAutomatically = false,
                      .upgrade =
                          [this](auto* res, auto* req, auto* ctx) {
                              std::string origin = std::string(req->getHeader("origin"));
@@ -110,6 +111,13 @@ void WebSocketServer::wire(const std::string& pattern) {
                              // backpressure hook (optional)
                          },
 
+                     .pong =
+                         [this](auto* ws, std::string_view data) {
+                             auto& psd = *static_cast<PerSocketData*>(ws->getUserData());
+                             heartbeat_.on_pong(psd);
+
+                             ws->send(heartbeat_.conn_status_message(), uWS::OpCode::TEXT);
+                         },
                      .close =
                          [this](UwsSocket* ws, int code, std::string_view reason) {
                              auto* psd = ws->getUserData();

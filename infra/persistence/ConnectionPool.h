@@ -12,7 +12,7 @@
 
 class ConnectionPool {
    public:
-    using Clock = std::chrono::steady_clock;
+    using Clock = std::chrono::system_clock;
 
     ConnectionPool(const std::string& conninfo, std::size_t pool_size,
                    std::chrono::milliseconds wait_timeout = std::chrono::milliseconds(5000));

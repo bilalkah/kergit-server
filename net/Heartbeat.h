@@ -8,6 +8,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <nlohmann/json.hpp>
 
 struct us_timer_t;
 
@@ -31,6 +32,8 @@ class Heartbeat {
     void on_open(PerSocketData& psd);
     void on_pong(PerSocketData& psd);
 
+    std::string conn_status_message() const { return conn_status_msg_.dump(); }
+
    private:
     static void on_timer(us_timer_t* timer);
     void tick();
@@ -40,6 +43,8 @@ class Heartbeat {
     HeartbeatConfig cfg_;
     std::atomic<bool> running_{false};
     ::us_timer_t* timer_{nullptr};
+
+    nlohmann::json conn_status_msg_{{"type", "conn_status"}, {"status", "alive"}, {"rtt_ms", "0"}};
 };
 
 }  // namespace net
