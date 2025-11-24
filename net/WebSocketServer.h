@@ -1,10 +1,9 @@
 #ifndef NET_WEBSOCKETSERVER_H
 #define NET_WEBSOCKETSERVER_H
 
-#include "app/Dispatcher.h"
+#include "app/queue/ThreadSafeCmdQueue.h"
 #include "core/IApp.h"
 #include "core/Types.h"
-#include "infra/security/validation/MessageValidator.h"
 #include "net/ClientGateway.h"
 #include "net/ConnectionManager.h"
 #include "net/Heartbeat.h"
@@ -40,8 +39,7 @@ struct WsHooks {
 
 class WebSocketServer {
    public:
-    WebSocketServer(core::IApp& app, app::Dispatcher& dispatcher, ConnectionManager& conns,
-                    ClientGateway& gateway, app::services::HubPublisher* hub_publisher = nullptr,
+    WebSocketServer(core::IApp& app, ConnectionManager& conns, ClientGateway& gateway,
                     OriginAllowlist origins = {}, WsLimits limits = {});
     ~WebSocketServer();
 
@@ -54,15 +52,12 @@ class WebSocketServer {
     static std::string make_conn_id(void* p);
 
     core::IApp& app_;
-    app::Dispatcher& dispatcher_;
     ConnectionManager& conns_;
     ClientGateway& gateway_;
-    app::services::HubPublisher* hub_publisher_;
     OriginAllowlist origins_;
     WsLimits limits_;
     WsHooks hooks_{};
     Heartbeat heartbeat_;
-    std::unique_ptr<infra::security::validation::MessageValidator> validator_;
 };
 
 }  // namespace net
