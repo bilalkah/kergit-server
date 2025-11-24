@@ -1,6 +1,5 @@
 #include "net/Heartbeat.h"
 
-#include <libusockets.h>
 #include <nlohmann/json.hpp>
 
 using nlohmann::json;

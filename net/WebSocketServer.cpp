@@ -16,13 +16,16 @@ std::string safe_display(const net::PerSocketData& psd) {
 namespace net {
 
 WebSocketServer::WebSocketServer(core::IApp& app, ConnectionManager& conns, ClientGateway& gateway,
-                                 OriginAllowlist origins, WsLimits limits)
+                                 EventQueue& in_q, OutgoingQueue& out_q, OriginAllowlist origins,
+                                 WsLimits limits)
     : app_(app),
       conns_(conns),
       gateway_(gateway),
+      in_q_(in_q),
       origins_(std::move(origins)),
       limits_(limits),
-      heartbeat_(app, conns) {}
+      heartbeat_(app, conns),
+      out_consumer_(app, conns, gateway, out_q) {}
 
 WebSocketServer::~WebSocketServer() { shutdown(); }
 
@@ -61,6 +64,14 @@ void WebSocketServer::wire(const std::string& pattern) {
                              CommandRequest req;
                              req.payload = std::string{data};
 
+                             req.conn_id = psd->conn_id;
+                             req.user_id = psd->user_id;
+                             req.current_hub_id = psd->current_hub_id;
+                             req.current_channel_id = psd->current_channel_id;
+                             req.authenticated = psd->authenticated;
+                             req.received_at = std::chrono::system_clock::now();
+                             in_q_.push(Event{req});
+
                              if (hooks_.on_message_raw) {
                                  hooks_.on_message_raw(psd->conn_id, data);
                              }
@@ -98,7 +109,9 @@ void WebSocketServer::wire(const std::string& pattern) {
 
                              // ---- Notify workers/app ----
                              DisconnectEvent ev{conn_id, user_id, snap, display};
-                             //  net_events_.push(std::move(ev));  // thread-safe queue
+                             ev.code = code;
+                             ev.reason = std::string(reason);
+                             in_q_.push(Event{ev});
                          },
                  });
 
