@@ -1,7 +1,5 @@
-#ifndef APP_TSQUEUE_H
-#define APP_TSQUEUE_H
-
-#include "domains/ids/Ids.h"
+#ifndef APP_QUEUE_THREADSAFE_CMD_QUEUE_H
+#define APP_QUEUE_THREADSAFE_CMD_QUEUE_H
 
 #include <condition_variable>
 #include <functional>
@@ -9,26 +7,6 @@
 #include <optional>
 #include <queue>
 #include <stdexcept>
-#include <string>
-
-struct CommandRequest {
-    std::string command_name; 
-    std::string payload; 
-
-    ConnId conn_id;
-    UserId user_id;
-    HubId current_hub_id;
-    ChannelId current_channel_id;
-    bool authenticated{false};
-};
-
-struct OutgoingMessage {
-    ConnId conn_id;
-
-    std::string payload;
-
-    std::function<void(struct PerSocketData&)> apply_psd;
-};
 
 template <typename T>
 class ThreadSafeQueue {
@@ -81,4 +59,4 @@ class ThreadSafeQueue {
     bool _stopped{false};
 };
 
-#endif  // APP_TSQUEUE_H
+#endif  // APP_QUEUE_THREADSAFE_CMD_QUEUE_H
