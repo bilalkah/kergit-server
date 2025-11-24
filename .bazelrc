@@ -28,6 +28,12 @@ build:vanilla --define WITH_LIBDEFLATE=0
 build:vanilla --define USE_SSL=false
 build:vanilla -c opt
 build:vanilla --strip=always
+build:vanilla --action_env=CC=clang
+build:vanilla --action_env=CXX=clang++
+build:vanilla --host_action_env=CC=clang
+build:vanilla --host_action_env=CXX=clang++
+build:vanilla --action_env=CCACHE_DISABLE=1
+
 
 # === disable SSL + QUIC + LIBDEFLATE ===
 build:vanilla_dbg --define WITH_BORINGSSL=0
