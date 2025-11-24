@@ -59,6 +59,22 @@ cc_library(
 )
 
 cc_library(
+    name = "outgoing_queue_consumer",
+    srcs = ["OutgoingQueueConsumer.cpp"],
+    hdrs = ["OutgoingQueueConsumer.h"],
+    copts = ["-std=c++20"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":client_gateway",
+        ":connection_manager",
+        "//app/queue:outgoing_queue",
+        "//core:i_app",
+        "//core:types",
+        "@uwebsockets",
+    ],
+)
+
+cc_library(
     name = "websocket_server",
     srcs = ["WebSocketServer.cpp"],
     hdrs = ["WebSocketServer.h"],
@@ -68,15 +84,13 @@ cc_library(
         ":client_gateway",
         ":connection_manager",
         ":heartbeat",
+        ":outgoing_queue_consumer",
         ":persocketdata",
-        "//app:dispatcher",
-        "//app/queue:ts_cmd_queue",
-        "//app/services:hub_publisher",
+        "//app/queue:event_queue",
+        "//app/queue:outgoing_queue",
         "//core:i_app",
         "//core:types",
         "//domains/ids:domain_ids",
-        "//infra/security:message_validator",
-        "@nlohmann_json",
         "@uwebsockets",
     ],
 )

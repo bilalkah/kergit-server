@@ -1,12 +1,14 @@
 #ifndef NET_WEBSOCKETSERVER_H
 #define NET_WEBSOCKETSERVER_H
 
-#include "app/queue/ThreadSafeCmdQueue.h"
+#include "app/queue/EventQueue.h"
+#include "app/queue/OutgoingQueue.h"
 #include "core/IApp.h"
 #include "core/Types.h"
 #include "net/ClientGateway.h"
 #include "net/ConnectionManager.h"
 #include "net/Heartbeat.h"
+#include "net/OutgoingQueueConsumer.h"
 #include "net/PerSocketData.h"
 
 #include <functional>
@@ -40,7 +42,8 @@ struct WsHooks {
 class WebSocketServer {
    public:
     WebSocketServer(core::IApp& app, ConnectionManager& conns, ClientGateway& gateway,
-                    OriginAllowlist origins = {}, WsLimits limits = {});
+                    EventQueue& in_q, OutgoingQueue& out_q, OriginAllowlist origins = {},
+                    WsLimits limits = {});
     ~WebSocketServer();
 
     void wire(const std::string& pattern = "/ws");
@@ -54,10 +57,14 @@ class WebSocketServer {
     core::IApp& app_;
     ConnectionManager& conns_;
     ClientGateway& gateway_;
+    EventQueue& in_q_;
     OriginAllowlist origins_;
-    WsLimits limits_;
-    WsHooks hooks_{};
+    WsLimits limits_{};
+
+
     Heartbeat heartbeat_;
+    OutgoingQueueConsumer out_consumer_;
+    WsHooks hooks_{};
 };
 
 }  // namespace net
