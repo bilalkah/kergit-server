@@ -64,7 +64,6 @@ cc_binary(
         "//conditions:default": [],
     }),
     deps = [
-        ":queue",
         "//core:chat_server_app",
         "//core:server_config",
         "//utils:env_loader",
@@ -73,14 +72,3 @@ cc_binary(
     ],
 )
 
-cc_library(
-    name = "queue",
-    hdrs = [
-        "Queue.h",
-        "ThreadSafeCmdQueue.h",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//domains/ids:domain_ids",
-    ],
-)
