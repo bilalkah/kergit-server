@@ -33,6 +33,12 @@ class ClientGateway : public utils::Loggable {
     void unsubscribe_all(const ConnId& cid);
     void publish(const std::string& topic, const nlohmann::json& payload, OpCode op = OpCode::TEXT);
 
+    // Say hi
+    void say_hello(const ConnId& cid) {
+        nlohmann::json hello = {{"type", "hello"}, {"conn_id", cid.value}};
+        send_defer(cid, hello);
+    }
+
    private:
     ::core::IApp& app_;
     ConnectionManager& conns_;

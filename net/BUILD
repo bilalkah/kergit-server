@@ -5,6 +5,7 @@ cc_library(
     hdrs = [
         "PerSocketData.h",
     ],
+    copts = ["-std=c++20"],
     visibility = ["//visibility:public"],
     deps = [
         "//domains:hub_domain",
@@ -16,6 +17,7 @@ cc_library(
     name = "connection_manager",
     srcs = ["ConnectionManager.cpp"],
     hdrs = ["ConnectionManager.h"],
+    copts = ["-std=c++20"],
     visibility = ["//visibility:public"],
     deps = [
         "//app/pubsub",
@@ -28,6 +30,7 @@ cc_library(
     name = "heartbeat",
     srcs = ["Heartbeat.cpp"],
     hdrs = ["Heartbeat.h"],
+    copts = ["-std=c++20"],
     visibility = ["//visibility:public"],
     deps = [
         ":connection_manager",
@@ -43,6 +46,7 @@ cc_library(
     name = "client_gateway",
     srcs = ["ClientGateway.cpp"],
     hdrs = ["ClientGateway.h"],
+    copts = ["-std=c++20"],
     visibility = ["//visibility:public"],
     deps = [
         ":connection_manager",
@@ -58,6 +62,7 @@ cc_library(
     name = "websocket_server",
     srcs = ["WebSocketServer.cpp"],
     hdrs = ["WebSocketServer.h"],
+    copts = ["-std=c++20"],
     visibility = ["//visibility:public"],
     deps = [
         ":client_gateway",
@@ -65,6 +70,7 @@ cc_library(
         ":heartbeat",
         ":persocketdata",
         "//app:dispatcher",
+        "//app/queue:ts_cmd_queue",
         "//app/services:hub_publisher",
         "//core:i_app",
         "//core:types",
