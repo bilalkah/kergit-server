@@ -1,6 +1,7 @@
 #ifndef APP_ICOMMAND_H
 #define APP_ICOMMAND_H
 
+#include "app/queue/OutgoingQueue.h"
 #include "domains/ids/Ids.h"
 #include "net/PerSocketData.h"
 
@@ -22,13 +23,18 @@ struct Output {
     bool success;
     std::string error_code;
     std::string error_message;
-    nlohmann::json data;
+
+    std::vector<OutgoingMessage> messages;
     system_clock::time_point sent_at;
 };
 
 struct CommandContext {
-    CommandContext(net::PerSocketData& psd_ref) : psd(psd_ref) {}
-    net::PerSocketData& psd;
+    ConnId conn_id;
+    UserId user_id;
+    HubId current_hub_id;
+    ChannelId current_channel_id;
+    bool authenticated{false};
+
     Input input;
     Output output;
 };

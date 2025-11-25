@@ -15,16 +15,18 @@ namespace app {
 
 class Dispatcher {
    public:
-    using SetAuthFn = std::function<void(const ConnId& conn_id, const UserId& user_id)>;
-
     void register_cmd(std::string type, std::unique_ptr<ICommand> cmd);
-    void on_auth_success(SetAuthFn fn) { set_auth_ = std::move(fn); }
-    std::optional<nlohmann::json> dispatch(const std::string& type, CommandContext& ctx);
+
+    /**
+     * Dispatch a command by its type.
+     * @param type Command type string
+     * @param ctx Command context to be filled/used by the command
+     */
+    void dispatch(const std::string& type, CommandContext& ctx);
     std::unordered_set<std::string> registered_commands() const;
 
    private:
     std::unordered_map<std::string, std::unique_ptr<ICommand>> map_;
-    SetAuthFn set_auth_{};
 };
 
 }  // namespace app

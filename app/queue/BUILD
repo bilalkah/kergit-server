@@ -27,10 +27,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":ts_cmd_queue",
-        "//app/commands:i_command",
-        "//core:i_app",
-        "//net:client_gateway",
-        "//net:connection_manager",
+        "//domains/ids:domain_ids",
         "@nlohmann_json",
     ],
 )

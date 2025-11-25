@@ -7,6 +7,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        "//app/queue:outgoing_queue",
         "//domains/ids:domain_ids",
         "//net:persocketdata",
         "@nlohmann_json",
@@ -22,6 +23,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":i_command",
+        "//app/queue:outgoing_queue",
         "//app/services:auth_service",
         "//app/services:hub_publisher",
         "//app/services:public_id_service",

@@ -1,4 +1,5 @@
 #include "app/Queue.h"
+
 #include <chrono>
 #include <gtest/gtest.h>
 #include <thread>
@@ -34,9 +35,9 @@ TEST(ThreadSafeQueueTest, BlockingPopUnblocksOnPush) {
         q.push(123);
     });
 
-    auto start = std::chrono::steady_clock::now();
+    auto start = std::chrono::system_clock::now();
     int value = q.pop();
-    auto end = std::chrono::steady_clock::now();
+    auto end = std::chrono::system_clock::now();
 
     result = value;
 
@@ -73,13 +74,13 @@ TEST(ThreadSafeQueueTest, CommandRequestRoundTrip) {
     ThreadSafeQueue<CommandRequest> q;
 
     CommandRequest in;
-    in.command_name         = "join_channel";
-    in.payload              = R"({"channel_id":"ch-123"})";
-    in.conn_id              = ConnId{"conn-1"};
-    in.user_id              = UserId{"user-42"};
-    in.current_hub_id       = HubId{"hub-9"};
-    in.current_channel_id   = ChannelId{"ch-old"};
-    in.authenticated        = true;
+    in.command_name = "join_channel";
+    in.payload = R"({"channel_id":"ch-123"})";
+    in.conn_id = ConnId{"conn-1"};
+    in.user_id = UserId{"user-42"};
+    in.current_hub_id = HubId{"hub-9"};
+    in.current_channel_id = ChannelId{"ch-old"};
+    in.authenticated = true;
 
     q.push(in);
 
@@ -106,13 +107,13 @@ TEST(ThreadSafeQueueTest, ProducerConsumerMimicsServerAndWorker) {
     std::thread producer([&] {
         for (int i = 0; i < N; ++i) {
             CommandRequest req;
-            req.command_name       = "echo";
-            req.payload            = "msg-" + std::to_string(i);
-            req.conn_id            = ConnId{"conn-" + std::to_string(i)};
-            req.user_id            = UserId{"user-" + std::to_string(i)};
-            req.current_hub_id     = HubId{"hub-1"};
+            req.command_name = "echo";
+            req.payload = "msg-" + std::to_string(i);
+            req.conn_id = ConnId{"conn-" + std::to_string(i)};
+            req.user_id = UserId{"user-" + std::to_string(i)};
+            req.current_hub_id = HubId{"hub-1"};
             req.current_channel_id = ChannelId{"ch-1"};
-            req.authenticated      = (i % 2 == 0);  // arbitrary
+            req.authenticated = (i % 2 == 0);  // arbitrary
 
             in_q.push(std::move(req));
         }
@@ -121,7 +122,7 @@ TEST(ThreadSafeQueueTest, ProducerConsumerMimicsServerAndWorker) {
     // Consumer: mimics worker/dispatcher handling commands and pushing responses
     std::thread consumer([&] {
         for (int i = 0; i < N; ++i) {
-            CommandRequest req = in_q.pop(); // blocking
+            CommandRequest req = in_q.pop();  // blocking
 
             // "Dispatcher" logic: just echo back with a prefix
             OutgoingMessage msg;
