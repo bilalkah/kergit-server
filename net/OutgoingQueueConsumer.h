@@ -12,6 +12,7 @@
 #include <chrono>
 #include <nlohmann/json.hpp>
 
+struct us_timer_t;
 namespace net {
 
 struct OutgoingConsumerConfig {

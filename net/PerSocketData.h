@@ -5,10 +5,10 @@
 #include "domains/ids/Ids.h"
 
 #include <chrono>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
-#include <memory>
 
 namespace net {
 
@@ -28,7 +28,7 @@ struct PerSocketData {
 
     // Subscriptions
     std::shared_ptr<const Snapshot> snapshot;
-    
+
     // flag fields
     bool authenticated = false;
     bool alive = false;

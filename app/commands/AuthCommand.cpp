@@ -1,5 +1,6 @@
 #include "app/commands/AuthCommand.h"
 
+#include "app/queue/OutgoingQueue.h"  // DirectMessage, PublishMessage, OutgoingMessage
 #include "app/services/HubPublisher.h"
 #include "infra/persistence/PersistenceGateway.h"
 #include "net/ClientGateway.h"
@@ -21,14 +22,14 @@ using nlohmann::json;
 namespace app {
 
 namespace {
+
+// NOTE: PSD in worker is not available anymore.
+// We only read other sockets' PSDs inside collect_online_members,
+// and only WRITE PSD inside apply_psd (WS thread).
+
 std::string safe_display(const net::PerSocketData& psd) {
     if (!psd.username.empty()) return psd.username;
     return "Member";
-}
-
-nlohmann::json make_member_payload(const net::PerSocketData& psd) {
-    const auto name = safe_display(psd);
-    return nlohmann::json{{"handle", name}, {"display_name", name}, {"online", true}};
 }
 
 std::string role_to_string(Role role) {
@@ -45,6 +46,7 @@ std::string role_to_string(Role role) {
 std::string channel_type_to_string(ChannelType type) {
     return type == ChannelType::VOICE ? "voice" : "text";
 }
+
 }  // namespace
 
 AuthCommand::AuthCommand(PersistenceGateway& db, net::ClientGateway& gateway,
@@ -59,7 +61,6 @@ AuthCommand::AuthCommand(PersistenceGateway& db, net::ClientGateway& gateway,
 
 void AuthCommand::execute(CommandContext& ctx) {
     const auto& input = ctx.input;
-    auto& psd = ctx.psd;
     auto& output = ctx.output;
 
     const std::string token = input.data.value("token", "");
@@ -68,6 +69,7 @@ void AuthCommand::execute(CommandContext& ctx) {
         preferred_username = it->get<std::string>();
     }
 
+    // trim username
     auto trim = [](std::string& s) {
         auto not_space = [](unsigned char ch) { return !std::isspace(ch); };
         s.erase(s.begin(), std::find_if(s.begin(), s.end(), not_space));
@@ -75,13 +77,23 @@ void AuthCommand::execute(CommandContext& ctx) {
     };
     trim(preferred_username);
 
+    // -------------------------
+    // Validate token
+    // -------------------------
     if (token.empty()) {
         output.success = false;
         output.error_code = "missing_token";
-        output.data = {{"type", "auth_response"},
-                       {"success", false},
-                       {"error", "missing_token"},
-                       {"error_message", "Authentication token is required"}};
+        output.error_message = "Authentication token is required";
+
+        json err = {{"type", "auth_response"},
+                    {"success", false},
+                    {"error", "missing_token"},
+                    {"error_message", "Authentication token is required"}};
+
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = err.dump();
+        ctx.output.messages.push_back(std::move(msg));
         return;
     }
 
@@ -90,110 +102,171 @@ void AuthCommand::execute(CommandContext& ctx) {
     if (!auth_result.success || auth_result.claims.id.empty()) {
         output.success = false;
         output.error_code = "auth_failed";
-        output.data = {
-            {"type", "auth_response"},
-            {"success", false},
-            {"error", "auth_failed"},
-            {"error_message", auth_result.error_message.empty() ? "Authentication failed"
-                                                                : auth_result.error_message}};
+        output.error_message =
+            auth_result.error_message.empty() ? "Authentication failed" : auth_result.error_message;
+
+        json err = {{"type", "auth_response"},
+                    {"success", false},
+                    {"error", "auth_failed"},
+                    {"error_message", output.error_message}};
+
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = err.dump();
+        ctx.output.messages.push_back(std::move(msg));
         return;
     }
 
+    // -------------------------
+    // Auth success -> bootstrap
+    // -------------------------
     const auto& claims = auth_result.claims;
 
     try {
-        fill_psd(psd, claims);
-        if (!preferred_username.empty()) {
-            psd.username = preferred_username;
-        }
-        if (psd.username.empty()) {
-            psd.username = "Member";
-        }
-        if (!psd.username.empty()) {
-            ids_.remember_display(psd.user_id, psd.username);
-        }
+        // Build worker-side user fields
+        UserId user_id{claims.id};
+        std::string email = claims.email;
+        std::string username;
 
-        // Gather hub & channel data
-        const std::vector<Hub> hubs = db_.hubs().getUserHubs(psd.user_id);
-        ids_.to_public(psd.user_id);
+        if (!preferred_username.empty()) {
+            username = preferred_username;
+        } else if (!claims.username.empty()) {
+            username = claims.username;
+        } else if (!claims.full_name.empty()) {
+            username = claims.full_name;
+        } else {
+            if (auto db_name = db_.users().getUserDisplayName(user_id)) {
+                username = *db_name;
+            }
+        }
+        if (username.empty()) username = "Member";
+
+        ids_.remember_display(user_id, username);
+        ids_.to_public(user_id);
+
+        // Gather hubs & channels
+        const std::vector<Hub> hubs = db_.hubs().getUserHubs(user_id);
+
         std::unordered_map<HubId, std::vector<Channel>> channels_by_hub;
         channels_by_hub.reserve(hubs.size());
 
-        psd.hub_memberships.clear();
-        psd.hub_roles.clear();
+        // Build snapshot for this user/connection
+        auto snapshot = std::make_shared<net::Snapshot>();
+        snapshot->hubs.clear();
+        snapshot->roles.clear();
+        snapshot->channels.clear();
+
         for (const auto& hub : hubs) {
             ids_.to_public(hub.id);
-            psd.hub_memberships.insert(hub.id);
+            snapshot->hubs.insert(hub.id);
+
             Role role = Role::USER;
-            auto it = hub.members.find(psd.user_id);
+            auto it = hub.members.find(user_id);
             if (it != hub.members.end()) role = it->second;
-            psd.hub_roles[hub.id] = role;
+            snapshot->roles[hub.id] = role;
+
             auto channels = db_.channels().getHubChannels(hub.id);
             for (const auto& channel : channels) {
                 ids_.to_public(channel.channel_id);
                 ids_.to_public(channel.hub_id);
+                snapshot->channels.insert(channel.channel_id);
             }
             channels_by_hub.emplace(hub.id, std::move(channels));
         }
 
+        // Online members by hub (reads other PSD snapshots)
         auto online_by_hub = collect_online_members(hubs);
-        subscribe_to_hubs(psd, hubs);
 
-        auto bootstrap = build_bootstrap_payload(hubs, channels_by_hub, online_by_hub, psd.user_id);
-        gateway_.send_now(psd.conn_id, bootstrap);
-        if (!psd.hub_memberships.empty()) {
-            hub_publisher_.publish_hubs(psd.hub_memberships);
+        // Bootstrap payload
+        auto bootstrap = build_bootstrap_payload(hubs, channels_by_hub, online_by_hub, user_id);
+
+        // 1) Send bootstrap list to this client
+        {
+            DirectMessage boot_msg;
+            boot_msg.conn_id = ctx.conn_id;
+            boot_msg.payload = bootstrap.dump();
+            ctx.output.messages.push_back(std::move(boot_msg));
         }
 
-        const auto public_user_id = ids_.to_public(psd.user_id);
+        // 2) Send auth_response + apply_psd to update PSD & subscribe hubs in WS thread
+        const auto public_user_id = ids_.to_public(user_id);
+
+        json auth_resp = {
+            {"type", "auth_response"},
+            {"success", true},
+            {"user_id", public_user_id.value},
+            {"username", username},
+        };
+
+        DirectMessage auth_msg;
+        auth_msg.conn_id = ctx.conn_id;
+        auth_msg.payload = auth_resp.dump();
+
+        // Capture what WS thread needs
+        auto snap_const = std::shared_ptr<const net::Snapshot>(snapshot);
+        auto hubs_copy = snapshot->hubs;
+
+        auth_msg.apply_psd = [this, user_id, email, username, snap_const,
+                              hubs_copy](net::PerSocketData* psd) mutable {
+            if (!psd) return;
+
+            psd->user_id = user_id;
+            psd->email = email;
+            psd->username = username;
+            psd->authenticated = true;
+            psd->alive = true;
+            psd->authenticated_at = std::chrono::system_clock::now();
+            psd->snapshot = std::move(snap_const);
+
+            // Subscribe to hub topics (WS thread)
+            for (const auto& hub_id : hubs_copy) {
+                if (!hub_id.value.empty()) {
+                    gateway_.subscribe(psd->conn_id, HubPublisher::topic_for(hub_id));
+                }
+            }
+
+            // Publish hub updates if you want this side-effect on auth
+            if (!hubs_copy.empty()) {
+                hub_publisher_.publish_hubs(hubs_copy);
+            }
+        };
+
+        ctx.output.messages.push_back(std::move(auth_msg));
 
         output.success = true;
         output.error_code.clear();
         output.error_message.clear();
-        output.data = {
-            {"type", "auth_response"}, {"success", true}, {"user_id", public_user_id.value}};
-        if (!psd.username.empty()) output.data["username"] = psd.username;
         output.sent_at = std::chrono::system_clock::now();
     } catch (const std::exception& ex) {
-        psd.authenticated = false;
-        psd.hub_memberships.clear();
-        psd.hub_roles.clear();
         output.success = false;
         output.error_code = "bootstrap_failed";
         output.error_message = ex.what();
-        output.data = {{"type", "auth_response"},
-                       {"success", false},
-                       {"error", "bootstrap_failed"},
-                       {"error_message", ex.what()}};
+        output.sent_at = std::chrono::system_clock::now();
+
+        json err = {{"type", "auth_response"},
+                    {"success", false},
+                    {"error", "bootstrap_failed"},
+                    {"error_message", ex.what()}};
+
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = err.dump();
+        ctx.output.messages.push_back(std::move(msg));
     }
 }
 
-void AuthCommand::fill_psd(net::PerSocketData& psd,
-                           const infra::security::token::UserClaims& claims) {
-    psd.user_id = UserId{claims.id};
-    psd.authenticated = true;
-    psd.authenticated_at = std::chrono::system_clock::now();
-    psd.email = claims.email;
-
-    psd.username.clear();
-    if (!claims.username.empty()) {
-        psd.username = claims.username;
-    } else if (!claims.full_name.empty()) {
-        psd.username = claims.full_name;
-    } else {
-        if (auto db_name = db_.users().getUserDisplayName(psd.user_id)) {
-            psd.username = *db_name;
-        }
-    }
+// OLD fill_psd is not used anymore since worker cannot mutate PSD.
+// You can delete this declaration from header too, but leaving here in case
+// other files still reference it (then refactor them similarly).
+void AuthCommand::fill_psd(net::PerSocketData& /*psd*/,
+                           const infra::security::token::UserClaims& /*claims*/) {
+    // no-op in new architecture
 }
 
-void AuthCommand::subscribe_to_hubs(const net::PerSocketData& psd,
-                                    const std::vector<Hub>& hubs) const {
-    for (const auto& hub : hubs) {
-        if (!hub.id.value.empty()) {
-            gateway_.subscribe(psd.conn_id, HubPublisher::topic_for(hub.id));
-        }
-    }
+// subscribe_to_hubs is now done inside apply_psd
+void AuthCommand::subscribe_to_hubs(const net::PerSocketData& /*psd*/,
+                                    const std::vector<Hub>& /*hubs*/) const {
+    // no-op in new architecture
 }
 
 nlohmann::json AuthCommand::collect_online_members(const std::vector<Hub>& hubs) {
@@ -204,34 +277,39 @@ nlohmann::json AuthCommand::collect_online_members(const std::vector<Hub>& hubs)
     }
 
     std::unordered_map<HubId, std::unordered_map<UserId, std::string>> online_by_hub;
+
     connections_.for_each([&](UwsSocket* ws) {
         if (!ws) return;
         auto* other_psd = ws->getUserData();
         if (!other_psd || !other_psd->authenticated) return;
         if (other_psd->user_id.value.empty()) return;
+        if (!other_psd->snapshot) return;
 
         const auto display = safe_display(*other_psd);
         if (!display.empty()) ids_.remember_display(other_psd->user_id, display);
 
-        for (const auto& hub_id : other_psd->hub_memberships) {
+        for (const auto& hub_id : other_psd->snapshot->hubs) {
             if (!target_hubs.empty() && !target_hubs.count(hub_id)) continue;
             ids_.to_public(hub_id);
             online_by_hub[hub_id][other_psd->user_id] = display;
         }
     });
 
-    nlohmann::json result = nlohmann::json::object();
+    json result = json::object();
     for (const auto& hub : hubs) {
         const auto public_id = ids_.to_public(hub.id);
         const auto members = db_.hubs().getHubMembers(hub.id);
-        nlohmann::json arr = nlohmann::json::array();
+
+        json arr = json::array();
         std::unordered_set<UserId> seen;
         auto it_online = online_by_hub.find(hub.id);
 
         for (const auto& [member_id, stored_display] : members) {
             const bool is_online = it_online != online_by_hub.end() &&
                                    it_online->second.find(member_id) != it_online->second.end();
+
             if (!stored_display.empty()) ids_.remember_display(member_id, stored_display);
+
             std::string display = ids_.display_for(member_id);
             if (display.empty() && it_online != online_by_hub.end()) {
                 auto it_display = it_online->second.find(member_id);
@@ -247,6 +325,7 @@ nlohmann::json AuthCommand::collect_online_members(const std::vector<Hub>& hubs)
                 }
             }
             if (display.empty()) display = "Member";
+
             const auto public_user = ids_.to_public(member_id);
             arr.push_back({{"handle", display},
                            {"display_name", display},
@@ -256,10 +335,12 @@ nlohmann::json AuthCommand::collect_online_members(const std::vector<Hub>& hubs)
         }
 
         if (it_online != online_by_hub.end()) {
-            for (const auto& [user_id, display] : it_online->second) {
+            for (const auto& [user_id, display0] : it_online->second) {
                 if (seen.find(user_id) != seen.end()) continue;
+
                 const auto public_user = ids_.to_public(user_id);
-                std::string name = display.empty() ? ids_.display_for(user_id) : display;
+
+                std::string name = display0.empty() ? ids_.display_for(user_id) : display0;
                 if (name.empty()) {
                     if (auto db_name = db_.users().getUserDisplayName(user_id)) {
                         if (!db_name->empty()) {
@@ -269,6 +350,7 @@ nlohmann::json AuthCommand::collect_online_members(const std::vector<Hub>& hubs)
                     }
                 }
                 if (name.empty()) name = "Member";
+
                 arr.push_back({{"handle", name},
                                {"display_name", name},
                                {"online", true},
@@ -278,6 +360,7 @@ nlohmann::json AuthCommand::collect_online_members(const std::vector<Hub>& hubs)
 
         result[public_id.value] = std::move(arr);
     }
+
     return result;
 }
 
@@ -299,6 +382,7 @@ nlohmann::json AuthCommand::build_bootstrap_payload(
         const auto public_hub_id = ids_.to_public(hub.id);
         nlohmann::json arr = nlohmann::json::array();
         auto it = channels_by_hub.find(hub.id);
+
         if (it != channels_by_hub.end()) {
             for (const auto& channel : it->second) {
                 const auto public_channel_id = ids_.to_public(channel.channel_id);

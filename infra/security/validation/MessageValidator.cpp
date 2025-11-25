@@ -7,7 +7,7 @@ namespace infra::security::validation {
 
 MessageValidator::MessageValidator(const app::Dispatcher& dispatcher) {
     // Load command operations from dispatcher
-    registered_commands_ = std::move(dispatcher.registered_commands());
+    registered_commands_ = dispatcher.registered_commands();
     load_profanity_filter();
     load_security_patterns();
 }

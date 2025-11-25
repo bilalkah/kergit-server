@@ -10,6 +10,8 @@ ChatServerApp::ChatServerApp(ServerConfig& cfg) {
     cfg_ = std::move(cfg);
     persistence_gateway_ptr_ = std::make_unique<PersistenceGateway>(
         cfg_.database.to_connection_string(), cfg_.database.pool_size);
+    out_queue_ptr_ = std::make_unique<OutgoingQueue>();
+    in_queue_ptr_ = std::make_unique<EventQueue>();
 }
 
 ChatServerApp::~ChatServerApp() {}
@@ -18,9 +20,9 @@ bool ChatServerApp::wire_components() {
     app::register_all(*dispatcher_ptr_, *persistence_gateway_ptr_, *gateway_ptr_, *connections_ptr_,
                       *hub_publisher_, persistence_gateway_ptr_->ids());
 
-    ws_server_ = std::make_unique<net::WebSocketServer>(
-        *app_ptr_, *dispatcher_ptr_, *connections_ptr_, *gateway_ptr_, hub_publisher_.get(),
-        net::OriginAllowlist{}, net::WsLimits{});
+    ws_server_ = std::make_unique<net::WebSocketServer>(*app_ptr_, *connections_ptr_, *gateway_ptr_,
+                                                        *in_queue_ptr_, *out_queue_ptr_,
+                                                        net::OriginAllowlist{}, net::WsLimits{});
 
     // Optional: hooks for logging / side-effects on lifecycle
     ws_server_->set_hooks(net::WsHooks{
@@ -32,7 +34,7 @@ bool ChatServerApp::wire_components() {
             },
         .on_message_raw =
             [&](const ConnId& cid, std::string_view raw) {
-                // log(LogLevel::INFO, "message conn_id:" + cid.value + " raw:" + std::string(raw));
+                log(LogLevel::INFO, "message conn_id:" + cid.value + " raw:" + std::string(raw));
             },
         .on_auth =
             [&](const ConnId& cid, const UserId& uid) {
@@ -84,6 +86,9 @@ void ChatServerApp::run_server() {
     hub_publisher_ = std::make_unique<app::services::HubPublisher>(
         *app_ptr_, *persistence_gateway_ptr_, *connections_ptr_, *gateway_ptr_,
         persistence_gateway_ptr_->ids());
+    worker_pool_ptr_ =
+        std::make_unique<app::WorkerPool>(*in_queue_ptr_, *out_queue_ptr_, *dispatcher_ptr_);
+    worker_pool_ptr_->start();
 
     if (!wire_components()) {
         running_.store(false);
@@ -122,6 +127,7 @@ void ChatServerApp::stop() {
 
     if (hub_publisher_) hub_publisher_->stop();
     if (ws_server_) ws_server_->shutdown();
+    if (worker_pool_ptr_) worker_pool_ptr_->stop();
 
     // Ask the loop thread to close the app
     if (app_ptr_) {

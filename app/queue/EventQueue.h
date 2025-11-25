@@ -12,7 +12,7 @@ struct CommandRequest {
     HubId current_hub_id;
     ChannelId current_channel_id;
     bool authenticated{false};
-    
+
     std::string payload;
     std::chrono::system_clock::time_point received_at;
 };
@@ -25,7 +25,7 @@ struct DisconnectEvent {
     ConnId conn_id;
     UserId user_id;
     std::shared_ptr<const net::Snapshot> snap;  // hubs/channels/roles
-    
+
     std::string display;
     int code{};
     std::string reason;

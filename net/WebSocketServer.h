@@ -61,7 +61,6 @@ class WebSocketServer {
     OriginAllowlist origins_;
     WsLimits limits_{};
 
-
     Heartbeat heartbeat_;
     OutgoingQueueConsumer out_consumer_;
     WsHooks hooks_{};

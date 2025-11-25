@@ -1,5 +1,7 @@
 #include "net/OutgoingQueueConsumer.h"
 
+#include <nlohmann/json.hpp>
+
 using nlohmann::json;
 
 namespace net {
@@ -62,32 +64,31 @@ void OutgoingQueueConsumer::on_timer(us_timer_t* timer) {
 }
 
 void OutgoingQueueConsumer::tick() {
-    if (!running_.load()) return;
-    std::optional<OutgoingMessage> opt_msg;
+    std::optional<OutgoingMessage> opt_msg = out_q_.try_pop();
 
-    while (true) {
-        opt_msg = out_q_.try_pop();
-        if (!opt_msg.has_value()) {
-            continue;
-        }
-        const OutgoingMessage& msg = opt_msg.value();
-
-        std::visit(
-            [&](auto&& arg) {
-                using T = std::decay_t<decltype(arg)>;
-                if constexpr (std::is_same_v<T, DirectMessage>) {
-                    UwsSocket* ws = conns_.get(arg.conn_id);
-                    if (ws) {
-                        auto* psd = ws->getUserData();
-                        arg.apply_psd(psd);
-                        cli_gtw_.send_defer(arg.conn_id, json::parse(arg.payload));
-                    }
-                } else if constexpr (std::is_same_v<T, PublishMessage>) {
-                    cli_gtw_.publish(arg.topic, arg.payload);
-                }
-            },
-            msg);
+    if (!opt_msg.has_value()) {
+        return;
     }
+    std::cout << "OutgoingQueueConsumer::tick processing message from queue\n";
+    const OutgoingMessage& msg = opt_msg.value();
+
+    std::visit(
+        [&](auto&& arg) {
+            using T = std::decay_t<decltype(arg)>;
+            if constexpr (std::is_same_v<T, DirectMessage>) {
+                UwsSocket* ws = conns_.get(arg.conn_id);
+                if (ws) {
+                    auto* psd = ws->getUserData();
+                    if (arg.apply_psd) {
+                        arg.apply_psd(psd);
+                    }
+                    cli_gtw_.send_defer(arg.conn_id, json::parse(arg.payload));
+                }
+            } else if constexpr (std::is_same_v<T, PublishMessage>) {
+                cli_gtw_.publish(arg.topic, arg.payload);
+            }
+        },
+        msg);
 }
 
 }  // namespace net
