@@ -113,7 +113,7 @@ std::unordered_set<HubId> HubPublisher::collect_all_hubs() const {
         if (!ws) return;
         auto* psd = ws->getUserData();
         if (!psd || !psd->authenticated) return;
-        hubs.insert(psd->hub_memberships.begin(), psd->hub_memberships.end());
+        hubs.insert(psd->snapshot->hubs.begin(), psd->snapshot->hubs.end());
     });
     return hubs;
 }
@@ -124,7 +124,7 @@ nlohmann::json HubPublisher::collect_online_for_hub(const HubId& hub_id) const {
         if (!ws) return;
         auto* psd = ws->getUserData();
         if (!psd || !psd->authenticated) return;
-        if (psd->hub_memberships.find(hub_id) == psd->hub_memberships.end()) return;
+        if (psd->snapshot->hubs.find(hub_id) == psd->snapshot->hubs.end()) return;
         const auto display = safe_display(*psd);
         if (!display.empty()) ids_.remember_display(psd->user_id, display);
         online_display.emplace(psd->user_id, display);

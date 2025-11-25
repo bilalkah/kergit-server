@@ -116,9 +116,13 @@ void WebSocketServer::wire(const std::string& pattern) {
                  });
 
     heartbeat_.start();
+    out_consumer_.start();
 }
 
-void WebSocketServer::shutdown() { heartbeat_.stop(); }
+void WebSocketServer::shutdown() {
+    heartbeat_.stop();
+    out_consumer_.stop();
+}
 
 std::string WebSocketServer::make_conn_id(void* p) {
     char buf[32];

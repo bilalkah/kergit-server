@@ -1,5 +1,6 @@
 #include "infra/persistence/ConnectionPool.h"
 
+#include <iostream>
 ConnectionPool::ConnectionPool(const std::string& conninfo, std::size_t pool_size,
                                std::chrono::milliseconds wait_timeout)
     : wait_timeout_(wait_timeout) {
@@ -10,6 +11,7 @@ ConnectionPool::ConnectionPool(const std::string& conninfo, std::size_t pool_siz
         if (!connection->is_open()) throw std::runtime_error("Failed to open database connection");
         slots_.push_back(Slot{std::move(connection), false});
     }
+    std::cout << "ConnectionPool initialized with " << pool_size << " connections.\n";
 }
 
 pqxx::connection& ConnectionPool::acquire() {

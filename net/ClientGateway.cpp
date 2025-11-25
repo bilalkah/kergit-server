@@ -38,4 +38,12 @@ void ClientGateway::publish(const std::string& topic, const json& payload, OpCod
     }
 }
 
+void ClientGateway::publish(const std::string& topic, const std::string& payload, OpCode op) {
+    auto subs = pubsub_->subscribers(topic);
+    if (subs.empty()) return;
+    for (const auto& conn : subs) {
+        send_defer(conn, json::parse(payload), op);
+    }
+}
+
 }  // namespace net
