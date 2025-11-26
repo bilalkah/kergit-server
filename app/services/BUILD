@@ -32,9 +32,9 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":public_id_service",
+        "//app/queue:outgoing_queue",
         "//core:i_app",
         "//infra/persistence:persistence_gateway_lib",
-        "//net:client_gateway",
         "//net:connection_manager",
         "@nlohmann_json",
         "@uwebsockets",

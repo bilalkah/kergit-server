@@ -19,18 +19,18 @@ class ThreadSafeQueue {
         _cv.notify_one();
     }
 
-    // Blocking pop
-    T pop() {
+    // Blocking pop: returns false if queue was stopped and is empty
+    bool pop(T& out) {
         std::unique_lock<std::mutex> lock(_mutex);
         _cv.wait(lock, [this] { return !_queue.empty() || _stopped; });
 
         if (_stopped && _queue.empty()) {
-            throw std::runtime_error("Queue stopped");
+            return false;  // graceful shutdown
         }
 
-        T value = std::move(_queue.front());
+        out = std::move(_queue.front());
         _queue.pop();
-        return value;
+        return true;
     }
 
     // Non-blocking pop

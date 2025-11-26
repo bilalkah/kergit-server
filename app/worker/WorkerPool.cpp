@@ -63,9 +63,12 @@ void WorkerPool::worker_loop(std::size_t worker_index) {
         wait_if_paused();
         if (!running_) break;
 
-        evt = in_queue_.pop();
+        if (!in_queue_.pop(evt)) {
+            // Queue stopped and empty → time to exit the worker loop
+            break;
+        }
         const EventPayload& payload = evt.payload;
-        std::cout << "Worker " << worker_index << " processing new event\n";
+        log(utils::LogLevel::WARN, "Worker ", worker_index, " picked up new event");
 
         // process evt
         std::visit(
@@ -104,9 +107,9 @@ void WorkerPool::worker_loop(std::size_t worker_index) {
                     for (auto& msg : ctx.output.messages) {
                         out_queue_.push(std::move(msg));
                     }
-                    std::cout << "Worker " << worker_index
-                              << " completed processing command for conn_id: " << req.conn_id.value
-                              << "\n";
+
+                    log(utils::LogLevel::WARN, "Worker ", worker_index,
+                        " successfully processed command for conn_id: ", req.conn_id.value);
 
                 } else if constexpr (std::is_same_v<T, DisconnectEvent>) {
                     // handle disconnect

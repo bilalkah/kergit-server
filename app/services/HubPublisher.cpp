@@ -1,11 +1,11 @@
 #include "app/services/HubPublisher.h"
 
 #include "app/services/PublicIdService.h"
+#include "net/PerSocketData.h"
 #include "utils/Logger.h"
 
 #include <algorithm>
 #include <exception>
-#include <libusockets.h>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -23,87 +23,99 @@ std::string channel_type_to_string(ChannelType type) {
 }  // namespace
 
 HubPublisher::HubPublisher(core::IApp& app, PersistenceGateway& db,
-                           net::ConnectionManager& connections, net::ClientGateway& gateway,
+                           net::ConnectionManager& connections, OutgoingQueue& out_queue,
                            PublicIdService& ids, std::chrono::milliseconds interval)
-    : app_(app),
-      db_(db),
-      connections_(connections),
-      gateway_(gateway),
-      ids_(ids),
-      interval_(interval) {}
+    : db_(db), connections_(connections), out_queue_(out_queue), ids_(ids), interval_(interval) {
+    (void)app;  // app was previously used for uWS loop; now unused
+}
 
 HubPublisher::~HubPublisher() { stop(); }
 
 void HubPublisher::start() {
+    std::lock_guard<std::mutex> lock(mu_);
     if (running_) return;
-    auto* loop = app_.uws().getLoop();
-    if (!loop) return;
-
-    timer_ = us_create_timer(reinterpret_cast<us_loop_t*>(loop), 0, sizeof(HubPublisher*));
-    if (!timer_) return;
     running_ = true;
-    auto** slot = reinterpret_cast<HubPublisher**>(us_timer_ext(timer_));
-    if (slot) *slot = this;
-    us_timer_set(timer_, &HubPublisher::on_timer, static_cast<int>(interval_.count()),
-                 static_cast<int>(interval_.count()));
+    stop_flag_.store(false);
+    worker_ = std::thread([this] { this->run(); });
 }
 
 void HubPublisher::stop() {
-    if (!timer_) {
+    {
+        std::lock_guard<std::mutex> lock(mu_);
+        if (!running_) return;
         running_ = false;
-        return;
+        stop_flag_.store(true);
     }
-    auto* timer = timer_;
-    timer_ = nullptr;
-    running_ = false;
-
-    if (auto* loop = app_.uws().getLoop()) {
-        loop->defer([timer]() {
-            if (!timer) return;
-            auto** slot = reinterpret_cast<HubPublisher**>(us_timer_ext(timer));
-            if (slot) *slot = nullptr;
-            us_timer_set(timer, nullptr, 0, 0);
-            us_timer_close(timer);
-        });
-    } else {
-        auto** slot = reinterpret_cast<HubPublisher**>(us_timer_ext(timer));
-        if (slot) *slot = nullptr;
-        us_timer_set(timer, nullptr, 0, 0);
-        us_timer_close(timer);
+    cv_.notify_all();
+    if (worker_.joinable()) {
+        worker_.join();
     }
 }
 
 void HubPublisher::publish_hub(const HubId& hub_id) {
     if (hub_id.value.empty()) return;
-    try {
-        auto channels = load_channels(hub_id);
-        auto online = collect_online_for_hub(hub_id);
-        auto payload = build_snapshot(hub_id, channels, online);
-        gateway_.publish(topic_for(hub_id), payload);
-    } catch (const std::exception& ex) {
-        utils::log_line(utils::LogLevel::WARN,
-                        "HubPublisher failed to publish hub " + hub_id.value + ": " + ex.what());
+    {
+        std::lock_guard<std::mutex> lock(mu_);
+        dirty_hubs_.insert(hub_id);
     }
+    cv_.notify_all();
 }
 
 void HubPublisher::publish_hubs(const std::unordered_set<HubId>& hub_ids) {
-    for (const auto& hub_id : hub_ids) {
-        publish_hub(hub_id);
+    {
+        std::lock_guard<std::mutex> lock(mu_);
+        for (const auto& hub_id : hub_ids) {
+            if (!hub_id.value.empty()) {
+                dirty_hubs_.insert(hub_id);
+            }
+        }
     }
+    cv_.notify_all();
 }
 
 std::string HubPublisher::topic_for(const HubId& hub_id) { return "hub:" + hub_id.value; }
 
-void HubPublisher::on_timer(us_timer_t* timer) {
-    auto** slot = reinterpret_cast<HubPublisher**>(us_timer_ext(timer));
-    HubPublisher* self = slot ? *slot : nullptr;
-    if (self) self->tick();
-}
+// Background worker
+void HubPublisher::run() {
+    std::unique_lock<std::mutex> lock(mu_);
+    while (!stop_flag_.load()) {
+        // Wait either for interval or for new dirty hubs / stop
+        cv_.wait_for(lock, interval_, [this] { return stop_flag_.load() || !dirty_hubs_.empty(); });
 
-void HubPublisher::tick() {
-    auto hubs = collect_all_hubs();
-    for (const auto& hub_id : hubs) {
-        publish_hub(hub_id);
+        if (stop_flag_.load()) break;
+
+        std::unordered_set<HubId> hubs_to_publish;
+
+        if (!dirty_hubs_.empty()) {
+            // Take the dirty hubs and clear the set
+            hubs_to_publish = std::move(dirty_hubs_);
+            dirty_hubs_.clear();
+        } else {
+            // No explicit dirty hubs – do a periodic full refresh like before
+            lock.unlock();
+            hubs_to_publish = collect_all_hubs();
+            lock.lock();
+        }
+
+        lock.unlock();
+
+        for (const auto& hub_id : hubs_to_publish) {
+            if (hub_id.value.empty()) continue;
+            try {
+                auto channels = load_channels(hub_id);
+                auto online = collect_online_for_hub(hub_id);
+                auto payload = build_snapshot(hub_id, channels, online);
+
+                // Push as PublishMessage into OutgoingQueue
+                out_queue_.push(OutgoingMessage{PublishMessage{topic_for(hub_id), payload.dump()}});
+
+            } catch (const std::exception& ex) {
+                utils::log_line(utils::LogLevel::WARN, "HubPublisher failed to publish hub " +
+                                                           hub_id.value + ": " + ex.what());
+            }
+        }
+
+        lock.lock();
     }
 }
 
@@ -113,6 +125,7 @@ std::unordered_set<HubId> HubPublisher::collect_all_hubs() const {
         if (!ws) return;
         auto* psd = ws->getUserData();
         if (!psd || !psd->authenticated) return;
+        if (!psd->snapshot) return;
         hubs.insert(psd->snapshot->hubs.begin(), psd->snapshot->hubs.end());
     });
     return hubs;
@@ -120,11 +133,14 @@ std::unordered_set<HubId> HubPublisher::collect_all_hubs() const {
 
 nlohmann::json HubPublisher::collect_online_for_hub(const HubId& hub_id) const {
     std::unordered_map<UserId, std::string> online_display;
+
     connections_.for_each([&](UwsSocket* ws) {
         if (!ws) return;
         auto* psd = ws->getUserData();
         if (!psd || !psd->authenticated) return;
+        if (!psd->snapshot) return;
         if (psd->snapshot->hubs.find(hub_id) == psd->snapshot->hubs.end()) return;
+
         const auto display = safe_display(*psd);
         if (!display.empty()) ids_.remember_display(psd->user_id, display);
         online_display.emplace(psd->user_id, display);
@@ -133,9 +149,11 @@ nlohmann::json HubPublisher::collect_online_for_hub(const HubId& hub_id) const {
     nlohmann::json arr = nlohmann::json::array();
     const auto members = db_.hubs().getHubMembers(hub_id);
     std::unordered_set<UserId> seen;
+
     for (const auto& [member_id, stored_display] : members) {
         const bool is_online = online_display.find(member_id) != online_display.end();
         if (!stored_display.empty()) ids_.remember_display(member_id, stored_display);
+
         std::string display = ids_.display_for(member_id);
         if (display.empty() && is_online) display = online_display[member_id];
         if (display.empty() && !stored_display.empty()) display = stored_display;
@@ -148,6 +166,7 @@ nlohmann::json HubPublisher::collect_online_for_hub(const HubId& hub_id) const {
             }
         }
         if (display.empty()) display = "Member";
+
         const auto public_user = ids_.to_public(member_id);
         arr.push_back({{"handle", display},
                        {"display_name", display},
@@ -169,6 +188,7 @@ nlohmann::json HubPublisher::collect_online_for_hub(const HubId& hub_id) const {
             }
         }
         if (name.empty()) name = "Member";
+
         arr.push_back({{"handle", name},
                        {"display_name", name},
                        {"online", true},
