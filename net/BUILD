@@ -70,6 +70,7 @@ cc_library(
         "//app/queue:outgoing_queue",
         "//core:i_app",
         "//core:types",
+        "//utils:loggable",
         "@uwebsockets",
     ],
 )

@@ -5,7 +5,8 @@ cc_test(
     name = "thread_safe_queue",
     srcs = ["thread_safe_queue.cc"],
     deps = [
-        "//app:queue",
+        "//app/queue:event_queue",
+        "//app/queue:outgoing_queue",
         "@googletest//:gtest_main",
     ],
 )

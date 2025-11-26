@@ -61,7 +61,7 @@ class ServerConfigFiller {
         cfg.database.db_name = utils::EnvLoader::get_env("DB_NAME", "postgres");
         cfg.database.ssl = utils::EnvLoader::get_env("DB_SSL", "false") == "true";
         cfg.database.pool_size =
-            static_cast<std::size_t>(std::stoul(utils::EnvLoader::get_env("DB_POOL_SIZE", "8")));
+            static_cast<std::size_t>(std::stoul(utils::EnvLoader::get_env("DB_POOL_SIZE", "3")));
     }
 };
 

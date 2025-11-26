@@ -29,14 +29,12 @@ void PubSub::unsubscribe_all(const ConnId& conn) {
     }
 }
 
-std::vector<ConnId> PubSub::subscribers(const std::string& topic) const {
+std::unordered_set<ConnId> PubSub::subscribers(const std::string& topic) const {
     std::lock_guard<std::mutex> lock(mu_);
-    std::vector<ConnId> result;
     if (topic_to_conns_.find(topic) != topic_to_conns_.end()) {
-        std::copy(topic_to_conns_.at(topic).begin(), topic_to_conns_.at(topic).end(),
-                  std::back_inserter(result));
+        return topic_to_conns_.at(topic);
     }
-    return result;
+    return {};
 }
 
 }  // namespace app

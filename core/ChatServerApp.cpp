@@ -84,7 +84,7 @@ void ChatServerApp::run_server() {
     gateway_ptr_ =
         std::make_unique<net::ClientGateway>(*app_ptr_, *connections_ptr_, cfg_.debug_gateway);
     hub_publisher_ = std::make_unique<app::services::HubPublisher>(
-        *app_ptr_, *persistence_gateway_ptr_, *connections_ptr_, *gateway_ptr_,
+        *app_ptr_, *persistence_gateway_ptr_, *connections_ptr_, *out_queue_ptr_,
         persistence_gateway_ptr_->ids());
     worker_pool_ptr_ =
         std::make_unique<app::WorkerPool>(*in_queue_ptr_, *out_queue_ptr_, *dispatcher_ptr_);

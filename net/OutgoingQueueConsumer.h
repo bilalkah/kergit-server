@@ -7,6 +7,7 @@
 #include "net/ClientGateway.h"
 #include "net/ConnectionManager.h"
 #include "net/PerSocketData.h"
+#include "utils/Loggable.h"
 
 #include <atomic>
 #include <chrono>
@@ -19,7 +20,7 @@ struct OutgoingConsumerConfig {
     std::chrono::milliseconds interval{5};
 };
 
-class OutgoingQueueConsumer {
+class OutgoingQueueConsumer : public utils::Loggable {
    public:
     OutgoingQueueConsumer(core::IApp& app, ConnectionManager& conns, ClientGateway& gateway,
                           OutgoingQueue& out_q, OutgoingConsumerConfig cfg = {});
