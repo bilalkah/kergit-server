@@ -30,8 +30,6 @@ class AuthCommand : public ICommand {
     void execute(CommandContext&) override;
 
    private:
-    void fill_psd(net::PerSocketData& psd, const infra::security::token::UserClaims& claims);
-    void subscribe_to_hubs(const net::PerSocketData& psd, const std::vector<Hub>& hubs) const;
     nlohmann::json build_bootstrap_payload(
         const std::vector<Hub>& hubs,
         const std::unordered_map<HubId, std::vector<Channel>>& channels_by_hub,
