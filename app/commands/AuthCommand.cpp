@@ -255,20 +255,6 @@ void AuthCommand::execute(CommandContext& ctx) {
     }
 }
 
-// OLD fill_psd is not used anymore since worker cannot mutate PSD.
-// You can delete this declaration from header too, but leaving here in case
-// other files still reference it (then refactor them similarly).
-void AuthCommand::fill_psd(net::PerSocketData& /*psd*/,
-                           const infra::security::token::UserClaims& /*claims*/) {
-    // no-op in new architecture
-}
-
-// subscribe_to_hubs is now done inside apply_psd
-void AuthCommand::subscribe_to_hubs(const net::PerSocketData& /*psd*/,
-                                    const std::vector<Hub>& /*hubs*/) const {
-    // no-op in new architecture
-}
-
 nlohmann::json AuthCommand::collect_online_members(const std::vector<Hub>& hubs) {
     std::unordered_set<HubId> target_hubs;
     target_hubs.reserve(hubs.size());
