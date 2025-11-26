@@ -69,7 +69,7 @@ void OutgoingQueueConsumer::tick() {
     if (!opt_msg.has_value()) {
         return;
     }
-    std::cout << "OutgoingQueueConsumer::tick processing message from queue\n";
+    log(utils::LogLevel::WARN, "Processing outgoing message from queue");
     const OutgoingMessage& msg = opt_msg.value();
 
     std::visit(

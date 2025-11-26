@@ -1,4 +1,5 @@
-#include "app/Queue.h"
+#include "app/queue/EventQueue.h"
+#include "app/queue/OutgoingQueue.h"
 
 #include <chrono>
 #include <gtest/gtest.h>
@@ -12,8 +13,9 @@ TEST(ThreadSafeQueueTest, PushAndPopSingleThread) {
     q.push(42);
     q.push(7);
 
-    int a = q.pop();
-    int b = q.pop();
+    int a,b;
+    EXPECT_TRUE(q.pop(a));
+    EXPECT_TRUE(q.pop(b));
 
     EXPECT_EQ(a, 42);
     EXPECT_EQ(b, 7);
@@ -36,7 +38,8 @@ TEST(ThreadSafeQueueTest, BlockingPopUnblocksOnPush) {
     });
 
     auto start = std::chrono::system_clock::now();
-    int value = q.pop();
+    int value;
+    EXPECT_TRUE(q.pop(value));
     auto end = std::chrono::system_clock::now();
 
     result = value;
@@ -58,23 +61,19 @@ TEST(ThreadSafeQueueTest, StopUnblocksPop) {
         q.stop();
     });
 
-    bool threw = false;
-    try {
-        (void)q.pop();  // should throw when stop() is called
-    } catch (const std::runtime_error& e) {
-        threw = true;
-    }
+    bool popped = true;
+    int temp;
+    popped = q.pop(temp); 
 
     if (stopper.joinable()) stopper.join();
 
-    EXPECT_TRUE(threw);
+    EXPECT_FALSE(popped);
 }
 
 TEST(ThreadSafeQueueTest, CommandRequestRoundTrip) {
     ThreadSafeQueue<CommandRequest> q;
 
     CommandRequest in;
-    in.command_name = "join_channel";
     in.payload = R"({"channel_id":"ch-123"})";
     in.conn_id = ConnId{"conn-1"};
     in.user_id = UserId{"user-42"};
@@ -84,9 +83,9 @@ TEST(ThreadSafeQueueTest, CommandRequestRoundTrip) {
 
     q.push(in);
 
-    CommandRequest out = q.pop();
+    CommandRequest out;
+    q.pop(out);
 
-    EXPECT_EQ(out.command_name, "join_channel");
     EXPECT_EQ(out.payload, R"({"channel_id":"ch-123"})");
 
     // Compare using .value or another ID object:
@@ -99,7 +98,7 @@ TEST(ThreadSafeQueueTest, CommandRequestRoundTrip) {
 
 TEST(ThreadSafeQueueTest, ProducerConsumerMimicsServerAndWorker) {
     ThreadSafeQueue<CommandRequest> in_q;
-    ThreadSafeQueue<OutgoingMessage> out_q;
+    OutgoingQueue out_q;  // ThreadSafeQueue<OutgoingMessage>
 
     constexpr int N = 10;
 
@@ -107,7 +106,6 @@ TEST(ThreadSafeQueueTest, ProducerConsumerMimicsServerAndWorker) {
     std::thread producer([&] {
         for (int i = 0; i < N; ++i) {
             CommandRequest req;
-            req.command_name = "echo";
             req.payload = "msg-" + std::to_string(i);
             req.conn_id = ConnId{"conn-" + std::to_string(i)};
             req.user_id = UserId{"user-" + std::to_string(i)};
@@ -122,23 +120,32 @@ TEST(ThreadSafeQueueTest, ProducerConsumerMimicsServerAndWorker) {
     // Consumer: mimics worker/dispatcher handling commands and pushing responses
     std::thread consumer([&] {
         for (int i = 0; i < N; ++i) {
-            CommandRequest req = in_q.pop();  // blocking
+            // Blocking pop
+            CommandRequest req;
+            in_q.pop(req);
 
-            // "Dispatcher" logic: just echo back with a prefix
-            OutgoingMessage msg;
-            msg.conn_id = req.conn_id;
-            msg.payload = "handled:" + req.payload;
+            // "Dispatcher" logic: just echo back with a prefix as DirectMessage
+            DirectMessage d;
+            d.conn_id = req.conn_id;
+            d.payload = "handled:" + req.payload;
 
-            out_q.push(std::move(msg));
+            // OutgoingMessage is variant<DirectMessage, PublishMessage>
+            OutgoingMessage out = std::move(d);
+            out_q.push(std::move(out));
         }
     });
 
     // Main thread: read responses and verify
     for (int i = 0; i < N; ++i) {
-        OutgoingMessage msg = out_q.pop();  // will block until consumer pushes
+        // Blocking pop from outgoing queue
+        OutgoingMessage out;
+        out_q.pop(out);
 
-        // We don't know the order for sure if we had multiple consumers,
-        // but here it's single consumer, single producer, so order matches.
+        // We only pushed DirectMessage in this test, so it must hold that
+        ASSERT_TRUE(std::holds_alternative<DirectMessage>(out));
+
+        const DirectMessage& msg = std::get<DirectMessage>(out);
+
         std::string expected_conn = "conn-" + std::to_string(i);
         std::string expected_payload = "handled:msg-" + std::to_string(i);
 
