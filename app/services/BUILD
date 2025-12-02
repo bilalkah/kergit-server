@@ -38,5 +38,6 @@ cc_library(
         "//net:connection_manager",
         "@nlohmann_json",
         "@uwebsockets",
+        "//utils:loggable",
     ],
 )
