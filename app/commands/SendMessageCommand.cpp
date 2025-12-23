@@ -32,28 +32,37 @@ SendMessageCommand::SendMessageCommand(PersistenceGateway& db, net::ClientGatewa
     : db_(db), gateway_(gateway), ids_(ids) {}
 
 void SendMessageCommand::execute(CommandContext& ctx) {
-    auto& psd = ctx.psd;
+    const auto& input = ctx.input;
     auto& output = ctx.output;
-    const auto& data = ctx.input.data;
 
-    if (!psd.authenticated) {
+    if (!ctx.authenticated) {
         output.success = false;
         output.error_code = "not_authenticated";
         output.error_message = "Authenticate before sending messages.";
-        output.data = {{"type", "error"},
-                       {"code", "not_authenticated"},
-                       {"message", "Authentication required"}};
+        json err = {{"type", "error"},
+                    {"code", "not_authenticated"},
+                    {"message", "Authentication required"}};
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = err.dump();
+        ctx.output.messages.push_back(std::move(msg));
+        output.sent_at = std::chrono::system_clock::now();
         return;
     }
 
-    const std::string channel_id_str = data.value("channel_id", "");
+    const std::string channel_id_str = input.data.value("channel_id", "");
     if (channel_id_str.empty()) {
         output.success = false;
         output.error_code = "missing_channel_id";
         output.error_message = "channel_id is required.";
-        output.data = {{"type", "error"},
-                       {"code", "missing_channel_id"},
-                       {"message", "channel_id is required"}};
+        json err = {{"type", "error"},
+                    {"code", "missing_channel_id"},
+                    {"message", "channel_id is required"}};
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = err.dump();
+        ctx.output.messages.push_back(std::move(msg));
+        output.sent_at = std::chrono::system_clock::now();
         return;
     }
 
@@ -62,34 +71,51 @@ void SendMessageCommand::execute(CommandContext& ctx) {
         output.success = false;
         output.error_code = "channel_not_found";
         output.error_message = "Channel does not exist.";
-        output.data = {{"type", "error"},
-                       {"code", "channel_not_found"},
-                       {"message", "Channel does not exist"}};
+        json err = {{"type", "error"},
+                    {"code", "channel_not_found"},
+                    {"message", "Channel does not exist"}};
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = err.dump();
+        ctx.output.messages.push_back(std::move(msg));
+        output.sent_at = std::chrono::system_clock::now();
         return;
     }
 
     ChannelId channel_id = *channel_id_opt;
-    if (psd.current_channel_id.value != channel_id.value) {
+    if (ctx.current_channel_id.value != channel_id.value) {
         // Ensure user is subscribed to the channel
-        if (!psd.channel_subscriptions.count(channel_id)) {
+        const auto sub_list = gateway_.subscribers(channel_topic(channel_id));
+
+        if (!sub_list.count(ctx.conn_id)) {
             output.success = false;
             output.error_code = "not_in_channel";
             output.error_message = "Join the channel before sending messages.";
-            output.data = {{"type", "error"},
-                           {"code", "not_in_channel"},
-                           {"message", "Join the channel before sending messages"}};
+            json err = {{"type", "error"},
+                        {"code", "not_in_channel"},
+                        {"message", "Join the channel before sending messages"}};
+            DirectMessage msg;
+            msg.conn_id = ctx.conn_id;
+            msg.payload = err.dump();
+            ctx.output.messages.push_back(std::move(msg));
+            output.sent_at = std::chrono::system_clock::now();
             return;
         }
     }
 
-    std::string content = data.value("content", "");
+    std::string content = input.data.value("content", "");
     if (content.empty()) {
         output.success = false;
         output.error_code = "empty_message";
         output.error_message = "Message content cannot be empty.";
-        output.data = {{"type", "error"},
-                       {"code", "empty_message"},
-                       {"message", "Message content cannot be empty"}};
+        json err = {{"type", "error"},
+                    {"code", "empty_message"},
+                    {"message", "Message content cannot be empty"}};
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = err.dump();
+        ctx.output.messages.push_back(std::move(msg));
+        output.sent_at = std::chrono::system_clock::now();
         return;
     }
 
@@ -97,33 +123,45 @@ void SendMessageCommand::execute(CommandContext& ctx) {
         output.success = false;
         output.error_code = "message_too_long";
         output.error_message = "Message content exceeds maximum length.";
-        output.data = {{"type", "error"},
-                       {"code", "message_too_long"},
-                       {"message", "Message content exceeds maximum length"}};
+        json err = {{"type", "error"},
+                    {"code", "message_too_long"},
+                    {"message", "Message content exceeds maximum length"}};
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = err.dump();
+        ctx.output.messages.push_back(std::move(msg));
+        output.sent_at = std::chrono::system_clock::now();
         return;
     }
 
-    auto db_message = db_.channels().sendMessage(channel_id, psd.user_id, content);
+    auto db_message = db_.channels().sendMessage(channel_id, ctx.user_id, content);
     const auto public_channel_id = ids_.to_public(channel_id);
-    std::string display = psd.username;
-    if (display.empty()) display = ids_.display_for(psd.user_id);
+    std::string display = ctx.username;
+    if (display.empty()) display = ids_.display_for(ctx.user_id);
     if (display.empty()) {
-        if (auto db_name = db_.users().getUserDisplayName(psd.user_id)) display = *db_name;
+        if (auto db_name = db_.users().getUserDisplayName(ctx.user_id)) display = *db_name;
     }
     if (display.empty()) display = "Member";
-    ids_.remember_display(psd.user_id, display);
+    ids_.remember_display(ctx.user_id, display);
     json event = {{"type", "message"},
                   {"channel_id", public_channel_id.value},
                   {"sender", display},
                   {"content", db_message.text},
                   {"sent_at", format_time_point(db_message.sent_at)}};
 
-    gateway_.publish(channel_topic(channel_id), event);
+    PublishMessage msg;
+    msg.topic = channel_topic(channel_id);
+    msg.payload = event.dump();
+    ctx.output.messages.push_back(std::move(msg));
 
     output.success = true;
     output.error_code.clear();
     output.error_message.clear();
-    output.data = {{"type", "send_message_ack"}, {"channel_id", public_channel_id.value}};
+    json data = {{"type", "send_message_ack"}, {"channel_id", public_channel_id.value}};
+    DirectMessage ack;
+    ack.conn_id = ctx.conn_id;
+    ack.payload = data.dump();
+    ctx.output.messages.push_back(std::move(ack));
     output.sent_at = std::chrono::system_clock::now();
 }
 

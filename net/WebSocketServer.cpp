@@ -69,6 +69,8 @@ void WebSocketServer::wire(const std::string& pattern) {
                              req.user_id = psd->user_id;
                              req.current_hub_id = psd->current_hub_id;
                              req.current_channel_id = psd->current_channel_id;
+                             req.email = psd->email;
+                             req.username = psd->username;
                              req.authenticated = psd->authenticated;
                              req.snapshot = psd->snapshot;
                              req.received_at = std::chrono::system_clock::now();
