@@ -19,6 +19,7 @@ cmake(
     cache_entries = {
         "CMAKE_BUILD_TYPE":"Release",
         "CMAKE_PREFIX_PATH":     "$$EXT_BUILD_ROOT/bazel-out/k8-dbg/bin/external/+hiredis+hiredis/hiredis_build",
+        "CMAKE_PREFIX_PATH":     "$$EXT_BUILD_ROOT/bazel-out/aarch64-dbg/bin/external/+hiredis+hiredis/hiredis_build",
         "REDIS_PLUS_PLUS_BUILD_SHARED": "OFF",
     },
     deps = ["@hiredis//:hiredis"],

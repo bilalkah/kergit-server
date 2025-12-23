@@ -83,6 +83,6 @@ cc_binary(
         "//core:server_config",
         "//utils:env_loader",
         "//utils:loggable",
-        "@redis_plus_plus",
+        # "@redis_plus_plus",
     ],
 )
