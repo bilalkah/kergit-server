@@ -12,13 +12,8 @@
 #include "app/commands/RenameChannelCommand.h"
 #include "app/commands/RenameHubCommand.h"
 #include "app/commands/SendMessageCommand.h"
-// #include "app/commands/UpdateMemberRoleCommand.h"
-// #include "app/commands/UpdateProfileCommand.h"
-// #include "app/services/HubPublisher.h"
-// #include "app/services/PublicIdService.h"
-// #include "infra/persistence/PersistenceGateway.h"
-// #include "net/ClientGateway.h"
-// #include "net/ConnectionManager.h"
+#include "app/commands/UpdateMemberRoleCommand.h"
+#include "app/commands/UpdateProfileCommand.h"
 
 namespace app {
 void register_all(Dispatcher& d, PersistenceGateway& db, net::ClientGateway& gateway,
@@ -43,8 +38,8 @@ void register_all(Dispatcher& d, PersistenceGateway& db, net::ClientGateway& gat
                                            db, gateway, connections, hub_pub, ids));
     d.register_cmd("leave_hub",
                    std::make_unique<LeaveHubCommand>(db, gateway, connections, hub_pub, ids));
-    // d.register_cmd("update_member_role", std::make_unique<UpdateMemberRoleCommand>(
-    //                                          db, gateway, connections, ids, hub_pub));
-    // d.register_cmd("update_profile", std::make_unique<UpdateProfileCommand>(db, hub_pub, ids));
+    d.register_cmd("update_member_role", std::make_unique<UpdateMemberRoleCommand>(
+                                             db, gateway, connections, ids, hub_pub));
+    d.register_cmd("update_profile", std::make_unique<UpdateProfileCommand>(db, hub_pub, ids));
 }
 }  // namespace app
