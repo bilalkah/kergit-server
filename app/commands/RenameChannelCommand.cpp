@@ -40,43 +40,48 @@ std::string RenameChannelCommand::sanitize(std::string name) {
     return name;
 }
 
-bool RenameChannelCommand::has_privilege(net::PerSocketData& psd, const HubId& hub_id) {
-    auto it = psd.hub_roles.find(hub_id);
-    if (it != psd.hub_roles.end()) {
-        auto role = it->second;
-        return role == Role::OWNER || role == Role::ADMIN;
+bool RenameChannelCommand::has_privilege(const CommandContext& ctx, const HubId& hub_id) {
+    auto role = db_.hubs().getMembershipRole(hub_id, ctx.user_id);
+    if (!role.has_value()) {
+        return false;
     }
-    auto role = db_.hubs().getMembershipRole(hub_id, psd.user_id);
-    if (!role.has_value()) return false;
-    psd.hub_roles[hub_id] = *role;
     return *role == Role::OWNER || *role == Role::ADMIN;
 }
 
 void RenameChannelCommand::execute(CommandContext& ctx) {
-    auto& psd = ctx.psd;
+    const auto& input = ctx.input;
     auto& output = ctx.output;
-    const auto& data = ctx.input.data;
 
-    if (!psd.authenticated) {
+    if (!ctx.authenticated) {
         output.success = false;
         output.error_code = "not_authenticated";
         output.error_message = "Authentication required";
-        output.data = {{"type", "error"},
-                       {"code", "not_authenticated"},
-                       {"message", "Authentication required"}};
+        json err = {{"type", "error"},
+                    {"code", "not_authenticated"},
+                    {"message", "Authentication required"}};
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = err.dump();
+        ctx.output.messages.push_back(std::move(msg));
+        output.sent_at = std::chrono::system_clock::now();
         return;
     }
 
-    const std::string channel_id_str = data.value("channel_id", "");
-    std::string requested_name = data.value("name", std::string{});
+    const std::string channel_id_str = input.data.value("channel_id", "");
+    std::string requested_name = input.data.value("name", std::string{});
 
     if (channel_id_str.empty()) {
         output.success = false;
         output.error_code = "missing_channel_id";
         output.error_message = "channel_id is required.";
-        output.data = {{"type", "error"},
-                       {"code", "missing_channel_id"},
-                       {"message", "channel_id is required"}};
+        json err = {{"type", "error"},
+                    {"code", "missing_channel_id"},
+                    {"message", "channel_id is required"}};
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = err.dump();
+        ctx.output.messages.push_back(std::move(msg));
+        output.sent_at = std::chrono::system_clock::now();
         return;
     }
 
@@ -85,9 +90,14 @@ void RenameChannelCommand::execute(CommandContext& ctx) {
         output.success = false;
         output.error_code = "invalid_channel_name";
         output.error_message = "Channel name is required.";
-        output.data = {{"type", "error"},
-                       {"code", "invalid_channel_name"},
-                       {"message", "Channel name is required"}};
+        json err = {{"type", "error"},
+                    {"code", "invalid_channel_name"},
+                    {"message", "Channel name is required"}};
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = err.dump();
+        ctx.output.messages.push_back(std::move(msg));
+        output.sent_at = std::chrono::system_clock::now();
         return;
     }
 
@@ -96,9 +106,14 @@ void RenameChannelCommand::execute(CommandContext& ctx) {
         output.success = false;
         output.error_code = "channel_not_found";
         output.error_message = "Channel not found.";
-        output.data = {{"type", "error"},
-                       {"code", "channel_not_found"},
-                       {"message", "Channel does not exist"}};
+        json err = {{"type", "error"},
+                    {"code", "channel_not_found"},
+                    {"message", "Channel does not exist"}};
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = err.dump();
+        ctx.output.messages.push_back(std::move(msg));
+        output.sent_at = std::chrono::system_clock::now();
         return;
     }
 
@@ -107,32 +122,47 @@ void RenameChannelCommand::execute(CommandContext& ctx) {
         output.success = false;
         output.error_code = "channel_not_found";
         output.error_message = "Channel not found.";
-        output.data = {{"type", "error"},
-                       {"code", "channel_not_found"},
-                       {"message", "Channel does not exist"}};
+        json err = {{"type", "error"},
+                    {"code", "channel_not_found"},
+                    {"message", "Channel does not exist"}};
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = err.dump();
+        ctx.output.messages.push_back(std::move(msg));
+        output.sent_at = std::chrono::system_clock::now();
         return;
     }
 
-    if (!psd.hub_memberships.count(channel->hub_id)) {
-        if (!db_.hubs().isHubMember(channel->hub_id, psd.user_id)) {
+    if (!ctx.snapshot.hubs.count(channel->hub_id)) {
+        if (!db_.hubs().isHubMember(channel->hub_id, ctx.user_id)) {
             output.success = false;
             output.error_code = "not_in_hub";
             output.error_message = "Join the hub before renaming channels.";
-            output.data = {{"type", "error"},
-                           {"code", "not_in_hub"},
-                           {"message", "Join the hub before renaming channels"}};
+            json err = {{"type", "error"},
+                        {"code", "not_in_hub"},
+                        {"message", "Join the hub before renaming channels"}};
+            DirectMessage msg;
+            msg.conn_id = ctx.conn_id;
+            msg.payload = err.dump();
+            ctx.output.messages.push_back(std::move(msg));
+            output.sent_at = std::chrono::system_clock::now();
             return;
         }
-        psd.hub_memberships.insert(channel->hub_id);
+        // psd.hub_memberships.insert(channel->hub_id);
     }
 
-    if (!has_privilege(psd, channel->hub_id)) {
+    if (!has_privilege(ctx, channel->hub_id)) {
         output.success = false;
         output.error_code = "insufficient_privilege";
         output.error_message = "Only owners or admins can rename channels.";
-        output.data = {{"type", "error"},
-                       {"code", "insufficient_privilege"},
-                       {"message", "Only owners or admins can rename channels"}};
+        json err = {{"type", "error"},
+                    {"code", "insufficient_privilege"},
+                    {"message", "Only owners or admins can rename channels"}};
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = err.dump();
+        ctx.output.messages.push_back(std::move(msg));
+        output.sent_at = std::chrono::system_clock::now();
         return;
     }
 
@@ -141,9 +171,14 @@ void RenameChannelCommand::execute(CommandContext& ctx) {
             output.success = false;
             output.error_code = "rename_channel_failed";
             output.error_message = "Unable to rename channel.";
-            output.data = {{"type", "error"},
-                           {"code", "rename_channel_failed"},
-                           {"message", "Unable to rename channel"}};
+            json err = {{"type", "error"},
+                        {"code", "rename_channel_failed"},
+                        {"message", "Unable to rename channel"}};
+            DirectMessage msg;
+            msg.conn_id = ctx.conn_id;
+            msg.payload = err.dump();
+            ctx.output.messages.push_back(std::move(msg));
+            output.sent_at = std::chrono::system_clock::now();
             return;
         }
 
@@ -160,16 +195,34 @@ void RenameChannelCommand::execute(CommandContext& ctx) {
         output.success = true;
         output.error_code.clear();
         output.error_message.clear();
-        output.data = {{"type", "channel_renamed"},
-                       {"hub_id", public_hub_id.value},
-                       {"channel", channel_json}};
+        json data = {{"type", "channel_renamed"},
+                     {"hub_id", public_hub_id.value},
+                     {"channel", channel_json}};
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = data.dump();
+        if (!ctx.snapshot.hubs.count(channel->hub_id)) {
+            msg.apply_psd = [hub_id = channel->hub_id](net::PerSocketData* psd) {
+                if (psd) {
+                    auto snapshot = *psd->snapshot;
+                    snapshot.hubs.insert(hub_id);
+                    snapshot.roles[hub_id] = Role::USER;
+                    psd->snapshot = std::make_shared<const net::Snapshot>(std::move(snapshot));
+                }
+            };
+        }
+        ctx.output.messages.push_back(std::move(msg));
         output.sent_at = std::chrono::system_clock::now();
     } catch (const std::exception& ex) {
         output.success = false;
         output.error_code = "rename_channel_failed";
         output.error_message = ex.what();
-        output.data = {
-            {"type", "error"}, {"code", "rename_channel_failed"}, {"message", ex.what()}};
+        json err = {{"type", "error"}, {"code", "rename_channel_failed"}, {"message", ex.what()}};
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = err.dump();
+        ctx.output.messages.push_back(std::move(msg));
+        output.sent_at = std::chrono::system_clock::now();
     }
 }
 

@@ -15,6 +15,8 @@ struct CommandRequest {
     UserId user_id;
     HubId current_hub_id;
     ChannelId current_channel_id;
+    std::string email;
+    std::string username;
     bool authenticated{false};
 
     std::shared_ptr<const net::Snapshot> snapshot;

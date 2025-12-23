@@ -43,7 +43,6 @@ std::string CreateHubCommand::sanitize_name(std::string name) {
 
 void CreateHubCommand::execute(CommandContext& ctx) {
     const auto& input = ctx.input;
-    const auto& data = ctx.input.data;
     auto& output = ctx.output;
 
     if (!ctx.authenticated) {
@@ -62,7 +61,7 @@ void CreateHubCommand::execute(CommandContext& ctx) {
         return;
     }
 
-    std::string name = sanitize_name(data.value("name", std::string{}));
+    std::string name = sanitize_name(input.data.value("name", std::string{}));
     if (name.empty()) {
         output.success = false;
         output.error_code = "invalid_name";
@@ -116,6 +115,8 @@ void CreateHubCommand::execute(CommandContext& ctx) {
         auto& snapshot = ctx.snapshot;
         snapshot.hubs.insert(hub_id);
         snapshot.roles[hub_id] = Role::OWNER;
+
+        gateway_.subscribe(ctx.conn_id, hub_publisher_.topic_for(hub_id));
 
         msg.apply_psd = [snapshot](net::PerSocketData* psd) {
             if (!psd) return;
