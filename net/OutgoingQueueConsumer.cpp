@@ -64,13 +64,15 @@ void OutgoingQueueConsumer::on_timer(us_timer_t* timer) {
 }
 
 void OutgoingQueueConsumer::tick() {
-    std::optional<OutgoingMessage> opt_msg = out_q_.try_pop();
+    auto expected_msg = out_q_.try_pop();
 
-    if (!opt_msg.has_value()) {
+    if (!expected_msg.has_value()) {
+        // log(utils::LogLevel::WARN, expected_msg.error());
         return;
     }
+
     log(utils::LogLevel::WARN, "Processing outgoing message from queue");
-    const OutgoingMessage& msg = opt_msg.value();
+    const OutgoingMessage& msg = expected_msg.value();
 
     std::visit(
         [&](auto&& arg) {

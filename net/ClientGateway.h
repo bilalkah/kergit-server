@@ -33,6 +33,8 @@ class ClientGateway : public utils::Loggable {
     void unsubscribe_all(const ConnId& cid);
     void publish(const std::string& topic, const nlohmann::json& payload, OpCode op = OpCode::TEXT);
     void publish(const std::string& topic, const std::string& payload, OpCode op = OpCode::TEXT);
+    void drop_topic(const std::string& topic);
+    std::unordered_set<ConnId> subscribers(const std::string& topic) const;
 
     // Say hi
     void say_hello(const ConnId& cid) {

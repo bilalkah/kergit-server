@@ -4,7 +4,7 @@ cc_library(
     name = "chat_client_lib",
     srcs = ["ChatClient.cpp"],
     hdrs = ["ChatClient.h"],
-    copts = ["-std=c++17"],
+    copts = ["-std=gnu++23"],
     visibility = ["//visibility:public"],
     deps = [
         ":chat_client_app_lib",
@@ -19,7 +19,7 @@ cc_library(
         "ChatClient.h",
         "ChatClientApp.h",
     ],
-    copts = ["-std=c++17"],
+    copts = ["-std=gnu++23"],
     includes = ["."],
     linkopts = ["-lpthread"],
     strip_include_prefix = "",
@@ -33,7 +33,7 @@ cc_library(
 cc_binary(
     name = "client",
     srcs = ["client.cpp"],
-    copts = ["-std=c++17"],
+    copts = ["-std=gnu++23"],
     linkopts = ["-lpthread"],
     deps = [
         ":chat_client_app_lib",

@@ -6,12 +6,18 @@
 
 #include <variant>
 
+namespace net {
+struct Snapshot;
+} // namespace net
+
 struct CommandRequest {
     ConnId conn_id;
     UserId user_id;
     HubId current_hub_id;
     ChannelId current_channel_id;
     bool authenticated{false};
+
+    std::shared_ptr<const net::Snapshot> snapshot;
 
     std::string payload;
     std::chrono::system_clock::time_point received_at;
