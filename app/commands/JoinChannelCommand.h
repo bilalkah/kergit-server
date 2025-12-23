@@ -30,12 +30,11 @@ class JoinChannelCommand : public ICommand {
     void execute(CommandContext&) override;
 
    private:
-    nlohmann::json collect_channel_presence(const ChannelId& channel_id) const;
+    nlohmann::json collect_channel_presence(const ChannelId& channel_id, CommandContext& ctx) const;
     std::vector<Message> fetch_history(const ChannelId& channel_id);
     static std::string channel_topic(const ChannelId& channel_id);
     std::string resolve_display_name(const UserId& user_id) const;
-    void publish_presence_update(const ChannelId& channel_id, const net::PerSocketData& psd,
-                                 bool online);
+    void publish_presence_update(const ChannelId& channel_id, CommandContext& ctx, bool online);
 
     PersistenceGateway& db_;
     net::ClientGateway& gateway_;

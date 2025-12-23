@@ -20,8 +20,8 @@ class LeaveHubCommand : public ICommand {
     void execute(CommandContext& ctx) override;
 
    private:
-    bool is_owner(net::PerSocketData& psd, const HubId& hub_id);
-    void publish_presence_update(const ChannelId& channel_id, const net::PerSocketData& psd,
+    bool is_owner(const CommandContext& ctx, const HubId& hub_id);
+    void publish_presence_update(const ChannelId& channel_id, CommandContext& ctx,
                                  bool online);
     static std::string channel_topic(const ChannelId& channel_id);
 

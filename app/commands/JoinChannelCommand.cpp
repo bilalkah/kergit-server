@@ -22,11 +22,6 @@ namespace app {
 namespace {
 constexpr int kHistoryLimit = 50;
 
-std::string display_from_psd(const net::PerSocketData& psd) {
-    if (!psd.username.empty()) return psd.username;
-    return "Member";
-}
-
 std::string format_time_point(const std::chrono::system_clock::time_point& tp) {
     if (tp.time_since_epoch().count() == 0) return std::string{};
     std::time_t t = std::chrono::system_clock::to_time_t(tp);
@@ -43,17 +38,21 @@ JoinChannelCommand::JoinChannelCommand(PersistenceGateway& db, net::ClientGatewa
     : db_(db), gateway_(gateway), connections_(connections), ids_(ids) {}
 
 void JoinChannelCommand::execute(CommandContext& ctx) {
-    auto& psd = ctx.psd;
-    auto& input = ctx.input;
+    const auto& input = ctx.input;
     auto& output = ctx.output;
 
-    if (!psd.authenticated) {
+    if (!ctx.authenticated) {
         output.success = false;
         output.error_code = "not_authenticated";
         output.error_message = "Authenticate before joining a channel.";
-        output.data = {{"type", "error"},
-                       {"code", "not_authenticated"},
-                       {"message", "Authentication required"}};
+        json err = {{"type", "error"},
+                    {"code", "not_authenticated"},
+                    {"message", "Authentication required"}};
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = err.dump();
+        ctx.output.messages.push_back(std::move(msg));
+        output.sent_at = std::chrono::system_clock::now();
         return;
     }
 
@@ -62,9 +61,14 @@ void JoinChannelCommand::execute(CommandContext& ctx) {
         output.success = false;
         output.error_code = "missing_channel_id";
         output.error_message = "Channel id is required.";
-        output.data = {{"type", "error"},
-                       {"code", "missing_channel_id"},
-                       {"message", "channel_id is required"}};
+        json err = {{"type", "error"},
+                    {"code", "missing_channel_id"},
+                    {"message", "channel_id is required"}};
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = err.dump();
+        ctx.output.messages.push_back(std::move(msg));
+        output.sent_at = std::chrono::system_clock::now();
         return;
     }
 
@@ -73,9 +77,14 @@ void JoinChannelCommand::execute(CommandContext& ctx) {
         output.success = false;
         output.error_code = "channel_not_found";
         output.error_message = "Channel does not exist";
-        output.data = {{"type", "error"},
-                       {"code", "channel_not_found"},
-                       {"message", "Channel does not exist"}};
+        json err = {{"type", "error"},
+                    {"code", "channel_not_found"},
+                    {"message", "Channel does not exist"}};
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = err.dump();
+        ctx.output.messages.push_back(std::move(msg));
+        output.sent_at = std::chrono::system_clock::now();
         return;
     }
 
@@ -85,9 +94,14 @@ void JoinChannelCommand::execute(CommandContext& ctx) {
         output.success = false;
         output.error_code = "channel_not_found";
         output.error_message = "Channel not found.";
-        output.data = {{"type", "error"},
-                       {"code", "channel_not_found"},
-                       {"message", "Channel does not exist"}};
+        json err = {{"type", "error"},
+                    {"code", "channel_not_found"},
+                    {"message", "Channel does not exist"}};
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = err.dump();
+        ctx.output.messages.push_back(std::move(msg));
+        output.sent_at = std::chrono::system_clock::now();
         return;
     }
 
@@ -96,32 +110,31 @@ void JoinChannelCommand::execute(CommandContext& ctx) {
     const auto public_channel_id = ids_.to_public(channel_id);
     const auto public_hub_id = ids_.to_public(hub_id);
 
-    if (!psd.hub_memberships.count(hub_id)) {
-        if (!db_.hubs().isHubMember(hub_id, psd.user_id)) {
+    if (!ctx.snapshot.hubs.count(hub_id)) {
+        if (!db_.hubs().isHubMember(hub_id, ctx.user_id)) {
             output.success = false;
             output.error_code = "not_in_hub";
             output.error_message = "User is not a member of the hub.";
-            output.data = {{"type", "error"},
-                           {"code", "not_in_hub"},
-                           {"message", "You are not a member of this hub"}};
+            json err = {{"type", "error"},
+                        {"code", "not_in_hub"},
+                        {"message", "You are not a member of this hub"}};
+            DirectMessage msg;
+            msg.conn_id = ctx.conn_id;
+            msg.payload = err.dump();
+            ctx.output.messages.push_back(std::move(msg));
+            output.sent_at = std::chrono::system_clock::now();
             return;
         }
-        psd.hub_memberships.insert(hub_id);
     }
 
-    ChannelId previous_channel = psd.current_channel_id;
+    ChannelId previous_channel = ctx.current_channel_id;
     if (!previous_channel.value.empty() && previous_channel.value != channel_id.value) {
-        publish_presence_update(previous_channel, psd, false);
-        gateway_.unsubscribe(psd.conn_id, channel_topic(previous_channel));
-        psd.channel_subscriptions.erase(previous_channel);
+        // publish_presence_update(previous_channel, ctx, false);
+        gateway_.unsubscribe(ctx.conn_id, channel_topic(previous_channel));
     }
-
-    psd.current_hub_id = hub_id;
-    psd.current_channel_id = channel_id;
 
     auto topic = channel_topic(channel_id);
-    gateway_.subscribe(psd.conn_id, topic);
-    psd.channel_subscriptions.insert(channel_id);
+    gateway_.subscribe(ctx.conn_id, topic);
 
     auto history = fetch_history(channel_id);
     std::reverse(history.begin(), history.end());
@@ -134,35 +147,41 @@ void JoinChannelCommand::execute(CommandContext& ctx) {
                                 {"sent_at", sent_at}});
     }
 
-    auto members = collect_channel_presence(channel_id);
-    publish_presence_update(channel_id, psd, true);
+    auto members = collect_channel_presence(channel_id, ctx);
+    // publish_presence_update(channel_id, ctx, true);
 
     output.success = true;
     output.error_code.clear();
     output.error_message.clear();
-    output.data = {
-        {"type", "joined_channel"},          {"channel_id", public_channel_id.value},
-        {"channel_name", channel_info.name}, {"hub_id", public_hub_id.value},
-        {"members", std::move(members)},     {"history", std::move(history_json)},
+    json data = {{"type", "joined_channel"},          {"channel_id", public_channel_id.value},
+                 {"channel_name", channel_info.name}, {"hub_id", public_hub_id.value},
+                 {"members", std::move(members)},     {"history", std::move(history_json)}};
+    DirectMessage msg;
+    msg.conn_id = ctx.conn_id;
+    msg.payload = data.dump();
+    msg.apply_psd = [channel_id, hub_id](net::PerSocketData* psd) {
+        if (psd) {
+            psd->current_hub_id = hub_id;
+            psd->current_channel_id = channel_id;
+        }
     };
+    ctx.output.messages.push_back(std::move(msg));
     output.sent_at = std::chrono::system_clock::now();
 }
 
-json JoinChannelCommand::collect_channel_presence(const ChannelId& channel_id) const {
+json JoinChannelCommand::collect_channel_presence(const ChannelId& channel_id,
+                                                  CommandContext& ctx) const {
     json members = json::array();
-    connections_.for_each([&](UwsSocket* ws) {
-        if (!ws) return;
-        auto* other = ws->getUserData();
-        if (!other || !other->authenticated) return;
-        if (other->current_channel_id.value != channel_id.value) return;
-        const auto name = display_from_psd(*other);
-        if (!name.empty()) ids_.remember_display(other->user_id, name);
-        const auto public_user = ids_.to_public(other->user_id);
+    const auto conn_list = gateway_.subscribers(channel_topic(channel_id));
+
+    for (const auto& cid : conn_list) {
+        const auto public_user = ids_.to_public(ctx.user_id);
+        const auto name = ctx.username.empty() ? "Member" : ctx.username;
         members.push_back({{"handle", name},
                            {"display_name", name},
                            {"online", true},
                            {"user_id", public_user.value}});
-    });
+    }
     return members;
 }
 
@@ -175,18 +194,8 @@ std::string JoinChannelCommand::channel_topic(const ChannelId& channel_id) {
 }
 
 std::string JoinChannelCommand::resolve_display_name(const UserId& user_id) const {
-    std::string name;
-    connections_.for_each([&](UwsSocket* ws) {
-        if (name.empty() && ws) {
-            auto* other = ws->getUserData();
-            if (other && other->authenticated && other->user_id == user_id) {
-                name = display_from_psd(*other);
-            }
-        }
-    });
-    if (name.empty()) {
-        name = ids_.display_for(user_id);
-    }
+    std::string name = ids_.display_for(user_id);
+
     if (name.empty()) {
         if (auto db_name = db_.users().getUserDisplayName(user_id)) {
             if (!db_name->empty()) {
@@ -199,20 +208,23 @@ std::string JoinChannelCommand::resolve_display_name(const UserId& user_id) cons
     return name;
 }
 
-void JoinChannelCommand::publish_presence_update(const ChannelId& channel_id,
-                                                 const net::PerSocketData& psd, bool online) {
+void JoinChannelCommand::publish_presence_update(const ChannelId& channel_id, CommandContext& ctx,
+                                                 bool online) {
     if (channel_id.value.empty()) return;
-    const auto name = display_from_psd(psd);
-    if (!name.empty()) ids_.remember_display(psd.user_id, name);
+    const auto name = ctx.username.empty() ? "Member" : ctx.username;
+    if (!name.empty()) ids_.remember_display(ctx.user_id, name);
     const auto public_channel_id = ids_.to_public(channel_id);
-    const auto public_user_id = ids_.to_public(psd.user_id);
+    const auto public_user_id = ids_.to_public(ctx.user_id);
     json payload = {{"type", "presence_update"},
                     {"channel_id", public_channel_id.value},
                     {"handle", name},
                     {"display_name", name},
                     {"online", online},
                     {"user_id", public_user_id.value}};
-    gateway_.publish(channel_topic(channel_id), payload);
+    PublishMessage msg;
+    msg.topic = channel_topic(channel_id);
+    msg.payload = payload.dump();
+    ctx.output.messages.push_back(std::move(msg));
 }
 
 }  // namespace app

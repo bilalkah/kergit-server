@@ -40,45 +40,54 @@ std::string RenameHubCommand::sanitize(std::string name) {
     return name;
 }
 
-bool RenameHubCommand::is_owner(net::PerSocketData& psd, const HubId& hub_id) {
-    auto it = psd.hub_roles.find(hub_id);
-    Role role = Role::USER;
-    if (it != psd.hub_roles.end()) {
-        role = it->second;
-    } else {
-        auto db_role = db_.hubs().getMembershipRole(hub_id, psd.user_id);
-        if (db_role.has_value()) {
-            role = *db_role;
-            psd.hub_roles[hub_id] = role;
+bool RenameHubCommand::is_owner(const CommandContext& ctx, const HubId& hub_id) {
+    if (!ctx.snapshot.hubs.count(hub_id)) {
+        // check db if not in snapshot
+        auto role = db_.hubs().getMembershipRole(hub_id, ctx.user_id);
+        if (!role.has_value()) {
+            return false;
         }
     }
-    return role == Role::OWNER;
+    auto role = ctx.snapshot.roles.find(hub_id);
+    if (role == ctx.snapshot.roles.end()) {
+        return false;
+    }
+    return role->second == Role::OWNER;
 }
 
 void RenameHubCommand::execute(CommandContext& ctx) {
-    auto& psd = ctx.psd;
+    const auto& input = ctx.input;
     auto& output = ctx.output;
-    const auto& data = ctx.input.data;
 
-    if (!psd.authenticated) {
+    if (!ctx.authenticated) {
         output.success = false;
         output.error_code = "not_authenticated";
         output.error_message = "Authentication required.";
-        output.data = {{"type", "error"},
-                       {"code", "not_authenticated"},
-                       {"message", "Authentication required"}};
+        json err = {{"type", "error"},
+                    {"code", "not_authenticated"},
+                    {"message", "Authentication required"}};
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = err.dump();
+        ctx.output.messages.push_back(std::move(msg));
+        output.sent_at = std::chrono::system_clock::now();
         return;
     }
 
-    const std::string hub_id_str = data.value("hub_id", "");
-    std::string requested_name = data.value("name", std::string{});
+    const std::string hub_id_str = input.data.value("hub_id", "");
+    std::string requested_name = input.data.value("name", std::string{});
 
     if (hub_id_str.empty()) {
         output.success = false;
         output.error_code = "missing_hub_id";
         output.error_message = "hub_id is required.";
-        output.data = {
+        json err = {
             {"type", "error"}, {"code", "missing_hub_id"}, {"message", "hub_id is required"}};
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = err.dump();
+        ctx.output.messages.push_back(std::move(msg));
+        output.sent_at = std::chrono::system_clock::now();
         return;
     }
 
@@ -87,8 +96,13 @@ void RenameHubCommand::execute(CommandContext& ctx) {
         output.success = false;
         output.error_code = "invalid_hub_name";
         output.error_message = "Hub name is required.";
-        output.data = {
+        json err = {
             {"type", "error"}, {"code", "invalid_hub_name"}, {"message", "Hub name is required"}};
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = err.dump();
+        ctx.output.messages.push_back(std::move(msg));
+        output.sent_at = std::chrono::system_clock::now();
         return;
     }
 
@@ -97,31 +111,46 @@ void RenameHubCommand::execute(CommandContext& ctx) {
         output.success = false;
         output.error_code = "hub_not_found";
         output.error_message = "Hub not found.";
-        output.data = {
+        json err = {
             {"type", "error"}, {"code", "hub_not_found"}, {"message", "Hub does not exist"}};
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = err.dump();
+        ctx.output.messages.push_back(std::move(msg));
+        output.sent_at = std::chrono::system_clock::now();
         return;
     }
 
-    if (!psd.hub_memberships.count(*internal_hub)) {
-        if (!db_.hubs().isHubMember(*internal_hub, psd.user_id)) {
+    if (!ctx.snapshot.hubs.count(*internal_hub)) {
+        if (!db_.hubs().isHubMember(*internal_hub, ctx.user_id)) {
             output.success = false;
             output.error_code = "not_in_hub";
             output.error_message = "Join the hub before renaming it.";
-            output.data = {{"type", "error"},
-                           {"code", "not_in_hub"},
-                           {"message", "Join the hub before renaming it"}};
+            json err = {{"type", "error"},
+                        {"code", "not_in_hub"},
+                        {"message", "Join the hub before renaming it"}};
+            DirectMessage msg;
+            msg.conn_id = ctx.conn_id;
+            msg.payload = err.dump();
+            ctx.output.messages.push_back(std::move(msg));
+            output.sent_at = std::chrono::system_clock::now();
             return;
         }
-        psd.hub_memberships.insert(*internal_hub);
+        // psd.hub_memberships.insert(*internal_hub);
     }
 
-    if (!is_owner(psd, *internal_hub)) {
+    if (!is_owner(ctx, *internal_hub)) {
         output.success = false;
         output.error_code = "insufficient_privilege";
         output.error_message = "Only owners can rename hubs.";
-        output.data = {{"type", "error"},
-                       {"code", "insufficient_privilege"},
-                       {"message", "Only owners can rename hubs"}};
+        json err = {{"type", "error"},
+                    {"code", "insufficient_privilege"},
+                    {"message", "Only owners can rename hubs"}};
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = err.dump();
+        ctx.output.messages.push_back(std::move(msg));
+        output.sent_at = std::chrono::system_clock::now();
         return;
     }
 
@@ -130,9 +159,14 @@ void RenameHubCommand::execute(CommandContext& ctx) {
             output.success = false;
             output.error_code = "rename_hub_failed";
             output.error_message = "Unable to rename hub.";
-            output.data = {{"type", "error"},
-                           {"code", "rename_hub_failed"},
-                           {"message", "Unable to rename hub"}};
+            json err = {{"type", "error"},
+                        {"code", "rename_hub_failed"},
+                        {"message", "Unable to rename hub"}};
+            DirectMessage msg;
+            msg.conn_id = ctx.conn_id;
+            msg.payload = err.dump();
+            ctx.output.messages.push_back(std::move(msg));
+            output.sent_at = std::chrono::system_clock::now();
             return;
         }
 
@@ -142,25 +176,24 @@ void RenameHubCommand::execute(CommandContext& ctx) {
         json event = {
             {"type", "hub_renamed"}, {"hub_id", public_hub_id.value}, {"name", requested_name}};
 
-        connections_.for_each([&](UwsSocket* ws) {
-            if (!ws) return;
-            auto* other = ws->getUserData();
-            if (!other || !other->authenticated) return;
-            if (other->hub_memberships.find(*internal_hub) == other->hub_memberships.end()) return;
-            if (other->conn_id.value == psd.conn_id.value) return;
-            gateway_.send_now(other->conn_id, event);
-        });
-
+        PublishMessage pub_msg;
+        pub_msg.topic = app::services::HubPublisher::topic_for(*internal_hub);
+        pub_msg.payload = event.dump();
+        ctx.output.messages.push_back(std::move(pub_msg));
         output.success = true;
         output.error_code.clear();
         output.error_message.clear();
-        output.data = event;
         output.sent_at = std::chrono::system_clock::now();
     } catch (const std::exception& ex) {
         output.success = false;
         output.error_code = "rename_hub_failed";
         output.error_message = ex.what();
-        output.data = {{"type", "error"}, {"code", "rename_hub_failed"}, {"message", ex.what()}};
+        json err = {{"type", "error"}, {"code", "rename_hub_failed"}, {"message", ex.what()}};
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = err.dump();
+        ctx.output.messages.push_back(std::move(msg));
+        output.sent_at = std::chrono::system_clock::now();
     }
 }
 

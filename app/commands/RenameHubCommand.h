@@ -27,7 +27,7 @@ class RenameHubCommand : public ICommand {
 
    private:
     static std::string sanitize(std::string name);
-    bool is_owner(net::PerSocketData& psd, const HubId& hub_id);
+    bool is_owner(const CommandContext& ctx, const HubId& hub_id);
 
     PersistenceGateway& db_;
     net::ClientGateway& gateway_;

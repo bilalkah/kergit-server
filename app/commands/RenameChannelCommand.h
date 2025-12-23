@@ -25,7 +25,7 @@ class RenameChannelCommand : public ICommand {
 
    private:
     static std::string sanitize(std::string name);
-    bool has_privilege(net::PerSocketData& psd, const HubId& hub_id);
+    bool has_privilege(const CommandContext& ctx, const HubId& hub_id);
 
     PersistenceGateway& db_;
     net::ClientGateway& gateway_;
