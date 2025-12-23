@@ -26,7 +26,11 @@ class DeleteHubCommand : public ICommand {
     void execute(CommandContext&) override;
 
    private:
-    bool is_owner(net::PerSocketData& psd, const HubId& hub_id);
+    bool is_owner(const CommandContext& ctx, const HubId& hub_id);
+
+    std::string channel_topic(const ChannelId& channel_id) {
+    return "channel:" + channel_id.value;
+}
 
     PersistenceGateway& db_;
     net::ClientGateway& gateway_;

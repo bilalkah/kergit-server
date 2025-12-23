@@ -46,4 +46,10 @@ void ClientGateway::publish(const std::string& topic, const std::string& payload
     }
 }
 
+void ClientGateway::drop_topic(const std::string& topic) { pubsub_->drop_topic(topic); }
+
+std::unordered_set<ConnId> ClientGateway::subscribers(const std::string& topic) const {
+    return pubsub_->subscribers(topic);
+}
+
 }  // namespace net

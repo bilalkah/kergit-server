@@ -16,6 +16,7 @@ class PubSub {
     void subscribe(const ConnId& conn, const std::string& topic);
     void unsubscribe(const ConnId& conn, const std::string& topic);
     void unsubscribe_all(const ConnId& conn);
+    void drop_topic(const std::string& topic);
     std::unordered_set<ConnId> subscribers(const std::string& topic) const;
 
    private:

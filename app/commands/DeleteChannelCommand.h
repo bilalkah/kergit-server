@@ -28,7 +28,7 @@ class DeleteChannelCommand : public ICommand {
 
    private:
     static std::string channel_topic(const ChannelId& channel_id);
-    bool has_privilege(net::PerSocketData& psd, const HubId& hub_id);
+    bool has_privilege(const CommandContext& ctx, const HubId& hub_id);
 
     PersistenceGateway& db_;
     net::ClientGateway& gateway_;

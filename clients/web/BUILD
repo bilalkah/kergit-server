@@ -10,9 +10,9 @@ py_binary(
 # Generate src/config.js (no shell quoting headaches)
 genrule(
     name = "config_js",
-    srcs = [".env"],
+    srcs = ["//:.env"],
     outs = ["src/config.js"],
-    cmd = "$(location :gen_config) $(location .env) > $@",
+    cmd = "$(location :gen_config) $(location //:.env) > $@",
     tools = [":gen_config"],
 )
 

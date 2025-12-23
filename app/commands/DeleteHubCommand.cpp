@@ -25,43 +25,45 @@ DeleteHubCommand::DeleteHubCommand(PersistenceGateway& db, net::ClientGateway& g
       hub_publisher_(hub_publisher),
       ids_(ids) {}
 
-bool DeleteHubCommand::is_owner(net::PerSocketData& psd, const HubId& hub_id) {
-    auto it = psd.hub_roles.find(hub_id);
-    Role role = Role::USER;
-    if (it != psd.hub_roles.end()) {
-        role = it->second;
-    } else {
-        auto db_role = db_.hubs().getMembershipRole(hub_id, psd.user_id);
-        if (db_role.has_value()) {
-            role = *db_role;
-            psd.hub_roles[hub_id] = role;
-        }
-    }
+bool DeleteHubCommand::is_owner(const CommandContext& ctx, const HubId& hub_id) {
+    auto it = ctx.snapshot.roles.find(hub_id);
+    if (it == ctx.snapshot.roles.end()) return false;
+
+    Role role = it->second;
     return role == Role::OWNER;
 }
 
 void DeleteHubCommand::execute(CommandContext& ctx) {
-    auto& psd = ctx.psd;
+    const auto& input = ctx.input;
     auto& output = ctx.output;
-    const auto& data = ctx.input.data;
 
-    if (!psd.authenticated) {
+    if (!ctx.authenticated) {
         output.success = false;
         output.error_code = "not_authenticated";
         output.error_message = "Authentication required.";
-        output.data = {{"type", "error"},
-                       {"code", "not_authenticated"},
-                       {"message", "Authentication required"}};
+        json err = {{"type", "error"},
+                    {"code", "not_authenticated"},
+                    {"message", "Authentication required"}};
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = err.dump();
+        ctx.output.messages.push_back(std::move(msg));
+        output.sent_at = std::chrono::system_clock::now();
         return;
     }
 
-    const std::string hub_id_str = data.value("hub_id", "");
+    const std::string hub_id_str = input.data.value("hub_id", "");
     if (hub_id_str.empty()) {
         output.success = false;
         output.error_code = "missing_hub_id";
         output.error_message = "hub_id is required.";
-        output.data = {
+        json err = {
             {"type", "error"}, {"code", "missing_hub_id"}, {"message", "hub_id is required"}};
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = err.dump();
+        ctx.output.messages.push_back(std::move(msg));
+        output.sent_at = std::chrono::system_clock::now();
         return;
     }
 
@@ -70,31 +72,46 @@ void DeleteHubCommand::execute(CommandContext& ctx) {
         output.success = false;
         output.error_code = "hub_not_found";
         output.error_message = "Hub not found.";
-        output.data = {
+        json err = {
             {"type", "error"}, {"code", "hub_not_found"}, {"message", "Hub does not exist"}};
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = err.dump();
+        ctx.output.messages.push_back(std::move(msg));
+        output.sent_at = std::chrono::system_clock::now();
         return;
     }
 
-    if (!psd.hub_memberships.count(*internal_hub)) {
-        if (!db_.hubs().isHubMember(*internal_hub, psd.user_id)) {
+    if (!ctx.snapshot.hubs.count(*internal_hub)) {
+        if (!db_.hubs().isHubMember(*internal_hub, ctx.user_id)) {
             output.success = false;
             output.error_code = "not_in_hub";
             output.error_message = "Join the hub before deleting it.";
-            output.data = {{"type", "error"},
-                           {"code", "not_in_hub"},
-                           {"message", "Join the hub before deleting it"}};
+            json err = {{"type", "error"},
+                        {"code", "not_in_hub"},
+                        {"message", "Join the hub before deleting it"}};
+            DirectMessage msg;
+            msg.conn_id = ctx.conn_id;
+            msg.payload = err.dump();
+            ctx.output.messages.push_back(std::move(msg));
+            output.sent_at = std::chrono::system_clock::now();
             return;
         }
-        psd.hub_memberships.insert(*internal_hub);
+        ctx.snapshot.hubs.insert(*internal_hub);
     }
 
-    if (!is_owner(psd, *internal_hub)) {
+    if (!is_owner(ctx, *internal_hub)) {
         output.success = false;
         output.error_code = "insufficient_privilege";
         output.error_message = "Only owners can delete hubs.";
-        output.data = {{"type", "error"},
-                       {"code", "insufficient_privilege"},
-                       {"message", "Only owners can delete hubs"}};
+        json err = {{"type", "error"},
+                    {"code", "insufficient_privilege"},
+                    {"message", "Only owners can delete hubs"}};
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = err.dump();
+        ctx.output.messages.push_back(std::move(msg));
+        output.sent_at = std::chrono::system_clock::now();
         return;
     }
 
@@ -107,87 +124,65 @@ void DeleteHubCommand::execute(CommandContext& ctx) {
             hub_channel_ids.insert(channel.channel_id);
         }
 
-        if (!db_.hubs().deleteHub(*internal_hub, psd.user_id)) {
+        if (!db_.hubs().deleteHub(*internal_hub, ctx.user_id)) {
             output.success = false;
             output.error_code = "delete_hub_failed";
             output.error_message = "Unable to delete hub.";
-            output.data = {{"type", "error"},
-                           {"code", "delete_hub_failed"},
-                           {"message", "Unable to delete hub"}};
+            json err = {{"type", "error"},
+                        {"code", "delete_hub_failed"},
+                        {"message", "Unable to delete hub"}};
+            DirectMessage msg;
+            msg.conn_id = ctx.conn_id;
+            msg.payload = err.dump();
+            ctx.output.messages.push_back(std::move(msg));
+            output.sent_at = std::chrono::system_clock::now();
             return;
         }
 
-        struct PendingNotification {
-            ConnId conn_id;
-            bool send_hub_deleted{false};
-            bool unsubscribe_hub_topic{false};
-            std::vector<ChannelId> channel_ids;
-        };
-        std::vector<PendingNotification> pending;
-        pending.reserve(32);
-        const auto hub_topic = app::services::HubPublisher::topic_for(*internal_hub);
+        for (const auto& channel_id : hub_channel_ids) {
+            const auto subs = gateway_.subscribers(channel_topic(channel_id));
+            const auto public_channel_id = ids_.to_public(channel_id);
+            json channel_closed_msg = {{"type", "channel_closed"},
+                                       {"channel_id", public_channel_id.value},
+                                       {"reason", "hub_deleted"}};
+            json hub_deleted_msg = {{"type", "hub_deleted"}, {"hub_id", public_hub_id.value}};
 
-        connections_.for_each([&](UwsSocket* ws) {
-            if (!ws) return;
-            auto* other = ws->getUserData();
-            if (!other || !other->authenticated) return;
-            if (other->hub_memberships.erase(*internal_hub) == 0) return;
+            for (const auto& cid : subs) {
+                DirectMessage ch_closed, hub_deleted;
+                ch_closed.conn_id = cid;
+                ch_closed.payload = channel_closed_msg.dump();
+                ctx.output.messages.push_back(std::move(ch_closed));
 
-            other->hub_roles.erase(*internal_hub);
-
-            std::vector<ChannelId> to_remove;
-            to_remove.reserve(other->channel_subscriptions.size());
-            for (const auto& subscribed : other->channel_subscriptions) {
-                if (hub_channel_ids.find(subscribed) != hub_channel_ids.end()) {
-                    to_remove.push_back(subscribed);
-                }
-            }
-            for (const auto& channel_id : to_remove) {
-                other->channel_subscriptions.erase(channel_id);
+                hub_deleted.conn_id = cid;
+                hub_deleted.payload = hub_deleted_msg.dump();
+                hub_deleted.apply_psd = [internal_hub](net::PerSocketData* psd) {
+                    if (psd) {
+                        auto snapshot = *psd->snapshot;
+                        snapshot.hubs.erase(*internal_hub);
+                        snapshot.roles.erase(*internal_hub);
+                        psd->snapshot = std::make_shared<net::Snapshot>(snapshot);
+                    }
+                };
+                ctx.output.messages.push_back(std::move(hub_deleted));
             }
 
-            bool current_hub_changed = other->current_hub_id == *internal_hub;
-            if (current_hub_changed) other->current_hub_id = HubId{""};
-            if (!other->current_channel_id.value.empty() &&
-                hub_channel_ids.find(other->current_channel_id) != hub_channel_ids.end()) {
-                other->current_channel_id = ChannelId{""};
-            }
-
-            PendingNotification note;
-            note.conn_id = other->conn_id;
-            note.unsubscribe_hub_topic = true;
-            note.send_hub_deleted = other->conn_id.value != psd.conn_id.value;
-            note.channel_ids = std::move(to_remove);
-            pending.push_back(std::move(note));
-        });
-
-        for (const auto& note : pending) {
-            if (note.unsubscribe_hub_topic) {
-                gateway_.unsubscribe(note.conn_id, hub_topic);
-            }
-            for (const auto& channel_id : note.channel_ids) {
-                gateway_.unsubscribe(note.conn_id, "channel:" + channel_id.value);
-                const auto public_channel_id = ids_.to_public(channel_id);
-                gateway_.send_now(note.conn_id, {{"type", "channel_closed"},
-                                                 {"channel_id", public_channel_id.value},
-                                                 {"reason", "hub_deleted"}});
-            }
-            if (note.send_hub_deleted) {
-                gateway_.send_now(note.conn_id,
-                                  {{"type", "hub_deleted"}, {"hub_id", public_hub_id.value}});
-            }
+            gateway_.drop_topic(channel_topic(channel_id));
         }
 
         output.success = true;
         output.error_code.clear();
         output.error_message.clear();
-        output.data = {{"type", "hub_deleted"}, {"hub_id", public_hub_id.value}};
         output.sent_at = std::chrono::system_clock::now();
     } catch (const std::exception& ex) {
         output.success = false;
         output.error_code = "delete_hub_failed";
         output.error_message = ex.what();
-        output.data = {{"type", "error"}, {"code", "delete_hub_failed"}, {"message", ex.what()}};
+        json err = {{"type", "error"}, {"code", "delete_hub_failed"}, {"message", ex.what()}};
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = err.dump();
+        ctx.output.messages.push_back(std::move(msg));
+        output.sent_at = std::chrono::system_clock::now();
     }
 }
 

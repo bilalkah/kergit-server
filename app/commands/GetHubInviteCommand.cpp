@@ -15,43 +15,45 @@ GetHubInviteCommand::GetHubInviteCommand(PersistenceGateway& db,
                                          app::services::PublicIdService& ids)
     : db_(db), ids_(ids) {}
 
-bool GetHubInviteCommand::has_privilege(net::PerSocketData& psd, const HubId& hub_id) {
-    auto it = psd.hub_roles.find(hub_id);
-    Role role = Role::USER;
-    if (it != psd.hub_roles.end()) {
-        role = it->second;
-    } else {
-        auto db_role = db_.hubs().getMembershipRole(hub_id, psd.user_id);
-        if (db_role.has_value()) {
-            role = *db_role;
-            psd.hub_roles[hub_id] = role;
-        }
-    }
+bool GetHubInviteCommand::has_privilege(const CommandContext& ctx, const HubId& hub_id) {
+    auto it = ctx.snapshot.roles.find(hub_id);
+    if (it == ctx.snapshot.roles.end()) return false;
+
+    Role role = it->second;
     return role == Role::OWNER || role == Role::ADMIN;
 }
 
 void GetHubInviteCommand::execute(CommandContext& ctx) {
-    auto& psd = ctx.psd;
+    const auto& input = ctx.input;
     auto& output = ctx.output;
-    const auto& data = ctx.input.data;
 
-    if (!psd.authenticated) {
+    if (!ctx.authenticated) {
         output.success = false;
         output.error_code = "not_authenticated";
         output.error_message = "Authentication required.";
-        output.data = {{"type", "error"},
-                       {"code", "not_authenticated"},
-                       {"message", "Authentication required"}};
+        json err = {{"type", "error"},
+                    {"code", "not_authenticated"},
+                    {"message", "Authentication required"}};
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = err.dump();
+        ctx.output.messages.push_back(std::move(msg));
+        output.sent_at = std::chrono::system_clock::now();
         return;
     }
 
-    const std::string hub_id_str = data.value("hub_id", "");
+    const std::string hub_id_str = input.data.value("hub_id", "");
     if (hub_id_str.empty()) {
         output.success = false;
         output.error_code = "missing_hub_id";
         output.error_message = "hub_id is required.";
-        output.data = {
+        json err = {
             {"type", "error"}, {"code", "missing_hub_id"}, {"message", "hub_id is required"}};
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = err.dump();
+        ctx.output.messages.push_back(std::move(msg));
+        output.sent_at = std::chrono::system_clock::now();
         return;
     }
 
@@ -60,31 +62,46 @@ void GetHubInviteCommand::execute(CommandContext& ctx) {
         output.success = false;
         output.error_code = "hub_not_found";
         output.error_message = "Hub not found.";
-        output.data = {
+        json err = {
             {"type", "error"}, {"code", "hub_not_found"}, {"message", "Hub does not exist"}};
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = err.dump();
+        ctx.output.messages.push_back(std::move(msg));
+        output.sent_at = std::chrono::system_clock::now();
         return;
     }
 
-    if (!psd.hub_memberships.count(*internal_hub)) {
-        if (!db_.hubs().isHubMember(*internal_hub, psd.user_id)) {
+    if (!ctx.snapshot.hubs.count(*internal_hub)) {
+        if (!db_.hubs().isHubMember(*internal_hub, ctx.user_id)) {
             output.success = false;
             output.error_code = "not_in_hub";
             output.error_message = "Join the hub before requesting an invite.";
-            output.data = {{"type", "error"},
-                           {"code", "not_in_hub"},
-                           {"message", "Join the hub before requesting an invite"}};
+            json err = {{"type", "error"},
+                        {"code", "not_in_hub"},
+                        {"message", "Join the hub before requesting an invite"}};
+            DirectMessage msg;
+            msg.conn_id = ctx.conn_id;
+            msg.payload = err.dump();
+            ctx.output.messages.push_back(std::move(msg));
+            output.sent_at = std::chrono::system_clock::now();
             return;
         }
-        psd.hub_memberships.insert(*internal_hub);
+        ctx.snapshot.hubs.insert(*internal_hub);
     }
 
-    if (!has_privilege(psd, *internal_hub)) {
+    if (!has_privilege(ctx, *internal_hub)) {
         output.success = false;
         output.error_code = "insufficient_privilege";
         output.error_message = "Only owners or admins can generate invites.";
-        output.data = {{"type", "error"},
-                       {"code", "insufficient_privilege"},
-                       {"message", "Only owners or admins can generate invites"}};
+        json err = {{"type", "error"},
+                    {"code", "insufficient_privilege"},
+                    {"message", "Only owners or admins can generate invites"}};
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = err.dump();
+        ctx.output.messages.push_back(std::move(msg));
+        output.sent_at = std::chrono::system_clock::now();
         return;
     }
 
@@ -93,9 +110,13 @@ void GetHubInviteCommand::execute(CommandContext& ctx) {
     output.success = true;
     output.error_code.clear();
     output.error_message.clear();
-    output.data = {{"type", "hub_invite"},
-                   {"hub_id", public_hub_id.value},
-                   {"invite_code", public_hub_id.value}};
+    json data = {{"type", "hub_invite"},
+                 {"hub_id", public_hub_id.value},
+                 {"invite_code", public_hub_id.value}};
+    DirectMessage msg;
+    msg.conn_id = ctx.conn_id;
+    msg.payload = data.dump();
+    ctx.output.messages.push_back(std::move(msg));
     output.sent_at = std::chrono::system_clock::now();
 }
 
