@@ -6,7 +6,7 @@ cc_library(
     hdrs = [
         "EnvLoader.h",
     ],
-    copts = ["-std=c++17"],
+    copts = ["-std=gnu++23"],
     data = [
         "//:.env",
     ],

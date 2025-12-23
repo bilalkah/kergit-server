@@ -20,30 +20,33 @@ CreateChannelCommand::CreateChannelCommand(PersistenceGateway& db,
                                            app::services::PublicIdService& ids)
     : db_(db), hub_publisher_(hub_publisher), ids_(ids) {}
 
-bool CreateChannelCommand::has_privilege(net::PerSocketData& psd, const HubId& hub_id) {
-    auto it = psd.hub_roles.find(hub_id);
-    if (it != psd.hub_roles.end()) {
-        const auto role = it->second;
-        return role == Role::OWNER || role == Role::ADMIN;
-    }
-    auto role = db_.hubs().getMembershipRole(hub_id, psd.user_id);
-    if (!role.has_value()) return false;
-    psd.hub_roles[hub_id] = *role;
-    return *role == Role::OWNER || *role == Role::ADMIN;
+bool CreateChannelCommand::has_privilege(const net::Snapshot& snapshot, const HubId& hub_id) {
+    auto it = snapshot.roles.find(hub_id);
+    if (it == snapshot.roles.end()) return false;
+
+    Role role = it->second;
+    return role == Role::OWNER || role == Role::ADMIN;
 }
 
 void CreateChannelCommand::execute(CommandContext& ctx) {
-    auto& psd = ctx.psd;
-    auto& output = ctx.output;
     const auto& data = ctx.input.data;
+    auto& output = ctx.output;
 
-    if (!psd.authenticated) {
+    if (!ctx.authenticated) {
         output.success = false;
         output.error_code = "not_authenticated";
         output.error_message = "Authentication required";
-        output.data = {{"type", "error"},
-                       {"code", "not_authenticated"},
-                       {"message", "Authentication required"}};
+
+        json err = {{"type", "error"},
+                    {"code", "not_authenticated"},
+                    {"message", "Authentication required"}};
+
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = err.dump();
+        ctx.output.messages.push_back(std::move(msg));
+        output.sent_at = std::chrono::system_clock::now();
+
         return;
     }
 
@@ -55,8 +58,15 @@ void CreateChannelCommand::execute(CommandContext& ctx) {
         output.success = false;
         output.error_code = "missing_hub_id";
         output.error_message = "hub_id is required";
-        output.data = {
+        json err = {
             {"type", "error"}, {"code", "missing_hub_id"}, {"message", "hub_id is required"}};
+
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = err.dump();
+        ctx.output.messages.push_back(std::move(msg));
+        output.sent_at = std::chrono::system_clock::now();
+
         return;
     }
 
@@ -65,30 +75,53 @@ void CreateChannelCommand::execute(CommandContext& ctx) {
         output.success = false;
         output.error_code = "not_in_hub";
         output.error_message = "Join the hub before creating channels";
-        output.data = {{"type", "error"},
-                       {"code", "not_in_hub"},
-                       {"message", "Join the hub before creating channels"}};
+
+        json err = {{"type", "error"},
+                    {"code", "not_in_hub"},
+                    {"message", "Join the hub before creating channels"}};
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = err.dump();
+        ctx.output.messages.push_back(std::move(msg));
+        output.sent_at = std::chrono::system_clock::now();
+
         return;
     }
 
+    const auto& snapshot = ctx.snapshot;
+
     HubId hub_id = *hub_id_opt;
-    if (!psd.hub_memberships.count(hub_id)) {
+    if (!snapshot.hubs.count(hub_id)) {
         output.success = false;
         output.error_code = "not_in_hub";
         output.error_message = "Join the hub before creating channels";
-        output.data = {{"type", "error"},
-                       {"code", "not_in_hub"},
-                       {"message", "Join the hub before creating channels"}};
+        json err = {{"type", "error"},
+                    {"code", "not_in_hub"},
+                    {"message", "Join the hub before creating channels"}};
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = err.dump();
+        ctx.output.messages.push_back(std::move(msg));
+        output.sent_at = std::chrono::system_clock::now();
+
         return;
     }
 
-    if (!has_privilege(psd, hub_id)) {
+    if (!has_privilege(snapshot, hub_id)) {
         output.success = false;
         output.error_code = "insufficient_privilege";
         output.error_message = "Only owners or admins can create channels";
-        output.data = {{"type", "error"},
-                       {"code", "insufficient_privilege"},
-                       {"message", "Only owners or admins can create channels"}};
+
+        json err = {{"type", "error"},
+                    {"code", "insufficient_privilege"},
+                    {"message", "Only owners or admins can create channels"}};
+
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = err.dump();
+        ctx.output.messages.push_back(std::move(msg));
+        output.sent_at = std::chrono::system_clock::now();
+
         return;
     }
 
@@ -107,8 +140,14 @@ void CreateChannelCommand::execute(CommandContext& ctx) {
         output.success = false;
         output.error_code = "invalid_name";
         output.error_message = "Channel name is required";
-        output.data = {
+        json err = {
             {"type", "error"}, {"code", "invalid_name"}, {"message", "Channel name is required"}};
+
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = err.dump();
+        ctx.output.messages.push_back(std::move(msg));
+        output.sent_at = std::chrono::system_clock::now();
         return;
     }
 
@@ -129,9 +168,13 @@ void CreateChannelCommand::execute(CommandContext& ctx) {
         output.success = true;
         output.error_code.clear();
         output.error_message.clear();
-        output.data = {{"type", "channel_created"},
-                       {"hub_id", public_hub_id.value},
-                       {"channel", channel_json}};
+        json data = {{"type", "channel_created"},
+                    {"hub_id", public_hub_id.value},
+                    {"channel", channel_json}};
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = data.dump();
+        ctx.output.messages.push_back(std::move(msg));
         output.sent_at = std::chrono::system_clock::now();
 
         hub_publisher_.publish_hub(hub_id);
@@ -139,7 +182,12 @@ void CreateChannelCommand::execute(CommandContext& ctx) {
         output.success = false;
         output.error_code = "create_failed";
         output.error_message = ex.what();
-        output.data = {{"type", "error"}, {"code", "create_failed"}, {"message", ex.what()}};
+        json err = {{"type", "error"}, {"code", "create_failed"}, {"message", ex.what()}};
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = err.dump();
+        ctx.output.messages.push_back(std::move(msg));
+        output.sent_at = std::chrono::system_clock::now();
     }
 }
 

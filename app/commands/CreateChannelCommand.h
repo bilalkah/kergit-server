@@ -22,7 +22,7 @@ class CreateChannelCommand : public ICommand {
     void execute(CommandContext&) override;
 
    private:
-    bool has_privilege(net::PerSocketData& psd, const HubId& hub_id);
+    bool has_privilege(const net::Snapshot& snapshot, const HubId& hub_id);
 
     PersistenceGateway& db_;
     app::services::HubPublisher& hub_publisher_;

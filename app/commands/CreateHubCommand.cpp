@@ -42,17 +42,23 @@ std::string CreateHubCommand::sanitize_name(std::string name) {
 }
 
 void CreateHubCommand::execute(CommandContext& ctx) {
-    auto& psd = ctx.psd;
-    auto& output = ctx.output;
+    const auto& input = ctx.input;
     const auto& data = ctx.input.data;
+    auto& output = ctx.output;
 
-    if (!psd.authenticated) {
+    if (!ctx.authenticated) {
         output.success = false;
         output.error_code = "not_authenticated";
         output.error_message = "Authenticate before creating hubs.";
-        output.data = {{"type", "error"},
-                       {"code", "not_authenticated"},
-                       {"message", "Authentication required"}};
+        json err = {{"type", "error"},
+                    {"code", "not_authenticated"},
+                    {"message", "Authentication required"}};
+
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = err.dump();
+        ctx.output.messages.push_back(std::move(msg));
+        output.sent_at = std::chrono::system_clock::now();
         return;
     }
 
@@ -61,13 +67,19 @@ void CreateHubCommand::execute(CommandContext& ctx) {
         output.success = false;
         output.error_code = "invalid_name";
         output.error_message = "Hub name is required.";
-        output.data = {
+        json err = {
             {"type", "error"}, {"code", "invalid_name"}, {"message", "Hub name is required"}};
+
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = err.dump();
+        ctx.output.messages.push_back(std::move(msg));
+        output.sent_at = std::chrono::system_clock::now();
         return;
     }
 
     try {
-        HubId hub_id = db_.hubs().createHub(name, psd.user_id);
+        HubId hub_id = db_.hubs().createHub(name, ctx.user_id);
         ids_.to_public(hub_id);
 
         ChannelId general_id{""};
@@ -77,11 +89,6 @@ void CreateHubCommand::execute(CommandContext& ctx) {
         } catch (const std::exception&) {
             // Hub exists even if channel creation fails; continue
         }
-
-        psd.hub_memberships.insert(hub_id);
-        psd.hub_roles[hub_id] = Role::OWNER;
-
-        gateway_.subscribe(psd.conn_id, app::services::HubPublisher::topic_for(hub_id));
 
         const auto public_hub_id = ids_.to_public(hub_id);
         json channels = json::array();
@@ -98,16 +105,35 @@ void CreateHubCommand::execute(CommandContext& ctx) {
         output.success = true;
         output.error_code.clear();
         output.error_message.clear();
-        output.data =
+        json data =
             json{{"type", "hub_created"},
                  {"hub", json{{"id", public_hub_id.value}, {"name", name}, {"role", "owner"}}},
                  {"channels", std::move(channels)}};
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = data.dump();
+
+        auto& snapshot = ctx.snapshot;
+        snapshot.hubs.insert(hub_id);
+        snapshot.roles[hub_id] = Role::OWNER;
+
+        msg.apply_psd = [snapshot](net::PerSocketData* psd) {
+            if (!psd) return;
+
+            psd->snapshot = std::make_shared<net::Snapshot>(snapshot);
+        };
+        ctx.output.messages.push_back(std::move(msg));
         output.sent_at = std::chrono::system_clock::now();
     } catch (const std::exception& ex) {
         output.success = false;
         output.error_code = "create_hub_failed";
         output.error_message = ex.what();
-        output.data = {{"type", "error"}, {"code", "create_hub_failed"}, {"message", ex.what()}};
+        json err = {{"type", "error"}, {"code", "create_hub_failed"}, {"message", ex.what()}};
+        DirectMessage msg;
+        msg.conn_id = ctx.conn_id;
+        msg.payload = err.dump();
+        ctx.output.messages.push_back(std::move(msg));
+        output.sent_at = std::chrono::system_clock::now();
     }
 }
 

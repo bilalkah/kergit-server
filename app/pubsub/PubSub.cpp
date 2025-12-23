@@ -29,6 +29,19 @@ void PubSub::unsubscribe_all(const ConnId& conn) {
     }
 }
 
+void PubSub::drop_topic(const std::string& topic) {
+    std::lock_guard<std::mutex> lock(mu_);
+    if (topic_to_conns_.find(topic) != topic_to_conns_.end()) {
+        for (const auto& conn : topic_to_conns_[topic]) {
+            conn_to_topics_[conn].erase(topic);
+            if (conn_to_topics_[conn].empty()) {
+                conn_to_topics_.erase(conn);
+            }
+        }
+        topic_to_conns_.erase(topic);
+    }
+}
+
 std::unordered_set<ConnId> PubSub::subscribers(const std::string& topic) const {
     std::lock_guard<std::mutex> lock(mu_);
     if (topic_to_conns_.find(topic) != topic_to_conns_.end()) {

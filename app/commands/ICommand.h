@@ -35,6 +35,8 @@ struct CommandContext {
     ChannelId current_channel_id;
     bool authenticated{false};
 
+    net::Snapshot snapshot;
+
     Input input;
     Output output;
 };

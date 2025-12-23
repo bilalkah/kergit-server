@@ -57,17 +57,19 @@ void WorkerPool::wait_if_paused() {
 }
 
 void WorkerPool::worker_loop(std::size_t worker_index) {
-    Event evt;
+
     while (running_) {
         // NEW: pause gate before taking new work
         wait_if_paused();
         if (!running_) break;
 
-        if (!in_queue_.pop(evt)) {
-            // Queue stopped and empty → time to exit the worker loop
+        auto evt = in_queue_.pop();
+        if (!evt.has_value()) {
+            log(utils::LogLevel::WARN, "Worker ", worker_index, " stopping: ",
+                evt.error());
             break;
         }
-        const EventPayload& payload = evt.payload;
+        const EventPayload& payload = evt.value().payload;
         log(utils::LogLevel::WARN, "Worker ", worker_index, " picked up new event");
 
         // process evt
@@ -95,6 +97,7 @@ void WorkerPool::worker_loop(std::size_t worker_index) {
                     ctx.authenticated = req.authenticated;
                     ctx.input.data = message;
                     ctx.input.received_at = req.received_at;
+                    ctx.snapshot = *req.snapshot;
 
                     // dispatch
                     dispatcher_.dispatch(ctx.input.data["type"], ctx);
