@@ -3,8 +3,6 @@
 
 #include "app/commands/ICommand.h"
 #include "app/services/AuthService.h"
-#include "app/services/HubPublisher.h"
-#include "app/services/PublicIdService.h"
 #include "domains/Channel.h"
 #include "domains/Hub.h"
 #include "domains/ids/Ids.h"
@@ -24,9 +22,7 @@ namespace app {
 
 class AuthCommand : public ICommand {
    public:
-    AuthCommand(PersistenceGateway& db, net::ClientGateway& gateway,
-                net::ConnectionManager& connections, app::services::HubPublisher& hub_publisher,
-                app::services::PublicIdService& ids);
+    AuthCommand(ServiceObjects& services);
     void execute(CommandContext&) override;
 
    private:
@@ -37,11 +33,7 @@ class AuthCommand : public ICommand {
     nlohmann::json collect_online_members(const std::vector<Hub>& hubs);
 
     app::services::AuthService auth_service_;
-    PersistenceGateway& db_;
-    net::ClientGateway& gateway_;
-    net::ConnectionManager& connections_;
-    app::services::HubPublisher& hub_publisher_;
-    app::services::PublicIdService& ids_;
+    ServiceObjects& services_;
 };
 
 }  // namespace app

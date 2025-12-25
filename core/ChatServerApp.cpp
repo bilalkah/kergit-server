@@ -12,13 +12,13 @@ ChatServerApp::ChatServerApp(ServerConfig& cfg) {
         cfg_.database.to_connection_string(), cfg_.database.pool_size);
     out_queue_ptr_ = std::make_unique<OutgoingQueue>();
     in_queue_ptr_ = std::make_unique<EventQueue>();
+    cache_ptr_ = std::make_unique<app::memory::OnMemoryCache>();
 }
 
 ChatServerApp::~ChatServerApp() {}
 
 bool ChatServerApp::wire_components() {
-    app::register_all(*dispatcher_ptr_, *persistence_gateway_ptr_, *gateway_ptr_, *connections_ptr_,
-                      *hub_publisher_, persistence_gateway_ptr_->ids());
+    app::register_all(*dispatcher_ptr_, *service_objects_ptr_);
 
     ws_server_ = std::make_unique<net::WebSocketServer>(*app_ptr_, *connections_ptr_, *gateway_ptr_,
                                                         *in_queue_ptr_, *out_queue_ptr_,
@@ -89,7 +89,9 @@ void ChatServerApp::run_server() {
     worker_pool_ptr_ =
         std::make_unique<app::WorkerPool>(*in_queue_ptr_, *out_queue_ptr_, *dispatcher_ptr_);
     worker_pool_ptr_->start();
-
+    service_objects_ptr_ = std::make_unique<app::ServiceObjects>(
+        *persistence_gateway_ptr_, *gateway_ptr_, *connections_ptr_, *hub_publisher_,
+        persistence_gateway_ptr_->ids(), *cache_ptr_);
     if (!wire_components()) {
         running_.store(false);
         return;

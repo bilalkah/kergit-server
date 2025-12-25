@@ -6,6 +6,7 @@
 #include "app/queue/EventQueue.h"
 #include "app/queue/OutgoingQueue.h"
 #include "app/services/HubPublisher.h"
+#include "app/memory/OnMemoryCache.h"
 #include "app/worker/WorkerPool.h"
 #include "core/AppFactory.h"
 #include "core/IApp.h"
@@ -52,6 +53,8 @@ class ChatServerApp : public utils::Loggable {
     std::unique_ptr<EventQueue> in_queue_ptr_;
     std::unique_ptr<OutgoingQueue> out_queue_ptr_;
     std::unique_ptr<app::WorkerPool> worker_pool_ptr_;
+    std::unique_ptr<app::memory::ICache> cache_ptr_;
+    std::unique_ptr<app::ServiceObjects> service_objects_ptr_;
 
     ListenToken listen_token_{nullptr};
 

@@ -8,16 +8,10 @@
 
 namespace net {
 struct Snapshot;
-} // namespace net
+}  // namespace net
 
 struct CommandRequest {
     ConnId conn_id;
-    UserId user_id;
-    HubId current_hub_id;
-    ChannelId current_channel_id;
-    std::string email;
-    std::string username;
-    bool authenticated{false};
 
     std::shared_ptr<const net::Snapshot> snapshot;
 
@@ -31,15 +25,18 @@ struct Snapshot;
 
 struct DisconnectEvent {
     ConnId conn_id;
-    UserId user_id;
-    std::shared_ptr<const net::Snapshot> snap;  // hubs/channels/roles
+    std::shared_ptr<const net::Snapshot> snap;
 
-    std::string display;
     int code{};
     std::string reason;
 };
 
-using EventPayload = std::variant<CommandRequest, DisconnectEvent>;
+struct ConnectEvent {
+    ConnId conn_id;
+    std::shared_ptr<const net::Snapshot> snap;
+};
+
+using EventPayload = std::variant<CommandRequest, ConnectEvent, DisconnectEvent>;
 
 struct Event {
     EventPayload payload;

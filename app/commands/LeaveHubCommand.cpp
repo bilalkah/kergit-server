@@ -1,10 +1,5 @@
 #include "app/commands/LeaveHubCommand.h"
 
-#include "app/services/HubPublisher.h"
-#include "app/services/PublicIdService.h"
-#include "infra/persistence/PersistenceGateway.h"
-#include "net/ClientGateway.h"
-#include "net/ConnectionManager.h"
 #include "net/PerSocketData.h"
 
 #include <nlohmann/json.hpp>
@@ -16,15 +11,8 @@ using nlohmann::json;
 
 namespace app {
 
-LeaveHubCommand::LeaveHubCommand(PersistenceGateway& db, net::ClientGateway& gateway,
-                                 net::ConnectionManager& connections,
-                                 app::services::HubPublisher& hub_publisher,
-                                 app::services::PublicIdService& ids)
-    : db_(db),
-      gateway_(gateway),
-      connections_(connections),
-      hub_publisher_(hub_publisher),
-      ids_(ids) {}
+LeaveHubCommand::LeaveHubCommand(ServiceObjects& svc_objs)
+    : services_(svc_objs) {}
 
 bool LeaveHubCommand::is_owner(const CommandContext& ctx, const HubId& hub_id) {
     auto it = ctx.snapshot.roles.find(hub_id);
@@ -41,10 +29,10 @@ std::string LeaveHubCommand::channel_topic(const ChannelId& channel_id) {
 void LeaveHubCommand::publish_presence_update(const ChannelId& channel_id, CommandContext& ctx,
                                               bool online) {
     if (channel_id.value.empty()) return;
-    const auto name = ctx.username;
-    if (!name.empty()) ids_.remember_display(ctx.user_id, name);
-    const auto public_channel_id = ids_.to_public(channel_id);
-    const auto public_user_id = ids_.to_public(ctx.user_id);
+    const auto name = ctx.snapshot.username;
+    if (!name.empty()) services_.ids_.remember_display(ctx.snapshot.user_id, name);
+    const auto public_channel_id = services_.ids_.to_public(channel_id);
+    const auto public_user_id = services_.ids_.to_public(ctx.snapshot.user_id);
     json payload = {{"type", "presence_update"},
                     {"channel_id", public_channel_id.value},
                     {"handle", name},
@@ -61,7 +49,7 @@ void LeaveHubCommand::execute(CommandContext& ctx) {
     const auto& input = ctx.input;
     auto& output = ctx.output;
 
-    if (!ctx.authenticated) {
+    if (!ctx.snapshot.authenticated) {
         output.success = false;
         output.error_code = "not_authenticated";
         output.error_message = "Authentication required.";
@@ -91,7 +79,7 @@ void LeaveHubCommand::execute(CommandContext& ctx) {
         return;
     }
 
-    auto internal_hub = ids_.to_internal(PublicHubId{hub_id_str});
+    auto internal_hub = services_.ids_.to_internal(PublicHubId{hub_id_str});
     if (!internal_hub.has_value()) {
         output.success = false;
         output.error_code = "hub_not_found";
@@ -107,7 +95,7 @@ void LeaveHubCommand::execute(CommandContext& ctx) {
     }
 
     if (!ctx.snapshot.hubs.count(*internal_hub) &&
-        !db_.hubs().isHubMember(*internal_hub, ctx.user_id)) {
+        !services_.db_.hubs().isHubMember(*internal_hub, ctx.snapshot.user_id)) {
         output.success = false;
         output.error_code = "not_in_hub";
         output.error_message = "Join the hub before leaving it.";
@@ -138,19 +126,19 @@ void LeaveHubCommand::execute(CommandContext& ctx) {
     }
 
     try {
-        const auto public_hub_id = ids_.to_public(*internal_hub);
-        const auto channels = db_.channels().getHubChannels(*internal_hub);
-        db_.hubs().removeMember(*internal_hub, ctx.user_id);
+        const auto public_hub_id = services_.ids_.to_public(*internal_hub);
+        const auto channels = services_.db_.channels().getHubChannels(*internal_hub);
+        services_.db_.hubs().removeMember(*internal_hub, ctx.snapshot.user_id);
 
         const auto hub_list =
-            gateway_.subscribers(app::services::HubPublisher::topic_for(*internal_hub));
-        gateway_.unsubscribe(ctx.conn_id, app::services::HubPublisher::topic_for(*internal_hub));
+            services_.gateway_.subscribers(app::services::HubPublisher::topic_for(*internal_hub));
+        services_.gateway_.unsubscribe(ctx.conn_id, app::services::HubPublisher::topic_for(*internal_hub));
         for (const auto& channel : channels) {
-            gateway_.unsubscribe(ctx.conn_id, channel_topic(channel.channel_id));
-            publish_presence_update(channel.channel_id, ctx, false);
+            services_.gateway_.unsubscribe(ctx.conn_id, channel_topic(channel.id));
+            publish_presence_update(channel.id, ctx, false);
         }
 
-        hub_publisher_.publish_hub(*internal_hub);
+        services_.hub_publisher_.publish_hub(*internal_hub);
 
         output.success = true;
         output.error_code.clear();
@@ -160,10 +148,11 @@ void LeaveHubCommand::execute(CommandContext& ctx) {
         msg.conn_id = ctx.conn_id;
         msg.payload = data.dump();
         msg.apply_psd = [internal_hub = *internal_hub,
-                         &connections = connections_](net::PerSocketData* psd) {
+                         &connections = services_.connections_](net::PerSocketData* psd) {
             auto snapshot = *psd->snapshot;
-            psd->current_hub_id = HubId{""};
-            psd->current_channel_id = ChannelId{""};
+            snapshot.current_voice_channel_id = ChannelId{""};
+            snapshot.current_text_channel_id = ChannelId{""};
+            snapshot.current_hub_id = HubId{""};
             snapshot.hubs.erase(internal_hub);
             snapshot.roles.erase(internal_hub);
             psd->snapshot = std::make_shared<const net::Snapshot>(std::move(snapshot));

@@ -1,8 +1,5 @@
 #include "app/commands/CreateChannelCommand.h"
 
-#include "app/services/HubPublisher.h"
-#include "app/services/PublicIdService.h"
-#include "infra/persistence/PersistenceGateway.h"
 #include "net/PerSocketData.h"
 
 #include <algorithm>
@@ -15,10 +12,8 @@ using nlohmann::json;
 
 namespace app {
 
-CreateChannelCommand::CreateChannelCommand(PersistenceGateway& db,
-                                           app::services::HubPublisher& hub_publisher,
-                                           app::services::PublicIdService& ids)
-    : db_(db), hub_publisher_(hub_publisher), ids_(ids) {}
+CreateChannelCommand::CreateChannelCommand(ServiceObjects& svc_objs)
+    : services_(svc_objs) {}
 
 bool CreateChannelCommand::has_privilege(const net::Snapshot& snapshot, const HubId& hub_id) {
     auto it = snapshot.roles.find(hub_id);
@@ -32,7 +27,7 @@ void CreateChannelCommand::execute(CommandContext& ctx) {
     const auto& data = ctx.input.data;
     auto& output = ctx.output;
 
-    if (!ctx.authenticated) {
+    if (!ctx.snapshot.authenticated) {
         output.success = false;
         output.error_code = "not_authenticated";
         output.error_message = "Authentication required";
@@ -70,7 +65,7 @@ void CreateChannelCommand::execute(CommandContext& ctx) {
         return;
     }
 
-    auto hub_id_opt = ids_.to_internal(PublicHubId{hub_id_str});
+    auto hub_id_opt = services_.ids_.to_internal(PublicHubId{hub_id_str});
     if (!hub_id_opt.has_value()) {
         output.success = false;
         output.error_code = "not_in_hub";
@@ -156,9 +151,9 @@ void CreateChannelCommand::execute(CommandContext& ctx) {
     std::string channel_type = type == "voice" ? "voice" : "text";
 
     try {
-        ChannelId created = db_.channels().createChannel(hub_id, name, channel_type);
-        const auto public_hub_id = ids_.to_public(hub_id);
-        const auto public_channel_id = ids_.to_public(created);
+        ChannelId created = services_.db_.channels().createChannel(hub_id, name, channel_type);
+        const auto public_hub_id = services_.ids_.to_public(hub_id);
+        const auto public_channel_id = services_.ids_.to_public(created);
 
         nlohmann::json channel_json = {{"id", public_channel_id.value},
                                        {"hub_id", public_hub_id.value},
@@ -177,7 +172,7 @@ void CreateChannelCommand::execute(CommandContext& ctx) {
         ctx.output.messages.push_back(std::move(msg));
         output.sent_at = std::chrono::system_clock::now();
 
-        hub_publisher_.publish_hub(hub_id);
+        services_.hub_publisher_.publish_hub(hub_id);
     } catch (const std::exception& ex) {
         output.success = false;
         output.error_code = "create_failed";

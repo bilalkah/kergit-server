@@ -1,10 +1,6 @@
 #include "app/commands/CreateHubCommand.h"
 
-#include "app/services/HubPublisher.h"
-#include "app/services/PublicIdService.h"
 #include "domains/Channel.h"
-#include "infra/persistence/PersistenceGateway.h"
-#include "net/ClientGateway.h"
 #include "net/PerSocketData.h"
 
 #include <algorithm>
@@ -22,10 +18,8 @@ std::string channel_type_to_string(ChannelType type) {
 }
 }  // namespace
 
-CreateHubCommand::CreateHubCommand(PersistenceGateway& db, net::ClientGateway& gateway,
-                                   app::services::HubPublisher& hub_publisher,
-                                   app::services::PublicIdService& ids)
-    : db_(db), gateway_(gateway), hub_publisher_(hub_publisher), ids_(ids) {}
+CreateHubCommand::CreateHubCommand(ServiceObjects& svc_objs)
+    : services_(svc_objs) {}
 
 std::string CreateHubCommand::sanitize_name(std::string name) {
     auto trim = [](std::string& s) {
@@ -45,7 +39,7 @@ void CreateHubCommand::execute(CommandContext& ctx) {
     const auto& input = ctx.input;
     auto& output = ctx.output;
 
-    if (!ctx.authenticated) {
+    if (!ctx.snapshot.authenticated) {
         output.success = false;
         output.error_code = "not_authenticated";
         output.error_message = "Authenticate before creating hubs.";
@@ -78,28 +72,28 @@ void CreateHubCommand::execute(CommandContext& ctx) {
     }
 
     try {
-        HubId hub_id = db_.hubs().createHub(name, ctx.user_id);
-        ids_.to_public(hub_id);
+        HubId hub_id = services_.db_.hubs().createHub(name, ctx.snapshot.user_id);
+        services_.ids_.to_public(hub_id);
 
         ChannelId general_id{""};
         try {
-            general_id = db_.channels().createChannel(hub_id, "general", "text");
-            ids_.to_public(general_id);
+            general_id = services_.db_.channels().createChannel(hub_id, "general", "text");
+            services_.ids_.to_public(general_id);
         } catch (const std::exception&) {
             // Hub exists even if channel creation fails; continue
         }
 
-        const auto public_hub_id = ids_.to_public(hub_id);
+        const auto public_hub_id = services_.ids_.to_public(hub_id);
         json channels = json::array();
         if (!general_id.value.empty()) {
-            const auto public_channel_id = ids_.to_public(general_id);
+            const auto public_channel_id = services_.ids_.to_public(general_id);
             channels.push_back({{"id", public_channel_id.value},
                                 {"hub_id", public_hub_id.value},
                                 {"name", "general"},
                                 {"type", channel_type_to_string(ChannelType::CHAT)}});
         }
 
-        hub_publisher_.publish_hub(hub_id);
+        services_.hub_publisher_.publish_hub(hub_id);
 
         output.success = true;
         output.error_code.clear();
@@ -116,7 +110,7 @@ void CreateHubCommand::execute(CommandContext& ctx) {
         snapshot.hubs.insert(hub_id);
         snapshot.roles[hub_id] = Role::OWNER;
 
-        gateway_.subscribe(ctx.conn_id, hub_publisher_.topic_for(hub_id));
+        services_.gateway_.subscribe(ctx.conn_id, services_.hub_publisher_.topic_for(hub_id));
 
         msg.apply_psd = [snapshot](net::PerSocketData* psd) {
             if (!psd) return;

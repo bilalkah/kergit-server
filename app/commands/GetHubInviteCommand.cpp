@@ -1,7 +1,5 @@
 #include "app/commands/GetHubInviteCommand.h"
 
-#include "app/services/PublicIdService.h"
-#include "infra/persistence/PersistenceGateway.h"
 #include "net/PerSocketData.h"
 
 #include <nlohmann/json.hpp>
@@ -11,9 +9,8 @@ using nlohmann::json;
 
 namespace app {
 
-GetHubInviteCommand::GetHubInviteCommand(PersistenceGateway& db,
-                                         app::services::PublicIdService& ids)
-    : db_(db), ids_(ids) {}
+GetHubInviteCommand::GetHubInviteCommand(ServiceObjects& svc_objs)
+    : services_(svc_objs) {}
 
 bool GetHubInviteCommand::has_privilege(const CommandContext& ctx, const HubId& hub_id) {
     auto it = ctx.snapshot.roles.find(hub_id);
@@ -27,7 +24,7 @@ void GetHubInviteCommand::execute(CommandContext& ctx) {
     const auto& input = ctx.input;
     auto& output = ctx.output;
 
-    if (!ctx.authenticated) {
+    if (!ctx.snapshot.authenticated) {
         output.success = false;
         output.error_code = "not_authenticated";
         output.error_message = "Authentication required.";
@@ -57,7 +54,7 @@ void GetHubInviteCommand::execute(CommandContext& ctx) {
         return;
     }
 
-    auto internal_hub = ids_.to_internal(PublicHubId{hub_id_str});
+    auto internal_hub = services_.ids_.to_internal(PublicHubId{hub_id_str});
     if (!internal_hub.has_value()) {
         output.success = false;
         output.error_code = "hub_not_found";
@@ -73,7 +70,7 @@ void GetHubInviteCommand::execute(CommandContext& ctx) {
     }
 
     if (!ctx.snapshot.hubs.count(*internal_hub)) {
-        if (!db_.hubs().isHubMember(*internal_hub, ctx.user_id)) {
+        if (!services_.db_.hubs().isHubMember(*internal_hub, ctx.snapshot.user_id)) {
             output.success = false;
             output.error_code = "not_in_hub";
             output.error_message = "Join the hub before requesting an invite.";
@@ -105,7 +102,7 @@ void GetHubInviteCommand::execute(CommandContext& ctx) {
         return;
     }
 
-    const auto public_hub_id = ids_.to_public(*internal_hub);
+    const auto public_hub_id = services_.ids_.to_public(*internal_hub);
 
     output.success = true;
     output.error_code.clear();

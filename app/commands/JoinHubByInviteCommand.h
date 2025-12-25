@@ -5,37 +5,18 @@
 
 #include <nlohmann/json.hpp>
 
-class PersistenceGateway;
-
-namespace net {
-class ClientGateway;
-class ConnectionManager;
-}  // namespace net
-
-namespace app::services {
-class HubPublisher;
-class PublicIdService;
-}  // namespace app::services
-
 namespace app {
 
 class JoinHubByInviteCommand : public ICommand {
    public:
-    JoinHubByInviteCommand(PersistenceGateway& db, net::ClientGateway& gateway,
-                           net::ConnectionManager& connections,
-                           app::services::HubPublisher& hub_publisher,
-                           app::services::PublicIdService& ids);
+    JoinHubByInviteCommand(ServiceObjects& svc_objs);
     void execute(CommandContext&) override;
 
    private:
     nlohmann::json build_members_payload(const HubId& hub_id);
     nlohmann::json build_channels_payload(const HubId& hub_id);
 
-    PersistenceGateway& db_;
-    net::ClientGateway& gateway_;
-    net::ConnectionManager& connections_;
-    app::services::HubPublisher& hub_publisher_;
-    app::services::PublicIdService& ids_;
+    ServiceObjects& services_;
 };
 
 }  // namespace app

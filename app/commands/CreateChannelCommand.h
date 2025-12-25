@@ -6,27 +6,17 @@
 
 #include <string>
 
-class PersistenceGateway;
-
-namespace app::services {
-class HubPublisher;
-class PublicIdService;
-}  // namespace app::services
-
 namespace app {
 
 class CreateChannelCommand : public ICommand {
    public:
-    CreateChannelCommand(PersistenceGateway& db, app::services::HubPublisher& hub_publisher,
-                         app::services::PublicIdService& ids);
+    CreateChannelCommand(ServiceObjects& svc_objs);
     void execute(CommandContext&) override;
 
    private:
     bool has_privilege(const net::Snapshot& snapshot, const HubId& hub_id);
 
-    PersistenceGateway& db_;
-    app::services::HubPublisher& hub_publisher_;
-    app::services::PublicIdService& ids_;
+    ServiceObjects& services_;
 };
 
 }  // namespace app
