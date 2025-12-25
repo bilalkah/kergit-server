@@ -16,6 +16,11 @@ namespace app::services {
 class PublicIdService {
    public:
     PublicIdService();
+    // Disable copy and move
+    PublicIdService(const PublicIdService&) = delete;
+    PublicIdService& operator=(const PublicIdService&) = delete;
+    PublicIdService(PublicIdService&&) = delete;
+    PublicIdService& operator=(PublicIdService&&) = delete;
 
     PublicHubId to_public(const HubId& internal);
     PublicChannelId to_public(const ChannelId& internal);

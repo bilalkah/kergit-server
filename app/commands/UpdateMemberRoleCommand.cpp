@@ -1,10 +1,5 @@
 #include "app/commands/UpdateMemberRoleCommand.h"
 
-#include "app/services/HubPublisher.h"
-#include "app/services/PublicIdService.h"
-#include "infra/persistence/PersistenceGateway.h"
-#include "net/ClientGateway.h"
-#include "net/ConnectionManager.h"
 #include "net/PerSocketData.h"
 
 #include <nlohmann/json.hpp>
@@ -14,16 +9,8 @@ using nlohmann::json;
 
 namespace app {
 
-UpdateMemberRoleCommand::UpdateMemberRoleCommand(PersistenceGateway& db,
-                                                 net::ClientGateway& gateway,
-                                                 net::ConnectionManager& connections,
-                                                 app::services::PublicIdService& ids,
-                                                 app::services::HubPublisher& hub_publisher)
-    : db_(db),
-      gateway_(gateway),
-      connections_(connections),
-      ids_(ids),
-      hub_publisher_(hub_publisher) {}
+UpdateMemberRoleCommand::UpdateMemberRoleCommand(ServiceObjects& svc_objs)
+    : services_(svc_objs) {}
 
 bool UpdateMemberRoleCommand::is_owner(const CommandContext& ctx, const HubId& hub_id) {
     auto it = ctx.snapshot.roles.find(hub_id);
@@ -38,7 +25,7 @@ void UpdateMemberRoleCommand::execute(CommandContext& ctx) {
     const auto& input = ctx.input;
     auto& output = ctx.output;
 
-    if (!ctx.authenticated) {
+    if (!ctx.snapshot.authenticated) {
         output.success = false;
         output.error_code = "not_authenticated";
         output.error_message = "Authenticate before updating roles.";
@@ -72,8 +59,8 @@ void UpdateMemberRoleCommand::execute(CommandContext& ctx) {
         return;
     }
 
-    auto internal_hub = ids_.to_internal(PublicHubId{hub_id_str});
-    auto internal_user = ids_.to_internal(PublicUserId{user_id_str});
+    auto internal_hub = services_.ids_.to_internal(PublicHubId{hub_id_str});
+    auto internal_user = services_.ids_.to_internal(PublicUserId{user_id_str});
     if (!internal_hub.has_value() || !internal_user.has_value()) {
         output.success = false;
         output.error_code = "not_found";
@@ -104,7 +91,7 @@ void UpdateMemberRoleCommand::execute(CommandContext& ctx) {
     //     return;
     // }
 
-    if (ctx.user_id == *internal_user) {
+    if (ctx.snapshot.user_id == *internal_user) {
         output.success = false;
         output.error_code = "invalid_target";
         output.error_message = "Owners cannot change their own role.";
@@ -119,7 +106,7 @@ void UpdateMemberRoleCommand::execute(CommandContext& ctx) {
         return;
     }
 
-    auto current_role = db_.hubs().getMembershipRole(*internal_hub, *internal_user);
+    auto current_role = services_.db_.hubs().getMembershipRole(*internal_hub, *internal_user);
     if (!current_role.has_value()) {
         output.success = false;
         output.error_code = "not_member";
@@ -173,9 +160,9 @@ void UpdateMemberRoleCommand::execute(CommandContext& ctx) {
     }
 
     try {
-        db_.hubs().addMember(*internal_hub, *internal_user, new_role_str);
+        services_.db_.hubs().addMember(*internal_hub, *internal_user, new_role_str);
 
-        hub_publisher_.publish_hub(*internal_hub);
+        services_.hub_publisher_.publish_hub(*internal_hub);
 
         json notice = {{"type", "member_role_updated"},
                        {"hub_id", hub_id_str},

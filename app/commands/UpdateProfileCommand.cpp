@@ -1,8 +1,5 @@
 #include "app/commands/UpdateProfileCommand.h"
 
-#include "app/services/HubPublisher.h"
-#include "app/services/PublicIdService.h"
-#include "infra/persistence/PersistenceGateway.h"
 #include "net/PerSocketData.h"
 
 #include <algorithm>
@@ -20,10 +17,8 @@ namespace {
 constexpr std::size_t kMaxNameLength = 48;
 }  // namespace
 
-UpdateProfileCommand::UpdateProfileCommand(PersistenceGateway& db,
-                                           app::services::HubPublisher& hub_publisher,
-                                           app::services::PublicIdService& ids)
-    : db_(db), hub_publisher_(hub_publisher), ids_(ids) {}
+UpdateProfileCommand::UpdateProfileCommand(ServiceObjects& svc_objs)
+    : services_(svc_objs) {}
 
 std::string UpdateProfileCommand::trim(std::string value) {
     value.erase(value.begin(), std::find_if(value.begin(), value.end(),
@@ -39,7 +34,7 @@ void UpdateProfileCommand::execute(CommandContext& ctx) {
     const auto& input = ctx.input;
     auto& output = ctx.output;
 
-    if (!ctx.authenticated) {
+    if (!ctx.snapshot.authenticated) {
         output.success = false;
         output.error_code = "not_authenticated";
         output.error_message = "Authenticate before updating profile.";
@@ -94,9 +89,9 @@ void UpdateProfileCommand::execute(CommandContext& ctx) {
 
     try {
         auto [final_username, final_full_name] =
-            db_.users().updateUserProfile(ctx.user_id, username_opt, full_name_opt);
+            services_.db_.users().updateUserProfile(ctx.snapshot.user_id, username_opt, full_name_opt);
 
-        ctx.username = final_username;
+        ctx.snapshot.username = final_username;
 
         std::string chosen_display;
         if (!final_username.empty()) {
@@ -106,15 +101,15 @@ void UpdateProfileCommand::execute(CommandContext& ctx) {
         }
 
         if (chosen_display.empty()) {
-            if (auto db_name = db_.users().getUserDisplayName(ctx.user_id)) {
+            if (auto db_name = services_.db_.users().getUserDisplayName(ctx.snapshot.user_id)) {
                 if (!db_name->empty()) chosen_display = *db_name;
             }
         }
         if (chosen_display.empty()) chosen_display = "Member";
 
-        ids_.remember_display(ctx.user_id, chosen_display);
+        services_.ids_.remember_display(ctx.snapshot.user_id, chosen_display);
 
-        hub_publisher_.publish_hubs(ctx.snapshot.hubs);
+        services_.hub_publisher_.publish_hubs(ctx.snapshot.hubs);
 
         output.success = true;
         output.error_code.clear();
@@ -129,7 +124,9 @@ void UpdateProfileCommand::execute(CommandContext& ctx) {
         msg.payload = data.dump();
         msg.apply_psd = [final_username, final_full_name](net::PerSocketData* psd) {
             if (psd) {
-                psd->username = final_username;
+                auto snapshot = *psd->snapshot;
+                snapshot.username = final_username;
+                psd->snapshot = std::make_shared<const net::Snapshot>(std::move(snapshot));
             }
         };
         output.messages.push_back(msg);

@@ -1,8 +1,5 @@
 #include "app/commands/SendMessageCommand.h"
 
-#include "app/services/PublicIdService.h"
-#include "infra/persistence/PersistenceGateway.h"
-#include "net/ClientGateway.h"
 #include "net/PerSocketData.h"
 
 #include <chrono>
@@ -27,15 +24,14 @@ std::string format_time_point(const std::chrono::system_clock::time_point& tp) {
 }
 }  // namespace
 
-SendMessageCommand::SendMessageCommand(PersistenceGateway& db, net::ClientGateway& gateway,
-                                       app::services::PublicIdService& ids)
-    : db_(db), gateway_(gateway), ids_(ids) {}
+SendMessageCommand::SendMessageCommand(ServiceObjects& svc_objs)
+    : services_(svc_objs) {}
 
 void SendMessageCommand::execute(CommandContext& ctx) {
     const auto& input = ctx.input;
     auto& output = ctx.output;
 
-    if (!ctx.authenticated) {
+    if (!ctx.snapshot.authenticated) {
         output.success = false;
         output.error_code = "not_authenticated";
         output.error_message = "Authenticate before sending messages.";
@@ -66,7 +62,7 @@ void SendMessageCommand::execute(CommandContext& ctx) {
         return;
     }
 
-    auto channel_id_opt = ids_.to_internal(PublicChannelId{channel_id_str});
+    auto channel_id_opt = services_.ids_.to_internal(PublicChannelId{channel_id_str});
     if (!channel_id_opt.has_value()) {
         output.success = false;
         output.error_code = "channel_not_found";
@@ -83,9 +79,9 @@ void SendMessageCommand::execute(CommandContext& ctx) {
     }
 
     ChannelId channel_id = *channel_id_opt;
-    if (ctx.current_channel_id.value != channel_id.value) {
+    if (ctx.snapshot.current_text_channel_id.value != channel_id.value) {
         // Ensure user is subscribed to the channel
-        const auto sub_list = gateway_.subscribers(channel_topic(channel_id));
+        const auto sub_list = services_.gateway_.subscribers(channel_topic(channel_id));
 
         if (!sub_list.count(ctx.conn_id)) {
             output.success = false;
@@ -134,15 +130,15 @@ void SendMessageCommand::execute(CommandContext& ctx) {
         return;
     }
 
-    auto db_message = db_.channels().sendMessage(channel_id, ctx.user_id, content);
-    const auto public_channel_id = ids_.to_public(channel_id);
-    std::string display = ctx.username;
-    if (display.empty()) display = ids_.display_for(ctx.user_id);
+    auto db_message = services_.db_.channels().sendMessage(channel_id, ctx.snapshot.user_id, content);
+    const auto public_channel_id = services_.ids_.to_public(channel_id);
+    std::string display = ctx.snapshot.username;
+    if (display.empty()) display = services_.ids_.display_for(ctx.snapshot.user_id);
     if (display.empty()) {
-        if (auto db_name = db_.users().getUserDisplayName(ctx.user_id)) display = *db_name;
+        if (auto db_name = services_.db_.users().getUserDisplayName(ctx.snapshot.user_id)) display = *db_name;
     }
     if (display.empty()) display = "Member";
-    ids_.remember_display(ctx.user_id, display);
+    services_.ids_.remember_display(ctx.snapshot.user_id, display);
     json event = {{"type", "message"},
                   {"channel_id", public_channel_id.value},
                   {"sender", display},

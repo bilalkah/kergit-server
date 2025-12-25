@@ -3,24 +3,17 @@
 
 #include "app/commands/ICommand.h"
 
-class PersistenceGateway;
-
-namespace app::services {
-class PublicIdService;
-}
-
 namespace app {
 
 class GetHubInviteCommand : public ICommand {
    public:
-    GetHubInviteCommand(PersistenceGateway& db, app::services::PublicIdService& ids);
+    GetHubInviteCommand(ServiceObjects& svc_objs);
     void execute(CommandContext&) override;
 
    private:
     bool has_privilege(const CommandContext& ctx, const HubId& hub_id);
 
-    PersistenceGateway& db_;
-    app::services::PublicIdService& ids_;
+    ServiceObjects& services_;
 };
 
 }  // namespace app

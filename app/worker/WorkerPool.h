@@ -14,6 +14,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <unordered_map>
 
 namespace app {
 
@@ -47,6 +48,9 @@ class WorkerPool : public utils::Loggable {
     std::atomic_bool running_{false};
     std::atomic_bool paused_{false};
     std::vector<std::thread> workers_;
+    // cache for currently executing commands to prevent duplicate processing
+    std::unordered_map<UserId, std::string, UserIdHash, UserIdEq> executing_commands_;
+    std::mutex executing_commands_mtx_;
 
     // pause gate
     mutable std::mutex pause_mtx_;

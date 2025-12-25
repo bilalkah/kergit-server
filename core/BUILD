@@ -97,6 +97,7 @@ cc_library(
         ":types",
         "//app:command_registry",
         "//app:dispatcher",
+        "//app/memory:on_memory_cache",
         "//app/queue:event_queue",
         "//app/queue:outgoing_queue",
         "//app/services:hub_publisher",

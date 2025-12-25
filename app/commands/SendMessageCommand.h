@@ -3,30 +3,17 @@
 
 #include "app/commands/ICommand.h"
 
-class PersistenceGateway;
-
-namespace net {
-class ClientGateway;
-}  // namespace net
-
-namespace app::services {
-class PublicIdService;
-}
-
 namespace app {
 
 class SendMessageCommand : public ICommand {
    public:
-    SendMessageCommand(PersistenceGateway& db, net::ClientGateway& gateway,
-                       app::services::PublicIdService& ids);
+    SendMessageCommand(ServiceObjects& svc_objs);
     void execute(CommandContext&) override;
 
    private:
     static std::string channel_topic(const ChannelId& channel_id);
 
-    PersistenceGateway& db_;
-    net::ClientGateway& gateway_;
-    app::services::PublicIdService& ids_;
+    ServiceObjects& services_;
 };
 
 }  // namespace app

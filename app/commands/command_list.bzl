@@ -15,4 +15,5 @@ COMMAND_LIST = [
     "//app/commands:leave_hub_command",
     "//app/commands:update_member_role_command",
     "//app/commands:update_profile_command",
+    "//app/commands/system:disconnect_command",
 ]

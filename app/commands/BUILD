@@ -1,5 +1,14 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
+SERVICE_DEPS = [
+    "//app/memory:on_memory_cache",
+    "//app/services:hub_publisher",
+    "//app/services:public_id_service",
+    "//infra/persistence:persistence_gateway_lib",
+    "//net:client_gateway",
+    "//net:connection_manager",
+]
+
 cc_library(
     name = "i_command",
     hdrs = [
@@ -11,7 +20,7 @@ cc_library(
         "//domains/ids:domain_ids",
         "//net:persocketdata",
         "@nlohmann_json",
-    ],
+    ] + SERVICE_DEPS,
 )
 
 cc_library(
@@ -25,13 +34,8 @@ cc_library(
         ":i_command",
         "//app/queue:outgoing_queue",
         "//app/services:auth_service",
-        "//app/services:hub_publisher",
-        "//app/services:public_id_service",
         "//domains:channel_domain",
         "//domains:hub_domain",
-        "//infra/persistence:persistence_gateway_lib",
-        "//net:client_gateway",
-        "//net:connection_manager",
     ],
 )
 
@@ -42,13 +46,8 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":i_command",
-        "//app/services:public_id_service",
         "//domains:channel_domain",
         "//domains:message_domain",
-        "//infra/persistence:persistence_gateway_lib",
-        "//net:client_gateway",
-        "//net:connection_manager",
-        "@nlohmann_json",
     ],
 )
 
@@ -59,11 +58,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":i_command",
-        "//app/services:public_id_service",
         "//domains:message_domain",
-        "//infra/persistence:persistence_gateway_lib",
-        "//net:client_gateway",
-        "@nlohmann_json",
     ],
 )
 
@@ -74,11 +69,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":i_command",
-        "//app/services:hub_publisher",
-        "//app/services:public_id_service",
         "//domains:hub_domain",
-        "//infra/persistence:persistence_gateway_lib",
-        "@nlohmann_json",
     ],
 )
 
@@ -89,12 +80,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":i_command",
-        "//app/services:hub_publisher",
-        "//app/services:public_id_service",
         "//domains:channel_domain",
-        "//infra/persistence:persistence_gateway_lib",
-        "//net:client_gateway",
-        "@nlohmann_json",
     ],
 )
 
@@ -105,10 +91,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":i_command",
-        "//app/services:hub_publisher",
-        "//app/services:public_id_service",
-        "//infra/persistence:persistence_gateway_lib",
-        "@nlohmann_json",
     ],
 )
 
@@ -119,12 +101,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":i_command",
-        "//app/services:hub_publisher",
-        "//app/services:public_id_service",
-        "//infra/persistence:persistence_gateway_lib",
-        "//net:client_gateway",
-        "//net:connection_manager",
-        "@nlohmann_json",
     ],
 )
 
@@ -135,12 +111,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":i_command",
-        "//app/services:hub_publisher",
-        "//app/services:public_id_service",
-        "//domains:channel_domain",
-        "//infra/persistence:persistence_gateway_lib",
-        "//net:client_gateway",
-        "@nlohmann_json",
     ],
 )
 
@@ -151,12 +121,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":i_command",
-        "//app/services:hub_publisher",
-        "//app/services:public_id_service",
-        "//infra/persistence:persistence_gateway_lib",
-        "//net:client_gateway",
-        "//net:connection_manager",
-        "@nlohmann_json",
     ],
 )
 
@@ -167,12 +131,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":i_command",
-        "//app/services:hub_publisher",
-        "//app/services:public_id_service",
-        "//infra/persistence:persistence_gateway_lib",
-        "//net:client_gateway",
-        "//net:connection_manager",
-        "@nlohmann_json",
     ],
 )
 
@@ -183,12 +141,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":i_command",
-        "//app/services:hub_publisher",
-        "//app/services:public_id_service",
-        "//infra/persistence:persistence_gateway_lib",
-        "//net:client_gateway",
-        "//net:connection_manager",
-        "@nlohmann_json",
     ],
 )
 
@@ -199,9 +151,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":i_command",
-        "//app/services:public_id_service",
-        "//infra/persistence:persistence_gateway_lib",
-        "@nlohmann_json",
     ],
 )
 
@@ -212,12 +161,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":i_command",
-        "//app/services:hub_publisher",
-        "//app/services:public_id_service",
-        "//infra/persistence:persistence_gateway_lib",
-        "//net:client_gateway",
-        "//net:connection_manager",
-        "@nlohmann_json",
     ],
 )
 
@@ -228,11 +171,5 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":i_command",
-        "//app/services:hub_publisher",
-        "//app/services:public_id_service",
-        "//infra/persistence:persistence_gateway_lib",
-        "//net:client_gateway",
-        "//net:connection_manager",
-        "@nlohmann_json",
     ],
 )

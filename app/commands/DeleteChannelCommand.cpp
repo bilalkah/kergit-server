@@ -1,10 +1,5 @@
 #include "app/commands/DeleteChannelCommand.h"
 
-#include "app/services/HubPublisher.h"
-#include "app/services/PublicIdService.h"
-#include "infra/persistence/PersistenceGateway.h"
-#include "net/ClientGateway.h"
-#include "net/ConnectionManager.h"
 #include "net/PerSocketData.h"
 
 #include <nlohmann/json.hpp>
@@ -15,15 +10,8 @@ using nlohmann::json;
 
 namespace app {
 
-DeleteChannelCommand::DeleteChannelCommand(PersistenceGateway& db, net::ClientGateway& gateway,
-                                           net::ConnectionManager& connections,
-                                           app::services::HubPublisher& hub_publisher,
-                                           app::services::PublicIdService& ids)
-    : db_(db),
-      gateway_(gateway),
-      connections_(connections),
-      hub_publisher_(hub_publisher),
-      ids_(ids) {}
+DeleteChannelCommand::DeleteChannelCommand(ServiceObjects& svc_objs)
+    : services_(svc_objs) {}
 
 std::string DeleteChannelCommand::channel_topic(const ChannelId& channel_id) {
     return "channel:" + channel_id.value;
@@ -41,7 +29,7 @@ void DeleteChannelCommand::execute(CommandContext& ctx) {
     const auto& input = ctx.input;
     auto output = ctx.output;
 
-    if (!ctx.authenticated) {
+    if (!ctx.snapshot.authenticated) {
         output.success = false;
         output.error_code = "not_authenticated";
         output.error_message = "Authenticate before deleting channels.";
@@ -72,7 +60,7 @@ void DeleteChannelCommand::execute(CommandContext& ctx) {
         return;
     }
 
-    auto internal_channel = ids_.to_internal(PublicChannelId{channel_id_str});
+    auto internal_channel = services_.ids_.to_internal(PublicChannelId{channel_id_str});
     if (!internal_channel.has_value()) {
         output.success = false;
         output.error_code = "channel_not_found";
@@ -88,7 +76,7 @@ void DeleteChannelCommand::execute(CommandContext& ctx) {
         return;
     }
 
-    auto channel = db_.channels().getChannel(*internal_channel);
+    auto channel = services_.db_.channels().getChannel(*internal_channel);
     if (!channel.has_value()) {
         output.success = false;
         output.error_code = "channel_not_found";
@@ -121,7 +109,7 @@ void DeleteChannelCommand::execute(CommandContext& ctx) {
     }
 
     try {
-        if (!db_.channels().deleteChannel(channel->channel_id, hub_id)) {
+        if (!services_.db_.channels().deleteChannel(channel->id, hub_id)) {
             output.success = false;
             output.error_code = "channel_not_found";
             output.error_message = "Channel not found.";
@@ -136,15 +124,15 @@ void DeleteChannelCommand::execute(CommandContext& ctx) {
             return;
         }
 
-        const auto public_hub_id = ids_.to_public(hub_id);
-        const auto public_channel_id = ids_.to_public(channel->channel_id);
+        const auto public_hub_id = services_.ids_.to_public(hub_id);
+        const auto public_channel_id = services_.ids_.to_public(channel->id);
         json channel_deleted_msg = {{"type", "channel_deleted"},
                                     {"hub_id", public_hub_id.value},
                                     {"channel_id", public_channel_id.value}};
         json channel_closed_msg = {{"type", "channel_closed"},
                                    {"channel_id", public_channel_id.value}};
 
-        const auto subs = gateway_.subscribers(channel_topic(channel->channel_id));
+        const auto subs = services_.gateway_.subscribers(channel_topic(channel->id));
 
         for (const auto& cid : subs) {
             DirectMessage ch_deleted, ch_closed;
@@ -157,9 +145,9 @@ void DeleteChannelCommand::execute(CommandContext& ctx) {
             ctx.output.messages.push_back(std::move(ch_closed));
         }
 
-        gateway_.drop_topic(channel_topic(channel->channel_id));
+        services_.gateway_.drop_topic(channel_topic(channel->id));
 
-        hub_publisher_.publish_hub(hub_id);
+        services_.hub_publisher_.publish_hub(hub_id);
 
         output.success = true;
         output.error_code.clear();
