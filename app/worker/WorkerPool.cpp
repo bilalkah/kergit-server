@@ -57,7 +57,6 @@ void WorkerPool::wait_if_paused() {
 }
 
 void WorkerPool::worker_loop(std::size_t worker_index) {
-
     while (running_) {
         // NEW: pause gate before taking new work
         wait_if_paused();
@@ -65,8 +64,7 @@ void WorkerPool::worker_loop(std::size_t worker_index) {
 
         auto evt = in_queue_.pop();
         if (!evt.has_value()) {
-            log(utils::LogLevel::WARN, "Worker ", worker_index, " stopping: ",
-                evt.error());
+            log(utils::LogLevel::WARN, "Worker ", worker_index, " stopping: ", evt.error());
             break;
         }
         const EventPayload& payload = evt.value().payload;
@@ -88,16 +86,27 @@ void WorkerPool::worker_loop(std::size_t worker_index) {
                         return;
                     }
 
+                    {
+                        // check for duplicate command processing
+                        std::lock_guard<std::mutex> lock(executing_commands_mtx_);
+                        auto it = executing_commands_.find(req.snapshot->user_id);
+                        if (it != executing_commands_.end()) {
+                            if (executing_commands_[req.snapshot->user_id] != "send_message") {
+                                log(utils::LogLevel::WARN, "Worker ", worker_index,
+                                    " skipping duplicate command for user_id: ",
+                                    req.snapshot->user_id.value);
+                                return;
+                            }
+                        }
+                        executing_commands_[req.snapshot->user_id] = message["type"];
+                    }
+
                     // prepare context
                     CommandContext ctx;
                     ctx.conn_id = req.conn_id;
-                    ctx.user_id = req.user_id;
-                    ctx.current_hub_id = req.current_hub_id;
-                    ctx.current_channel_id = req.current_channel_id;
-                    ctx.authenticated = req.authenticated;
+                    ctx.snapshot = *req.snapshot;
                     ctx.input.data = message;
                     ctx.input.received_at = req.received_at;
-                    ctx.snapshot = *req.snapshot;
 
                     // dispatch
                     dispatcher_.dispatch(ctx.input.data["type"], ctx);
@@ -114,11 +123,31 @@ void WorkerPool::worker_loop(std::size_t worker_index) {
                     log(utils::LogLevel::WARN, "Worker ", worker_index,
                         " successfully processed command for conn_id: ", req.conn_id.value);
 
+                    {
+                        // remove from executing commands cache
+                        std::lock_guard<std::mutex> lock(executing_commands_mtx_);
+                        executing_commands_.erase(req.snapshot->user_id);
+                    }
+
+                } else if constexpr (std::is_same_v<T, ConnectEvent>) {
+                    const ConnectEvent& cevt = arg;
+
+                    DirectMessage welcome_msg;
+                    welcome_msg.conn_id = cevt.conn_id;
+                    nlohmann::json welcome_json = {
+                        {"type", "welcome"}, {"message", "Connection established successfully"}};
+                    welcome_msg.payload = welcome_json.dump();
+                    out_queue_.push(std::move(welcome_msg));
                 } else if constexpr (std::is_same_v<T, DisconnectEvent>) {
                     // handle disconnect
                     const DisconnectEvent& devt = arg;
-                    // For now, do nothing on disconnect
-                    (void)devt;
+
+                    // prepare context
+                    CommandContext ctx;
+                    ctx.conn_id = devt.conn_id;
+                    ctx.snapshot = *devt.snap;
+
+                    dispatcher_.dispatch("disconnect", ctx);
                 }
             },
             payload);

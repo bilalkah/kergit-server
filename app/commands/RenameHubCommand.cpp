@@ -1,10 +1,5 @@
 #include "app/commands/RenameHubCommand.h"
 
-#include "app/services/HubPublisher.h"
-#include "app/services/PublicIdService.h"
-#include "infra/persistence/PersistenceGateway.h"
-#include "net/ClientGateway.h"
-#include "net/ConnectionManager.h"
 #include "net/PerSocketData.h"
 
 #include <algorithm>
@@ -16,15 +11,8 @@ using nlohmann::json;
 
 namespace app {
 
-RenameHubCommand::RenameHubCommand(PersistenceGateway& db, net::ClientGateway& gateway,
-                                   net::ConnectionManager& connections,
-                                   app::services::HubPublisher& hub_publisher,
-                                   app::services::PublicIdService& ids)
-    : db_(db),
-      gateway_(gateway),
-      connections_(connections),
-      hub_publisher_(hub_publisher),
-      ids_(ids) {}
+RenameHubCommand::RenameHubCommand(ServiceObjects& svc_objs)
+    : services_(svc_objs) {}
 
 std::string RenameHubCommand::sanitize(std::string name) {
     auto trim = [](std::string& s) {
@@ -43,7 +31,7 @@ std::string RenameHubCommand::sanitize(std::string name) {
 bool RenameHubCommand::is_owner(const CommandContext& ctx, const HubId& hub_id) {
     if (!ctx.snapshot.hubs.count(hub_id)) {
         // check db if not in snapshot
-        auto role = db_.hubs().getMembershipRole(hub_id, ctx.user_id);
+        auto role = services_.db_.hubs().getMembershipRole(hub_id, ctx.snapshot.user_id);
         if (!role.has_value()) {
             return false;
         }
@@ -59,7 +47,7 @@ void RenameHubCommand::execute(CommandContext& ctx) {
     const auto& input = ctx.input;
     auto& output = ctx.output;
 
-    if (!ctx.authenticated) {
+    if (!ctx.snapshot.authenticated) {
         output.success = false;
         output.error_code = "not_authenticated";
         output.error_message = "Authentication required.";
@@ -106,7 +94,7 @@ void RenameHubCommand::execute(CommandContext& ctx) {
         return;
     }
 
-    auto internal_hub = ids_.to_internal(PublicHubId{hub_id_str});
+    auto internal_hub = services_.ids_.to_internal(PublicHubId{hub_id_str});
     if (!internal_hub.has_value()) {
         output.success = false;
         output.error_code = "hub_not_found";
@@ -122,7 +110,7 @@ void RenameHubCommand::execute(CommandContext& ctx) {
     }
 
     if (!ctx.snapshot.hubs.count(*internal_hub)) {
-        if (!db_.hubs().isHubMember(*internal_hub, ctx.user_id)) {
+        if (!services_.db_.hubs().isHubMember(*internal_hub, ctx.snapshot.user_id)) {
             output.success = false;
             output.error_code = "not_in_hub";
             output.error_message = "Join the hub before renaming it.";
@@ -155,7 +143,7 @@ void RenameHubCommand::execute(CommandContext& ctx) {
     }
 
     try {
-        if (!db_.hubs().renameHub(*internal_hub, requested_name)) {
+        if (!services_.db_.hubs().renameHub(*internal_hub, requested_name)) {
             output.success = false;
             output.error_code = "rename_hub_failed";
             output.error_message = "Unable to rename hub.";
@@ -170,8 +158,8 @@ void RenameHubCommand::execute(CommandContext& ctx) {
             return;
         }
 
-        const auto public_hub_id = ids_.to_public(*internal_hub);
-        hub_publisher_.publish_hub(*internal_hub);
+        const auto public_hub_id = services_.ids_.to_public(*internal_hub);
+        services_.hub_publisher_.publish_hub(*internal_hub);
 
         json event = {
             {"type", "hub_renamed"}, {"hub_id", public_hub_id.value}, {"name", requested_name}};

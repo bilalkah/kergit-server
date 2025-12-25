@@ -2,11 +2,6 @@
 #define APP_COMMANDS_LEAVE_HUB_COMMAND_H
 
 #include "app/commands/ICommand.h"
-#include "app/services/HubPublisher.h"
-#include "app/services/PublicIdService.h"
-#include "infra/persistence/PersistenceGateway.h"
-#include "net/ClientGateway.h"
-#include "net/ConnectionManager.h"
 
 #include <string>
 
@@ -14,9 +9,7 @@ namespace app {
 
 class LeaveHubCommand : public ICommand {
    public:
-    LeaveHubCommand(PersistenceGateway& db, net::ClientGateway& gateway,
-                    net::ConnectionManager& connections, app::services::HubPublisher& hub_publisher,
-                    app::services::PublicIdService& ids);
+    LeaveHubCommand(ServiceObjects& svc_objs);
     void execute(CommandContext& ctx) override;
 
    private:
@@ -25,11 +18,7 @@ class LeaveHubCommand : public ICommand {
                                  bool online);
     static std::string channel_topic(const ChannelId& channel_id);
 
-    PersistenceGateway& db_;
-    net::ClientGateway& gateway_;
-    net::ConnectionManager& connections_;
-    app::services::HubPublisher& hub_publisher_;
-    app::services::PublicIdService& ids_;
+    ServiceObjects& services_;
 };
 
 }  // namespace app

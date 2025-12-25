@@ -6,13 +6,7 @@
 #include <unordered_set>
 
 using nlohmann::json;
-namespace {
 
-std::string safe_display(const net::PerSocketData& psd) {
-    if (!psd.username.empty()) return psd.username;
-    return "Member";
-}
-}  // namespace
 namespace net {
 
 WebSocketServer::WebSocketServer(core::IApp& app, ConnectionManager& conns, ClientGateway& gateway,
@@ -51,11 +45,12 @@ void WebSocketServer::wire(const std::string& pattern) {
                              auto* psd = ws->getUserData();
                              psd->conn_id = make_conn_id(ws);
                              psd->connected_at = std::chrono::system_clock::now();
-                             psd->snapshot = std::make_shared<Snapshot>();
-                             heartbeat_.on_open(*psd);
                              conns_.attach(psd->conn_id, ws);
-
-                             gateway_.say_hello(psd->conn_id);
+                             
+                             ConnectEvent ev{psd->conn_id, psd->snapshot};
+                             in_q_.push(Event{ev});
+                             
+                             heartbeat_.on_open(*psd);
                          },
                      .message =
                          [this](UwsSocket* ws, std::string_view data, OpCode op) {
@@ -66,12 +61,6 @@ void WebSocketServer::wire(const std::string& pattern) {
                              req.payload = std::string{data};
 
                              req.conn_id = psd->conn_id;
-                             req.user_id = psd->user_id;
-                             req.current_hub_id = psd->current_hub_id;
-                             req.current_channel_id = psd->current_channel_id;
-                             req.email = psd->email;
-                             req.username = psd->username;
-                             req.authenticated = psd->authenticated;
                              req.snapshot = psd->snapshot;
                              req.received_at = std::chrono::system_clock::now();
                              in_q_.push(Event{req});
@@ -99,20 +88,13 @@ void WebSocketServer::wire(const std::string& pattern) {
                              if (!psd) return;
 
                              auto conn_id = psd->conn_id;
-                             auto user_id = psd->user_id;
                              auto snap = psd->snapshot;
-                             auto display = safe_display(*psd);
-
-                             gateway_.unsubscribe_all(conn_id);
                              conns_.detach(conn_id);
-
-                             psd->authenticated = false;
-                             psd->snapshot.reset();  // or clear local fields
 
                              if (hooks_.on_close) hooks_.on_close(conn_id, code, reason);
 
                              // ---- Notify workers/app ----
-                             DisconnectEvent ev{conn_id, user_id, snap, display};
+                             DisconnectEvent ev{conn_id, snap};
                              ev.code = code;
                              ev.reason = std::string(reason);
                              in_q_.push(Event{ev});

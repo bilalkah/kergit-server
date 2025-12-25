@@ -20,6 +20,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        "//app/memory:on_memory_cache",
         ":dispatcher",
     ] + COMMAND_LIST,
 )

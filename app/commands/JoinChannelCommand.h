@@ -9,24 +9,11 @@
 #include <unordered_set>
 #include <vector>
 
-class PersistenceGateway;
-
-namespace net {
-class ClientGateway;
-class ConnectionManager;
-struct PerSocketData;
-}  // namespace net
-
-namespace app::services {
-class PublicIdService;
-}
-
 namespace app {
 
 class JoinChannelCommand : public ICommand {
    public:
-    JoinChannelCommand(PersistenceGateway& db, net::ClientGateway& gateway,
-                       net::ConnectionManager& connections, app::services::PublicIdService& ids);
+    JoinChannelCommand(ServiceObjects& svc_objs);
     void execute(CommandContext&) override;
 
    private:
@@ -36,10 +23,7 @@ class JoinChannelCommand : public ICommand {
     std::string resolve_display_name(const UserId& user_id) const;
     void publish_presence_update(const ChannelId& channel_id, CommandContext& ctx, bool online);
 
-    PersistenceGateway& db_;
-    net::ClientGateway& gateway_;
-    net::ConnectionManager& connections_;
-    app::services::PublicIdService& ids_;
+    ServiceObjects& services_;
 };
 
 }  // namespace app

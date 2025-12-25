@@ -36,7 +36,7 @@ Message ChannelRepository::sendMessage(const ChannelId& channelId, const UserId&
         if (res.empty()) throw std::runtime_error("sendMessage failed");
         Message msg;
         msg.id = MessageId{res[0][0].as<std::string>()};
-        msg.channel_id = ChannelId{res[0][1].as<std::string>()};
+        msg.ch_id = ChannelId{res[0][1].as<std::string>()};
         msg.sender_id = UserId{res[0][2].as<std::string>()};
         msg.text = res[0][3].as<std::string>();
         msg.sent_at = parse_timestamp(res[0][4].as<std::string>());
@@ -57,7 +57,7 @@ std::vector<Message> ChannelRepository::fetchMessages(const ChannelId& channelId
         for (const auto& row : res) {
             Message msg;
             msg.id = MessageId{row[0].as<std::string>()};
-            msg.channel_id = ChannelId{row[1].as<std::string>()};
+            msg.ch_id = ChannelId{row[1].as<std::string>()};
             msg.sender_id = UserId{row[2].as<std::string>()};
             msg.text = row[3].as<std::string>();
             msg.sent_at = parse_timestamp(row[4].as<std::string>());

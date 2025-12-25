@@ -1,10 +1,5 @@
 #include "app/commands/JoinHubByInviteCommand.h"
 
-#include "app/services/HubPublisher.h"
-#include "app/services/PublicIdService.h"
-#include "infra/persistence/PersistenceGateway.h"
-#include "net/ClientGateway.h"
-#include "net/ConnectionManager.h"
 #include "net/PerSocketData.h"
 
 #include <nlohmann/json.hpp>
@@ -15,44 +10,37 @@ using nlohmann::json;
 
 namespace app {
 
-JoinHubByInviteCommand::JoinHubByInviteCommand(PersistenceGateway& db, net::ClientGateway& gateway,
-                                               net::ConnectionManager& connections,
-                                               app::services::HubPublisher& hub_publisher,
-                                               app::services::PublicIdService& ids)
-    : db_(db),
-      gateway_(gateway),
-      connections_(connections),
-      hub_publisher_(hub_publisher),
-      ids_(ids) {}
+JoinHubByInviteCommand::JoinHubByInviteCommand(ServiceObjects& svc_objs)
+    : services_(svc_objs) {}
 
 json JoinHubByInviteCommand::build_members_payload(const HubId& hub_id) {
     json members = json::array();
-    auto db_members = db_.hubs().getHubMembers(hub_id);
+    auto db_members = services_.db_.hubs().getHubMembers(hub_id);
     std::unordered_set<UserId> online_members;
 
     // Collect online members from db and dont use connection manager's snapshot
-    const auto hub_members = db_.hubs().getHubMembers(hub_id);
+    const auto hub_members = services_.db_.hubs().getHubMembers(hub_id);
     for (const auto&[ user_id, _] : hub_members) {
         online_members.insert(user_id);
     }
     
 
     for (const auto& [user_id, display_hint] : db_members) {
-        std::string display = ids_.display_for(user_id);
+        std::string display = services_.ids_.display_for(user_id);
         if (display.empty() && !display_hint.empty()) {
             display = display_hint;
-            ids_.remember_display(user_id, display);
+            services_.ids_.remember_display(user_id, display);
         }
         if (display.empty()) {
-            if (auto db_name = db_.users().getUserDisplayName(user_id)) {
+            if (auto db_name = services_.db_.users().getUserDisplayName(user_id)) {
                 if (!db_name->empty()) {
                     display = *db_name;
-                    ids_.remember_display(user_id, display);
+                    services_.ids_.remember_display(user_id, display);
                 }
             }
         }
         if (display.empty()) display = "Member";
-        const auto public_user = ids_.to_public(user_id);
+        const auto public_user = services_.ids_.to_public(user_id);
         members.push_back({{"handle", display},
                            {"display_name", display},
                            {"online", online_members.count(user_id) > 0},
@@ -63,10 +51,10 @@ json JoinHubByInviteCommand::build_members_payload(const HubId& hub_id) {
 
 json JoinHubByInviteCommand::build_channels_payload(const HubId& hub_id) {
     json channels_json = json::array();
-    const auto channels = db_.channels().getHubChannels(hub_id);
+    const auto channels = services_.db_.channels().getHubChannels(hub_id);
     for (const auto& channel : channels) {
-        const auto public_channel_id = ids_.to_public(channel.channel_id);
-        const auto public_hub_id = ids_.to_public(channel.hub_id);
+        const auto public_channel_id = services_.ids_.to_public(channel.id);
+        const auto public_hub_id = services_.ids_.to_public(channel.hub_id);
         std::string type = channel.type == ChannelType::VOICE ? "voice" : "text";
         channels_json.push_back({{"id", public_channel_id.value},
                                  {"hub_id", public_hub_id.value},
@@ -80,7 +68,7 @@ void JoinHubByInviteCommand::execute(CommandContext& ctx) {
     const auto& input = ctx.input;
     auto& output = ctx.output;
 
-    if (!ctx.authenticated) {
+    if (!ctx.snapshot.authenticated) {
         output.success = false;
         output.error_code = "not_authenticated";
         output.error_message = "Authentication required.";
@@ -110,7 +98,7 @@ void JoinHubByInviteCommand::execute(CommandContext& ctx) {
         return;
     }
 
-    auto internal_hub = ids_.to_internal(PublicHubId{invite_code});
+    auto internal_hub = services_.ids_.to_internal(PublicHubId{invite_code});
     if (!internal_hub.has_value()) {
         output.success = false;
         output.error_code = "invite_not_found";
@@ -125,7 +113,7 @@ void JoinHubByInviteCommand::execute(CommandContext& ctx) {
         return;
     }
 
-    auto hub_opt = db_.hubs().getHub(*internal_hub);
+    auto hub_opt = services_.db_.hubs().getHub(*internal_hub);
     if (!hub_opt.has_value()) {
         output.success = false;
         output.error_code = "hub_not_found";
@@ -140,11 +128,11 @@ void JoinHubByInviteCommand::execute(CommandContext& ctx) {
     }
 
     if (ctx.snapshot.hubs.count(*internal_hub) ||
-        db_.hubs().isHubMember(*internal_hub, ctx.user_id)) {
+        services_.db_.hubs().isHubMember(*internal_hub, ctx.snapshot.user_id)) {
         output.success = true;
         output.error_code.clear();
         output.error_message.clear();
-        const auto public_hub_id = ids_.to_public(*internal_hub);
+        const auto public_hub_id = services_.ids_.to_public(*internal_hub);
         json hub_json = {{"id", public_hub_id.value}, {"name", hub_opt->name}, {"role", "member"}};
         json data = {{"type", "hub_joined"},
                      {"hub", std::move(hub_json)},
@@ -160,18 +148,18 @@ void JoinHubByInviteCommand::execute(CommandContext& ctx) {
     }
 
     try {
-        db_.hubs().addMember(*internal_hub, ctx.user_id, "member");
+        services_.db_.hubs().addMember(*internal_hub, ctx.snapshot.user_id, "member");
 
-        gateway_.subscribe(ctx.conn_id, app::services::HubPublisher::topic_for(*internal_hub));
+        services_.gateway_.subscribe(ctx.conn_id, app::services::HubPublisher::topic_for(*internal_hub));
 
-        const auto public_hub_id = ids_.to_public(*internal_hub);
+        const auto public_hub_id = services_.ids_.to_public(*internal_hub);
         json hub_json = {
             {"id", public_hub_id.value},
             {"name", hub_opt->name},
             {"role", "member"},
         };
 
-        hub_publisher_.publish_hub(*internal_hub);
+        services_.hub_publisher_.publish_hub(*internal_hub);
 
         output.success = true;
         output.error_code.clear();
