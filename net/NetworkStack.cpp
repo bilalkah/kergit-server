@@ -2,7 +2,7 @@
 
 namespace net {
 
-NetworkStack::NetworkStack(EventQueue& event_queue, core::NetworkStackConfig cfg_)
+NetworkStack::NetworkStack(app::queue::IEventSink& event_queue, core::NetworkStackConfig cfg_)
     : cfg_(std::move(cfg_)), event_queue_(event_queue) {}
 
 NetworkStack::~NetworkStack() {}

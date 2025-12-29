@@ -1,7 +1,7 @@
 #ifndef NET_NETWORKSTACK_H
 #define NET_NETWORKSTACK_H
 
-#include "app/queue/EventQueue.h"
+#include "app/queue/IEventSink.h"
 #include "core/ServerConfig.h"
 #include "net/connection/ConnectionRegistery.h"
 #include "net/outbound/OutgoingQueue.h"
@@ -20,7 +20,7 @@ using LoopId = std::uintptr_t;
 
 class NetworkStack : utils::Loggable {
    public:
-    NetworkStack(EventQueue& event_queue, core::NetworkStackConfig cfg_ = {});
+    NetworkStack(app::queue::IEventSink& event_queue, core::NetworkStackConfig cfg_ = {});
     ~NetworkStack();
 
     // Identity of the loop this stack lives on
@@ -39,7 +39,7 @@ class NetworkStack : utils::Loggable {
     /**
      * References
      */
-    EventQueue& event_queue_;
+    app::queue::IEventSink& event_queue_;
 
     /**
      * Server thread
