@@ -1,7 +1,7 @@
 #ifndef NET_TRANSPORT_WEBSOCKET_TEXTWEBSOCKETTRANSPORT_H
 #define NET_TRANSPORT_WEBSOCKET_TEXTWEBSOCKETTRANSPORT_H
 
-#include "app/queue/EventQueue.h"
+#include "app/queue/IEventSink.h"
 #include "core/ServerConfig.h"
 #include "net/connection/ConnectionRegistery.h"
 #include "net/outbound/OutgoingQueue.h"
@@ -34,8 +34,9 @@ struct OriginAllowlist {
 class TextWSServer : public ITransportServer, public utils::Loggable {
    public:
     explicit TextWSServer(core::NetworkStackConfig cfg, connection::ConnectionRegistery& conns,
-                          EventQueue& event_queue, outbound::OutgoingQueue& outgoing_queue,
-                          OriginAllowlist origins = {}, WsLimits limits = {});
+                          app::queue::IEventSink& event_queue,
+                          outbound::OutgoingQueue& outgoing_queue, OriginAllowlist origins = {},
+                          WsLimits limits = {});
     ~TextWSServer();
 
     void start() override;
@@ -59,7 +60,7 @@ class TextWSServer : public ITransportServer, public utils::Loggable {
      * References
      */
     connection::ConnectionRegistery& conns_;
-    EventQueue& event_queue_;
+    app::queue::IEventSink& event_queue_;
 
     /**
      * Components
