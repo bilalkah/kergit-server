@@ -1,0 +1,75 @@
+#ifndef NET_TRANSPORT_WEBSOCKET_TEXTWEBSOCKETTRANSPORT_H
+#define NET_TRANSPORT_WEBSOCKET_TEXTWEBSOCKETTRANSPORT_H
+
+#include "app/queue/EventQueue.h"
+#include "core/ServerConfig.h"
+#include "net/connection/ConnectionRegistery.h"
+#include "net/outbound/OutgoingQueue.h"
+#include "net/outbound/OutgoingWorker.h"
+#include "net/runtime/HeartbeatService.h"
+#include "net/transport/ITransport.h"
+#include "net/transport/websocket/IWsApp.h"
+#include "net/transport/websocket/TextPerSocketData.h"
+#include "net/transport/websocket/UwsTypes.h"
+#include "utils/Loggable.h"
+
+#include <functional>
+#include <memory>
+#include <string>
+
+namespace net::transport::websocket {
+
+struct WsLimits {
+    size_t max_message_bytes = 256 * 1024;
+    uint8_t max_connections = 255;
+};
+
+struct OriginAllowlist {
+    bool is_allowed(const std::string& origin) const {
+        if (origin.empty()) return true;
+        return origin.find("http://localhost") == 0 || origin.find("https://localhost") == 0;
+    }
+};
+
+class TextWSServer : public ITransportServer, public utils::Loggable {
+   public:
+    explicit TextWSServer(core::NetworkStackConfig cfg, connection::ConnectionRegistery& conns,
+                          EventQueue& event_queue, outbound::OutgoingQueue& outgoing_queue,
+                          OriginAllowlist origins = {}, WsLimits limits = {});
+    ~TextWSServer();
+
+    void start() override;
+    void stop() override;
+
+    const char* name() const override;
+    void* loop_id() const override;
+
+   private:
+    void wire();
+    static std::string make_conn_id(void* p);
+
+    /**
+     * Configuration
+     */
+    core::NetworkStackConfig cfg_{};
+    OriginAllowlist origins_{};
+    WsLimits limits_{};
+
+    /**
+     * References
+     */
+    connection::ConnectionRegistery& conns_;
+    EventQueue& event_queue_;
+
+    /**
+     * Components
+     */
+    std::unique_ptr<IApp> app_;
+    ::us_listen_socket_t* listen_token_{nullptr};
+    runtime::HeartbeatService heartbeat_service_;
+    outbound::OutgoingWorker out_worker_;
+};
+
+}  // namespace net::transport::websocket
+
+#endif  // NET_TRANSPORT_WEBSOCKET_TEXTWEBSOCKETTRANSPORT_H
