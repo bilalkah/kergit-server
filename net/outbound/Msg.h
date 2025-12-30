@@ -12,18 +12,29 @@ struct Payload {
     std::string data;
 };
 
-struct DirectMessage {
-    ConnId conn_id;
+struct Target {
+    std::vector<GlobalConnId> conns;
+
+    static Target one(GlobalConnId c) { return {{std::move(c)}}; }
+
+    static Target many(std::vector<GlobalConnId> cs) { return {std::move(cs)}; }
+};
+
+struct SendPayload {
     Payload payload;
 };
 
-struct PublishMessage {
-    std::vector<ConnId> conn_ids;
-    Payload payload;
+struct DropConnection {
+    int code;
+    std::string reason;
 };
 
-// Outgoing messages are one of these two
-using OutgoingMessage = std::variant<DirectMessage, PublishMessage>;
+using Action = std::variant<SendPayload, DropConnection>;
+
+struct OutgoingMessage {
+    Target target;
+    Action action;
+};
 
 }  // namespace net::outbound
 #endif  // NET_CONNECTION_OUTBOUND_MSG_H

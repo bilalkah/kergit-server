@@ -1,10 +1,18 @@
 #ifndef NET_TRANSPORT_ITRANSPORTSERVER_H
 #define NET_TRANSPORT_ITRANSPORTSERVER_H
 
+#include <functional>
+
 namespace net::transport {
 
+struct Hooks {
+    std::function<void(const ConnId& conn_id)> on_open;
+    std::function<void(const ConnId& conn_id, std::string_view raw)> on_message;
+    std::function<void(const ConnId& conn_id, int code, std::string_view reason)> on_close;
+};
+
 class ITransportServer {
-public:
+   public:
     virtual ~ITransportServer() = default;
 
     // lifecycle
@@ -16,8 +24,11 @@ public:
 
     // optional: expose loop/thread identity if needed
     virtual void* loop_id() const = 0;
+
+    // hooks
+    virtual void set_hooks(Hooks hooks) = 0;
 };
 
-} // namespace net::transport
+}  // namespace net::transport
 
-#endif // NET_TRANSPORT_ITRANSPORTSERVER_H
+#endif  // NET_TRANSPORT_ITRANSPORTSERVER_H

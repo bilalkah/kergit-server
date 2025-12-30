@@ -2,8 +2,8 @@
 
 namespace net {
 
-NetworkStack::NetworkStack(app::queue::IEventSink& event_queue, core::NetworkStackConfig cfg_)
-    : cfg_(std::move(cfg_)), event_queue_(event_queue) {}
+NetworkStack::NetworkStack(app::queue::IEventSink& event_queue, core::NetworkStackConfig cfg)
+    : id_(IdGenerator::next(cfg.net_stack_name)), cfg_(std::move(cfg)), event_queue_(event_queue) {}
 
 NetworkStack::~NetworkStack() {}
 
@@ -92,6 +92,27 @@ void NetworkStack::wire_components() {
 
     // Transport later
     transport_layer_ = std::make_unique<transport::websocket::TextWSServer>(
-        cfg_, *connection_registry_, event_queue_, *outgoing_queue_);
+        cfg_, *connection_registry_, *outgoing_queue_);
+
+    transport_layer_->set_hooks(
+        {.on_open =
+             [this](const ConnId& connid) {
+                 event_queue_.push(app::queue::Event{.conn_id = GlobalConnId{id_, connid},
+                                                     .body = app::queue::ConnectionEvent{}});
+             },
+         .on_message =
+             [this](const ConnId& connid, std::string_view raw) {
+                 event_queue_.push(app::queue::Event{
+                     .conn_id = GlobalConnId{id_, connid},
+                     .body = app::queue::MessageEvent{
+                         .payload = app::queue::Payload{.data = std::string(raw)}}});
+             },
+         .on_close =
+             [this](const ConnId& connid, int code, std::string_view reason) {
+                 event_queue_.push(
+                     app::queue::Event{.conn_id = GlobalConnId{id_, connid},
+                                       .body = app::queue::DisconnectionEvent{
+                                           .code = code, .reason = std::string(reason)}});
+             }});
 }
 }  // namespace net
