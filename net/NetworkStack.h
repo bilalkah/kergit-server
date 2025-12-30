@@ -30,7 +30,14 @@ class NetworkStack : utils::Loggable {
     std::expected<bool, std::string> start();
     std::expected<bool, std::string> stop();
 
+    net::outbound::IOutboundSink& outbound_sink() { return *outgoing_queue_; }
+    NetStackId id() const { return id_; }
+
    private:
+    /**
+     * NetstackId
+     */
+    NetStackId id_;
     /**
      * Configuration
      */
@@ -65,6 +72,15 @@ class NetworkStack : utils::Loggable {
      * Outgoing message queue
      */
     std::unique_ptr<outbound::OutgoingQueue> outgoing_queue_;
+
+    class IdGenerator {
+       public:
+        static NetStackId next(const std::string& prefix = "ns") {
+            static std::atomic<uint64_t> counter{1};
+            return NetStackId(prefix + "-" +
+                              std::to_string(counter.fetch_add(1, std::memory_order_relaxed)));
+        }
+    };
 };
 
 }  // namespace net

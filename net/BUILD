@@ -22,3 +22,16 @@ cc_library(
         "//utils:loggable",
     ],
 )
+
+cc_library(
+    name = "network_router",
+    srcs = ["NetworkRouter.cpp"],
+    hdrs = ["NetworkRouter.h"],
+    copts = ["-std=gnu++23"],
+    visibility = ["//app:__subpackages__"],
+    deps = [
+        ":network_stack",
+        "//domains/ids:domain_ids",
+        "//net/outbound:outgoing_queue",
+    ],
+)

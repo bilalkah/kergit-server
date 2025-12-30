@@ -35,7 +35,6 @@ struct ConnectionContext {
 
     // Connection identifier
     ConnId conn_id{""};
-    UserId user_id{""};
 
     // Underlying transport handle
     transport::ConnHandle handle{};
@@ -76,7 +75,7 @@ class ConnectionRegistery {
      * Get read-only connection context(s) by connection ID(s).
      */
     ConnectionResult get(const ConnId& conn_id) const;
-    std::vector<ConnectionResult> get(const std::vector<ConnId>& conn_ids) const;
+    std::vector<ConnectionResult> get(const std::vector<GlobalConnId>& global_ids) const;
     std::vector<ConnectionResult> get() const;
 
     /**
