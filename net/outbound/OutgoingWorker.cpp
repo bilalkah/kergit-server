@@ -74,37 +74,43 @@ void OutgoingWorker::tick() {
     log(utils::LogLevel::WARN, "Processing outgoing message from queue");
     const OutgoingMessage& msg = expected_msg.value();
 
-    std::visit(
-        [&](auto&& arg) {
-            using T = std::decay_t<decltype(arg)>;
-            if constexpr (std::is_same_v<T, DirectMessage>) {
-                auto expected_context = conns_.get(arg.conn_id);
-                if (expected_context.has_value()) {
-                    auto context = expected_context.value();
+    auto conn_opt = conns_.get(msg.target.conns);
+    for (auto& conn_res : conn_opt) {
+        if (!conn_res.has_value()) {
+            log(utils::LogLevel::ERROR,
+                "Connection not found for outgoing message: ", conn_res.error().message);
+            continue;
+        }
 
+        auto& conn_ctx = conn_res.value();
+        // Process action
+        std::visit(
+            [&](const auto& action) {
+                using T = std::decay_t<decltype(action)>;
+                if constexpr (std::is_same_v<T, SendPayload>) {
                     std::visit(
                         [&](auto& handle) {
                             if (!handle.valid()) return;
-                            handle.send(arg.payload.data);
+                            handle.send(action.payload.data);
+                            log(utils::LogLevel::INFO,
+                                "Sent payload to connection: ", conn_ctx.conn_id.value,
+                                " Payload size: ", action.payload.data.size());
                         },
-                        context.handle);
+                        conn_ctx.handle);
+                } else if constexpr (std::is_same_v<T, DropConnection>) {
+                    std::visit(
+                        [&](auto& handle) {
+                            if (!handle.valid()) return;
+                            handle.end(action.code, action.reason);
+                            log(utils::LogLevel::INFO,
+                                "Dropped connection: ", conn_ctx.conn_id.value,
+                                " Reason: ", action.reason);
+                        },
+                        conn_ctx.handle);
                 }
-            } else if constexpr (std::is_same_v<T, PublishMessage>) {
-                auto expected_contexts = conns_.get(arg.conn_ids);
-                for (const auto& expected_context : expected_contexts) {
-                    if (expected_context.has_value()) {
-                        auto context = expected_context.value();
-                        std::visit(
-                            [&](auto& handle) {
-                                if (!handle.valid()) return;
-                                handle.send(arg.payload.data);
-                            },
-                            context.handle);
-                    }
-                }
-            }
-        },
-        msg);
+            },
+            msg.action);
+    }
 }
 
 }  // namespace net::outbound

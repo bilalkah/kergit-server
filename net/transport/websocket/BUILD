@@ -50,7 +50,6 @@ cc_library(
     visibility = ["//net:__subpackages__"],
     deps = [
         ":ws_app_factory",
-        "//app/queue:event_queue",
         "//core:server_config",
         "//net/outbound:outgoing_worker",
         "//net/runtime:heartbeat_service",

@@ -22,12 +22,13 @@ ConnectionResult ConnectionRegistery::get(const ConnId& conn_id) const {
     }
 }
 
-std::vector<ConnectionResult> ConnectionRegistery::get(const std::vector<ConnId>& conn_ids) const {
+std::vector<ConnectionResult> ConnectionRegistery::get(
+    const std::vector<GlobalConnId>& global_ids) const {
     std::shared_lock lock(mutex_);
     std::vector<ConnectionResult> result;
-    result.reserve(conn_ids.size());
-    for (const auto& conn_id : conn_ids) {
-        auto it = connections_.find(conn_id);
+    result.reserve(global_ids.size());
+    for (const auto& global_id : global_ids) {
+        auto it = connections_.find(global_id.conn_id);
         if (it != connections_.end()) {
             result.push_back(it->second);
         } else {
