@@ -23,6 +23,7 @@ class NetworkRouter : public utils::Loggable, public outbound::IOutboundSink {
      * Network stacks by id
      */
     std::unordered_map<NetStackId, std::unique_ptr<NetworkStack>> net_stacks_by_id_;
+    std::unordered_map<NetStackId, outbound::IOutboundSink&> outbound_sinks_by_id_;
 };
 
 }  // namespace net
