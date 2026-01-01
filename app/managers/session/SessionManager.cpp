@@ -2,15 +2,15 @@
 
 namespace app {
 
-void SessionManager::createSession(const GlobalConnId& text_conn, const UserId& user) {
+void SessionManager::createSession(const GlobalConnId& main_conn, const UserId& user) {
     std::unique_lock lock(mutex_);
     UserId session = user;
 
     SessionInfo info;
-    info.text_conn = text_conn;
+    info.main_conn = main_conn;
 
     sessions_.emplace(session, std::move(info));
-    conn_to_session_[text_conn] = session;
+    conn_to_session_[main_conn] = session;
 }
 
 bool SessionManager::removeConnection(const GlobalConnId& conn) {
@@ -99,6 +99,15 @@ const std::expected<SessionInfo, SessionError> SessionManager::getSession(
     auto it = sessions_.find(session);
     if (it == sessions_.end()) return std::unexpected<SessionError>("Session not found");
     return it->second;
+}
+
+const std::expected<GlobalConnId, SessionError> SessionManager::getMainConnection(
+    const UserId& session) const {
+    auto it = sessions_.find(session);
+    if (it == sessions_.end()) return std::unexpected<SessionError>("Session not found");
+    if (!it->second.main_conn)
+        return std::unexpected<SessionError>("Main connection not found for session");
+    return *(it->second.main_conn);
 }
 
 const std::unordered_map<UserId, SessionInfo>& SessionManager::allSessions() const {
