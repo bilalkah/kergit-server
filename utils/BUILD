@@ -32,4 +32,7 @@ cc_library(
         "Logger.h",
     ],
     visibility = ["//visibility:public"],
+    deps = [
+        "@fmt",
+    ],
 )
