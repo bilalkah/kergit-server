@@ -7,6 +7,7 @@ cc_library(
         "token/ITokenVerifier.h",
         "token/SupabaseJwtVerifier.h",
     ],
+    copts = ["-std=gnu++23"],
     linkopts = ["-lcrypto"],  # OpenSSL crypto library
     visibility = ["//visibility:public"],
     deps = [

@@ -1,3 +1,6 @@
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+
 #include "infra/security/token/SupabaseJwtVerifier.h"
 
 #include "utils/EnvLoader.h"
@@ -19,141 +22,140 @@ using namespace utils;
 
 namespace infra::security::token {
 
-SupabaseJWTVerifier::SupabaseJWTVerifier() {
-    std::string current_jwk = EnvLoader::get_env("SUPABASE_JWT_CURRENT_KEY", "");
-    std::string standby_jwk = EnvLoader::get_env("SUPABASE_JWT_STANDBY_KEY", "");
-    if (current_jwk.empty() || standby_jwk.empty()) {
-        log(LogLevel::ERROR, "JWK keys not set in environment variables");
-        throw std::runtime_error("JWK keys not set in environment variables");
+std::expected<SupabaseJWTVerifier, JwtVerifyError> SupabaseJWTVerifier::create() {
+    auto current = EnvLoader::get_env("SUPABASE_JWT_CURRENT_KEY", "");
+    auto standby = EnvLoader::get_env("SUPABASE_JWT_STANDBY_KEY", "");
+
+    if (current.empty() || standby.empty()) {
+        return std::unexpected(JwtVerifyError::KeyNotFound);
     }
-    current_key_ = parse_jwk(current_jwk);
-    standby_key_ = parse_jwk(standby_jwk);
+
+    auto current_key = parse_jwk(current);
+    auto standby_key = parse_jwk(standby);
+
+    if (!current_key || !standby_key) {
+        return std::unexpected(JwtVerifyError::JwkParseError);
+    }
+
+    return SupabaseJWTVerifier{*current_key, *standby_key};
 }
 
-SupabaseJWTVerifier::~SupabaseJWTVerifier() {}
+std::optional<SupabaseJWK> SupabaseJWTVerifier::parse_jwk(const std::string& jwk_json) {
+    SupabaseJWK jwk;
+    try {
+        json j = json::parse(jwk_json);
+        jwk.kty = j.value("kty", "");
+        jwk.alg = j.value("alg", "");
+        jwk.kid = j.value("kid", "");
+        jwk.x = j.value("x", "");
+        jwk.y = j.value("y", "");
+        jwk.crv = j.value("crv", "");
+        jwk.n = j.value("n", "");
+        jwk.e = j.value("e", "");
+        return jwk;
 
-std::optional<UserClaims> SupabaseJWTVerifier::verify_token(const std::string& token) {
-    if (token.empty()) {
-        log(LogLevel::WARN, "Empty token provided for verification");
-        return std::nullopt;
+    } catch (const std::exception& e) {
+        // skip
     }
-
-    // Try current key first
-    auto user = decode_and_verify(token, current_key_);
-    if (user.has_value()) {
-        log(LogLevel::INFO, "Token verified with current key");
-        return user;
-    }
-
-    // Fallback to standby key
-    user = decode_and_verify(token, standby_key_);
-    if (user.has_value()) {
-        log(LogLevel::INFO, "Token verified with standby key");
-        return user;
-    }
-    log(LogLevel::WARN, "Token verification failed with both keys");
-
     return std::nullopt;
 }
 
-bool SupabaseJWTVerifier::is_token_valid(const std::string& token) {
-    auto user = verify_token(token);
-    if (!user.has_value()) {
+SupabaseJWTVerifier::SupabaseJWTVerifier(SupabaseJWK current, SupabaseJWK standby)
+    : current_key_(std::move(current)), standby_key_(std::move(standby)) {}
+
+JwtVerifyResult SupabaseJWTVerifier::verify_token(const std::string& token) const {
+    auto parsed = parse_token(token);
+    if (!parsed) return std::unexpected(parsed.error());
+
+    if (verify_with_key(*parsed, current_key_)) return parsed->claims;
+    if (verify_with_key(*parsed, standby_key_)) return parsed->claims;
+
+    return std::unexpected(JwtVerifyError::InvalidSignature);
+}
+
+std::expected<ParsedJwt, JwtVerifyError> SupabaseJWTVerifier::parse_token(
+    const std::string& token) const {
+    auto parts = split_token(token);
+    if (parts.size() != 3) return std::unexpected(JwtVerifyError::InvalidFormat);
+
+    ParsedJwt parsed;
+    parsed.signing_input = parts[0] + "." + parts[1];
+    parsed.signature_b64 = parts[2];
+
+    // ---- HEADER ----
+    json header = json::parse(base64_decode(parts[0]));
+    parsed.alg = header.value("alg", "");
+    parsed.kid = header.value("kid", "");
+
+    if (parsed.alg.empty()) return std::unexpected(JwtVerifyError::UnsupportedAlgorithm);
+
+    // ---- PAYLOAD (THIS IS THE ANSWER TO YOUR QUESTION) ----
+    json payload = json::parse(base64_decode(parts[1]));
+
+    UserClaims claims;
+    claims.id = payload.value("sub", "");
+    claims.email = payload.value("email", "");
+    claims.aud = payload.value("aud", "");
+    claims.iss = payload.value("iss", "");
+    claims.exp = payload.value("exp", 0);
+    claims.iat = payload.value("iat", 0);
+
+    // REQUIRED claims
+    if (claims.id.empty() || claims.email.empty())
+        return std::unexpected(JwtVerifyError::MissingClaims);
+
+    // ---------- OPTIONAL USER METADATA ----------
+    if (payload.contains("user_metadata") && payload["user_metadata"].is_object()) {
+        const auto& meta = payload["user_metadata"];
+        claims.username = meta.value("username", "");
+        claims.full_name = meta.value("full_name", "");
+    }
+
+    // ---------- OPTIONAL APP METADATA ----------
+    if (payload.contains("app_metadata") && payload["app_metadata"].is_object()) {
+        const auto& app_meta = payload["app_metadata"];
+        if (app_meta.contains("provider")) {
+            claims.role = "authenticated";
+        }
+    }
+
+    // expiration check belongs HERE
+    auto now = std::chrono::system_clock::now();
+    auto sec = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
+
+    if (claims.exp < sec) return std::unexpected(JwtVerifyError::TokenExpired);
+
+    parsed.claims = std::move(claims);
+    return parsed;
+}
+
+std::vector<std::string> SupabaseJWTVerifier::split_token(const std::string& token) const {
+    std::vector<std::string> parts;
+    std::stringstream ss(token);
+    std::string part;
+
+    while (std::getline(ss, part, '.')) {
+        parts.push_back(part);
+    }
+
+    return parts;
+}
+
+bool SupabaseJWTVerifier::verify_with_key(const ParsedJwt& jwt, const SupabaseJWK& key) const {
+    if (jwt.alg != key.alg) {
+        log(LogLevel::WARN, "Algorithm mismatch: token alg ", jwt.alg, ", key alg ", key.alg);
         return false;
     }
-    return !is_token_expired(token);
-}
 
-bool SupabaseJWTVerifier::is_token_expired(const std::string& token) {
-    auto user = verify_token(token);
-    if (!user.has_value()) {
-        return true;
-    }
-
-    int64_t current_time = get_current_timestamp();
-    return user->exp < current_time;
-}
-
-std::optional<UserClaims> SupabaseJWTVerifier::decode_and_verify(const std::string& token,
-                                                                 const SupabaseJWK& key) {
-    try {
-        auto parts = split_token(token);
-        if (parts.size() != 3) {
-            log(LogLevel::WARN, "Invalid token format - expected 3 parts");
-            return std::nullopt;
-        }
-
-        std::string header_b64 = parts[0];
-        std::string payload_b64 = parts[1];
-        std::string signature_b64 = parts[2];
-
-        // Decode header to check algorithm
-        std::string header_json = base64_decode(header_b64);
-        json header = json::parse(header_json);
-        std::string alg = header.value("alg", "");
-        std::string kid = header.value("kid", "");
-
-        // Verify signature based on algorithm
-        std::string header_payload = header_b64 + "." + payload_b64;
-        bool signature_valid = false;
-
-        if (alg == "ES256") {
-            signature_valid = verify_es256_signature(header_payload, signature_b64, key);
-        } else {
-            log(LogLevel::WARN, "Unsupported algorithm: " + alg);
-            return std::nullopt;
-        }
-
-        if (!signature_valid) {
-            log(LogLevel::WARN, "Signature verification failed");
-            return std::nullopt;
-        }
-
-        // Decode payload
-        std::string payload_json = base64_decode(payload_b64);
-        json payload = json::parse(payload_json);
-
-        // Extract user information
-        UserClaims user;
-        user.id = payload.value("sub", "");
-        user.email = payload.value("email", "");
-        user.aud = payload.value("aud", "");
-        user.iss = payload.value("iss", "");
-        user.exp = payload.value("exp", 0);
-        user.iat = payload.value("iat", 0);
-
-        // Extract user metadata
-        if (payload.contains("user_metadata")) {
-            json metadata = payload["user_metadata"];
-            user.username = metadata.value("username", "");
-            user.full_name = metadata.value("full_name", "");
-        }
-
-        // Extract app metadata for role
-        if (payload.contains("app_metadata")) {
-            json app_metadata = payload["app_metadata"];
-            if (app_metadata.contains("provider")) {
-                user.role = "authenticated";
-            }
-        }
-
-        // Validate required fields
-        if (user.id.empty() || user.email.empty()) {
-            log(LogLevel::WARN, "Missing required user fields");
-            return std::nullopt;
-        }
-
-        log(LogLevel::INFO, "Token successfully decoded and verified. Decoded user: ", user);
-
-        return user;
-
-    } catch (const std::exception& e) {
-        log(LogLevel::ERROR, "Error decoding and verifying token: " + std::string(e.what()));
-        return std::nullopt;
+    if (jwt.alg == "ES256") {
+        return verify_es256_signature(jwt.signing_input, jwt.signature_b64, key);
+    } else {
+        log(LogLevel::WARN, "Unsupported algorithm: " + jwt.alg);
+        return false;
     }
 }
 
-std::string SupabaseJWTVerifier::base64_decode(const std::string& input) {
+std::string SupabaseJWTVerifier::base64_decode(const std::string& input) const {
     std::string decoded = input;
 
     // Replace URL-safe characters
@@ -196,7 +198,7 @@ std::string SupabaseJWTVerifier::base64_decode(const std::string& input) {
 
 bool SupabaseJWTVerifier::verify_es256_signature(const std::string& header_payload,
                                                  const std::string& signature_b64,
-                                                 const SupabaseJWK& key) {
+                                                 const SupabaseJWK& key) const {
     try {
         // Decode signature
         std::string signature = base64_decode(signature_b64);
@@ -273,42 +275,6 @@ bool SupabaseJWTVerifier::verify_es256_signature(const std::string& header_paylo
     }
 }
 
-std::vector<std::string> SupabaseJWTVerifier::split_token(const std::string& token) {
-    std::vector<std::string> parts;
-    std::stringstream ss(token);
-    std::string part;
-
-    while (std::getline(ss, part, '.')) {
-        parts.push_back(part);
-    }
-
-    return parts;
-}
-
-int64_t SupabaseJWTVerifier::get_current_timestamp() {
-    auto now = std::chrono::system_clock::now();
-    auto duration = now.time_since_epoch();
-    return std::chrono::duration_cast<std::chrono::seconds>(duration).count();
-}
-
-SupabaseJWK SupabaseJWTVerifier::parse_jwk(const std::string& jwk_json) {
-    SupabaseJWK jwk;
-    try {
-        json j = json::parse(jwk_json);
-        jwk.kty = j.value("kty", "");
-        jwk.alg = j.value("alg", "");
-        jwk.kid = j.value("kid", "");
-        jwk.x = j.value("x", "");
-        jwk.y = j.value("y", "");
-        jwk.crv = j.value("crv", "");
-        jwk.n = j.value("n", "");
-        jwk.e = j.value("e", "");
-
-    } catch (const std::exception& e) {
-        log(LogLevel::ERROR,
-            "Error parsing JWK: " + std::string(e.what()) + "\nJWK JSON that failed: " + jwk_json);
-    }
-    return jwk;
-}
-
 }  // namespace infra::security::token
+
+#pragma GCC diagnostic pop
