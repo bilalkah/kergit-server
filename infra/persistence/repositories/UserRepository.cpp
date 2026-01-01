@@ -17,6 +17,32 @@ std::optional<std::string> UserRepository::getUserDisplayName(const UserId& user
     });
 }
 
+std::optional<User> UserRepository::getUser(const UserId& userUuid) {
+    return mux_.run(Repository::User, [&](pqxx::work& txn) -> std::optional<User> {
+        auto res = txn.exec(
+            "SELECT id, COALESCE(raw_user_meta_data::text, '{}') FROM auth.users WHERE id = "
+            "$1::uuid",
+            pqxx::params{userUuid.value});
+        if (res.empty()) return std::nullopt;
+
+        nlohmann::json meta;
+        try {
+            meta = nlohmann::json::parse(res[0][1].as<std::string>(), nullptr, false);
+            if (!meta.is_object()) meta = nlohmann::json::object();
+        } catch (...) {
+            meta = nlohmann::json::object();
+        }
+
+        User user;
+        user.id = UserId{res[0][0].as<std::string>()};
+        user.username = meta.value("username", std::string{});
+        user.full_name = meta.value("full_name", std::string{});
+        user.email = meta.value("email", std::string{});
+
+        return user;
+    });
+}
+
 std::pair<std::string, std::string> UserRepository::updateUserProfile(
     const UserId& userUuid, const std::optional<std::string>& username,
     const std::optional<std::string>& full_name) {

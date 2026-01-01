@@ -24,3 +24,33 @@ cc_library(
         "//infra/persistence:persistence_gateway_lib",
     ],
 )
+
+cc_library(
+    name = "hub_snapshot_builder",
+    srcs = ["SnapshotBuilder.cpp"],
+    hdrs = ["SnapshotBuilder.h"],
+    copts = ["-std=gnu++23"],
+    visibility = ["//app/services:__subpackages__"],
+    deps = [
+        ":hub_service",
+        "//app/services:public_id_service",
+        "//app/services/channel:channel_service",
+        "//app/services/presence:presence_service",
+        "//domains:channel_domain",
+        "//domains/ids:domain_ids",
+        "@nlohmann_json",
+    ],
+)
+
+cc_library(
+    name = "hub_notifier",
+    srcs = ["HubNotifier.cpp"],
+    hdrs = ["HubNotifier.h"],
+    copts = ["-std=gnu++23"],
+    visibility = ["//app/services:__subpackages__"],
+    deps = [
+        "//app/services:public_id_service",
+        "//domains/ids:domain_ids",
+        "@nlohmann_json",
+    ],
+)

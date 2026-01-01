@@ -27,7 +27,7 @@ class SessionManager final {
     // ---- lifecycle ----
 
     // Called on auth success
-    void createSession(const GlobalConnId& text_conn, const UserId& user);
+    void createSession(const GlobalConnId& main_conn, const UserId& user);
 
     // Called on DisconnectionEvent
     bool removeConnection(const GlobalConnId& conn);
@@ -43,6 +43,7 @@ class SessionManager final {
     bool hasSession(const UserId& user) const;
     std::expected<UserId, SessionError> sessionOfConnection(const GlobalConnId& conn) const;
     const std::expected<SessionInfo, SessionError> getSession(const UserId& session) const;
+    const std::expected<GlobalConnId, SessionError> getMainConnection(const UserId& session) const;
     const std::unordered_map<UserId, SessionInfo>& allSessions() const;
     std::vector<UserId> activeUsers() const;
 
