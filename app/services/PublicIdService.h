@@ -32,10 +32,6 @@ class PublicIdService {
     std::optional<UserId> to_internal(const PublicUserId& external) const;
     std::optional<MessageId> to_internal(const PublicMessageId& external) const;
 
-    void remember_display(const UserId& internal, std::string_view display_name) const;
-    std::string display_for(const UserId& internal) const;
-    std::string display_for(const PublicUserId& external) const;
-
    private:
     using ForwardMap = std::unordered_map<std::string, std::string>;
     using ReverseMap = std::unordered_map<std::string, std::string>;
@@ -56,7 +52,6 @@ class PublicIdService {
     ReverseMap message_reverse_;
     std::unordered_set<std::string> issued_tokens_;
     std::mt19937_64 rng_;
-    mutable std::unordered_map<std::string, std::string> user_display_;
 };
 
 }  // namespace app::services
