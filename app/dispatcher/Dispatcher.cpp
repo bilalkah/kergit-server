@@ -1,20 +1,7 @@
 #include "app/dispatcher/Dispatcher.h"
 
 #include "app/commands/auth/AuthCommand.h"
-// #include "app/commands/CreateChannelCommand.h"
-// #include "app/commands/CreateHubCommand.h"
-// #include "app/commands/DeleteChannelCommand.h"
-// #include "app/commands/DeleteHubCommand.h"
-// #include "app/commands/GetHubInviteCommand.h"
-// #include "app/commands/JoinChannelCommand.h"
-// #include "app/commands/JoinHubByInviteCommand.h"
-// #include "app/commands/LeaveHubCommand.h"
-// #include "app/commands/RenameChannelCommand.h"
-// #include "app/commands/RenameHubCommand.h"
-// #include "app/commands/SendMessageCommand.h"
-// #include "app/commands/UpdateMemberRoleCommand.h"
-// #include "app/commands/UpdateProfileCommand.h"
-// #include "app/commands/system/DisconnectCommand.h"
+#include "app/commands/system/DisconnectionCommand.h"
 
 namespace app {
 
@@ -41,6 +28,7 @@ std::unordered_set<std::string> Dispatcher::registered_commands() const {
 
 void Dispatcher::register_all() {
     register_cmd("auth", std::make_unique<AuthCommand>());
+    register_cmd("disconnection", std::make_unique<DisconnectionCommand>());
     // register_cmd("join_channel", std::make_unique<JoinChannelCommand>());
     // register_cmd("send_message", std::make_unique<SendMessageCommand>());
     // register_cmd("create_channel", std::make_unique<CreateChannelCommand>());

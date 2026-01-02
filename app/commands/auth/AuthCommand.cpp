@@ -65,9 +65,10 @@ CommandResult AuthCommand::execute(CommandContext& ctx, const CommandInput cmd) 
     if (!db_user) {
         return make_failure(*input, "user_not_found", "User not found in database");
     }
-    const std::string display_name =
-        !db_user->full_name.empty() ? db_user->full_name
-                                    : (!db_user->username.empty() ? db_user->username : username);
+    const std::string display_name = !db_user->username.empty()
+                                         ? db_user->username
+                                         : (!db_user->full_name.empty() ? db_user->full_name
+                                                                        : username);
 
     // Track session + subscribe to hubs for presence
     ctx.session_manager.createSession(input->conn, user_id);
@@ -122,11 +123,17 @@ CommandResult AuthCommand::execute(CommandContext& ctx, const CommandInput cmd) 
         for (const auto& [member_id, stored_display] : members) {
             const auto public_member = ctx.ids.to_public(member_id);
             const bool is_online = online_set.find(member_id) != online_set.end();
-            const std::string name =
-                !stored_display.empty() ? stored_display
-                                        : (member_id == user_id && !display_name.empty()
-                                               ? display_name
-                                               : "Member");
+
+            std::string name = stored_display;
+            if (name.empty()) {
+                if (auto member_user = ctx.user_service.getUser(member_id)) {
+                    if (!member_user->username.empty()) name = member_user->username;
+                    else if (!member_user->full_name.empty()) name = member_user->full_name;
+                }
+            }
+            if (name.empty() && member_id == user_id && !display_name.empty()) name = display_name;
+            if (name.empty()) name = "Member";
+
             members_json.push_back(
                 {{"user_id", public_member.value}, {"display_name", name}, {"online", is_online}});
         }
@@ -169,6 +176,7 @@ CommandResult AuthCommand::execute(CommandContext& ctx, const CommandInput cmd) 
         if (!recipients.empty()) {
             auto payload = ctx.hub_notifier.memberOnline(hub.id, user_id);
             if (!display_name.empty()) payload["display_name"] = display_name;
+            payload["username"] = display_name;
             res.intents.push_back(Fanout{.conns = std::move(recipients),
                                          .payload = std::move(payload)});
         }
