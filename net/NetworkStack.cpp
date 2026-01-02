@@ -2,8 +2,8 @@
 
 namespace net {
 
-NetworkStack::NetworkStack(app::queue::IEventSink& event_queue, core::NetworkStackConfig cfg)
-    : id_(IdGenerator::next(cfg.net_stack_name)), cfg_(std::move(cfg)), event_queue_(event_queue) {}
+NetworkStack::NetworkStack(core::NetworkStackConfig cfg)
+    : id_(IdGenerator::next(cfg.net_stack_name)), cfg_(std::move(cfg)) {}
 
 NetworkStack::~NetworkStack() {}
 
@@ -18,10 +18,14 @@ LoopId NetworkStack::loop_id() const {
 }
 
 std::expected<bool, std::string> NetworkStack::start() {
+    if (event_sink_ == nullptr) {
+        return std::unexpected("Event sink not attached");
+    }
+
     if (running_.exchange(true) || started_.exchange(true))
         return std::unexpected("NetworkStack already started or running");
 
-    log(utils::LogLevel::WARN, "Starting server thread...");
+    log(utils::LogLevel::WARN, "Starting server thread for " + id_.value + " ...");
     server_thread_ = std::jthread(&NetworkStack::run_server, this);
 
     // Wait for server to start
@@ -44,7 +48,7 @@ std::expected<bool, std::string> NetworkStack::start() {
 }
 
 std::expected<bool, std::string> NetworkStack::stop() {
-    log(utils::LogLevel::WARN, "Stop NetworkStack is requested.");
+    log(utils::LogLevel::WARN, "Stop NetworkStack is requested for " + id_.value);
 
     // Guarantee we only stop once
     bool was_running = running_.exchange(false);
@@ -97,19 +101,19 @@ void NetworkStack::wire_components() {
     transport_layer_->set_hooks(
         {.on_open =
              [this](const ConnId& connid) {
-                 event_queue_.push(app::queue::Event{.conn_id = GlobalConnId{id_, connid},
+                 event_sink_->push(app::queue::Event{.conn_id = GlobalConnId{id_, connid},
                                                      .body = app::queue::ConnectionEvent{}});
              },
          .on_message =
              [this](const ConnId& connid, std::string_view raw) {
-                 event_queue_.push(app::queue::Event{
+                 event_sink_->push(app::queue::Event{
                      .conn_id = GlobalConnId{id_, connid},
                      .body = app::queue::MessageEvent{
                          .payload = app::queue::Payload{.data = std::string(raw)}}});
              },
          .on_close =
              [this](const ConnId& connid, int code, std::string_view reason) {
-                 event_queue_.push(
+                 event_sink_->push(
                      app::queue::Event{.conn_id = GlobalConnId{id_, connid},
                                        .body = app::queue::DisconnectionEvent{
                                            .code = code, .reason = std::string(reason)}});

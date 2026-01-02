@@ -3,11 +3,17 @@
 #include <iostream>
 #include <variant>
 
-namespace app {
+namespace app::worker {
 
-WorkerPool::WorkerPool(EventQueue& in_queue, OutgoingQueue& out_queue, Dispatcher& dispatcher,
-                       WorkerPoolConfig config)
-    : in_queue_(in_queue), out_queue_(out_queue), dispatcher_(dispatcher), config_(config) {}
+WorkerPool::WorkerPool(queue::EventQueue& in_queue, net::outbound::IOutboundSink& out_queue,
+                       Dispatcher& dispatcher, CommandContext& cmd_ctx,
+                       core::AppStackConfig appstack_config)
+    : in_queue_(in_queue),
+      out_queue_(out_queue),
+      dispatcher_(dispatcher),
+      cmd_ctx_(cmd_ctx),
+      message_validator_(dispatcher.registered_commands()),
+      config_(appstack_config) {}
 
 WorkerPool::~WorkerPool() { stop(); }
 
@@ -16,8 +22,8 @@ void WorkerPool::start() {
     running_ = true;
     paused_ = false;
 
-    workers_.reserve(config_.worker_count);
-    for (std::size_t i = 0; i < config_.worker_count; ++i) {
+    workers_.reserve(config_.worker_threads);
+    for (std::size_t i = 0; i < config_.worker_threads; ++i) {
         workers_.emplace_back([this, i] { worker_loop(i); });
     }
 }
@@ -33,7 +39,7 @@ void WorkerPool::stop() {
     pause_cv_.notify_all();
 
     for (auto& t : workers_) {
-        if (t.joinable()) t.join();
+        t.request_stop();
     }
     workers_.clear();
 }
@@ -57,6 +63,7 @@ void WorkerPool::wait_if_paused() {
 }
 
 void WorkerPool::worker_loop(std::size_t worker_index) {
+    log(utils::LogLevel::INFO, "Worker ", worker_index, " started.");
     while (running_) {
         // NEW: pause gate before taking new work
         wait_if_paused();
@@ -67,101 +74,117 @@ void WorkerPool::worker_loop(std::size_t worker_index) {
             log(utils::LogLevel::WARN, "Worker ", worker_index, " stopping: ", evt.error());
             break;
         }
-        const EventPayload& payload = evt.value().payload;
-        log(utils::LogLevel::WARN, "Worker ", worker_index, " picked up new event");
+
+        app::queue::Event event = evt.value();
+        CommandResult cmd_result;
 
         // process evt
         std::visit(
             [&](auto&& arg) {
                 using T = std::decay_t<decltype(arg)>;
-                if constexpr (std::is_same_v<T, CommandRequest>) {
-                    const CommandRequest& req = arg;
+                if constexpr (std::is_same_v<T, app::queue::MessageEvent>) {
+                    const app::queue::MessageEvent& msg_evt = arg;
 
                     // validate message
-                    auto [valid, error_message, message, _] =
-                        message_validator_.validate_message(req.payload);
+                    auto msg_expected = message_validator_.validate_message(msg_evt.payload.data);
 
-                    if (!valid) {
-                        send_error(req, "001", error_message);
+                    if (!msg_expected.has_value()) {
+                        send_error(event.conn_id, "0000", msg_expected.error());
                         return;
                     }
+
+                    auto message = msg_expected.value().message;
 
                     {
                         // check for duplicate command processing
                         std::lock_guard<std::mutex> lock(executing_commands_mtx_);
-                        auto it = executing_commands_.find(req.snapshot->user_id);
+                        auto it = executing_commands_.find(event.conn_id);
                         if (it != executing_commands_.end()) {
-                            if (executing_commands_[req.snapshot->user_id] != "send_message") {
+                            if (executing_commands_[event.conn_id] != "send_message") {
                                 log(utils::LogLevel::WARN, "Worker ", worker_index,
-                                    " skipping duplicate command for user_id: ",
-                                    req.snapshot->user_id.value);
+                                    " skipping duplicate command for net: ",
+                                    event.conn_id.netstack_id.value,
+                                    " conn: ", event.conn_id.conn_id.value);
                                 return;
                             }
                         }
-                        executing_commands_[req.snapshot->user_id] = message["type"];
+                        executing_commands_[event.conn_id] = message["type"];
                     }
 
-                    // prepare context
-                    CommandContext ctx;
-                    ctx.conn_id = req.conn_id;
-                    ctx.snapshot = *req.snapshot;
-                    ctx.input.data = message;
-                    ctx.input.received_at = req.received_at;
+                    JsonInput input;
+                    input.conn = event.conn_id;
+                    input.body = message;
 
                     // dispatch
-                    dispatcher_.dispatch(ctx.input.data["type"], ctx);
-                    if (!ctx.output.success) {
-                        send_error(req, ctx.output.error_code, ctx.output.error_message);
-                        return;
-                    }
+                    cmd_result = dispatcher_.dispatch(message["type"], cmd_ctx_, input);
 
-                    // send outgoing messages
-                    for (auto& msg : ctx.output.messages) {
-                        out_queue_.push(std::move(msg));
-                    }
+                } else if constexpr (std::is_same_v<T, app::queue::ConnectionEvent>) {
+                    net::outbound::OutgoingMessage welcome_msg;
+                    nlohmann::json welcome_payload = {{"type", "welcome"},
+                                                      {"message", "Connection established"}};
+                    welcome_msg.target = net::outbound::Target::one(event.conn_id);
+                    welcome_msg.action = net::outbound::SendPayload{
+                        .payload = net::outbound::Payload{welcome_payload.dump()}};
 
-                    log(utils::LogLevel::WARN, "Worker ", worker_index,
-                        " successfully processed command for conn_id: ", req.conn_id.value);
+                    cmd_result = CommandSuccess{};
+                    cmd_result->intents.push_back(
+                        Unicast{.conn = event.conn_id, .payload = welcome_payload});
 
-                    {
-                        // remove from executing commands cache
-                        std::lock_guard<std::mutex> lock(executing_commands_mtx_);
-                        executing_commands_.erase(req.snapshot->user_id);
-                    }
-
-                } else if constexpr (std::is_same_v<T, ConnectEvent>) {
-                    const ConnectEvent& cevt = arg;
-
-                    DirectMessage welcome_msg;
-                    welcome_msg.conn_id = cevt.conn_id;
-                    nlohmann::json welcome_json = {
-                        {"type", "welcome"}, {"message", "Connection established successfully"}};
-                    welcome_msg.payload = welcome_json.dump();
-                    out_queue_.push(std::move(welcome_msg));
-                } else if constexpr (std::is_same_v<T, DisconnectEvent>) {
+                } else if constexpr (std::is_same_v<T, app::queue::DisconnectionEvent>) {
                     // handle disconnect
-                    const DisconnectEvent& devt = arg;
-
-                    // prepare context
-                    CommandContext ctx;
-                    ctx.conn_id = devt.conn_id;
-                    ctx.snapshot = *devt.snap;
-
-                    dispatcher_.dispatch("disconnect", ctx);
+                    const app::queue::DisconnectionEvent& devt = arg;
+                    const DisconnectEvent cmd{
+                        .conn = event.conn_id,
+                        .code = devt.code,
+                        .reason = devt.reason,
+                    };
+                    cmd_result = dispatcher_.dispatch("disconnection", cmd_ctx_, cmd);
                 }
             },
-            payload);
+            event.body);
+
+        // handle command result
+        if (!cmd_result.has_value()) {
+            const CommandError& err = cmd_result.error();
+            send_error(event.conn_id, err.code, err.message);
+        } else {
+            const CommandSuccess& success = cmd_result.value();
+            for (const auto& intent : success.intents) {
+                std::visit(
+                    [&](auto&& arg) {
+                        using T = std::decay_t<decltype(arg)>;
+                        net::outbound::OutgoingMessage out_msg;
+                        if constexpr (std::is_same_v<T, Unicast>) {
+                            out_msg.target = net::outbound::Target::one(arg.conn);
+                            out_msg.action = net::outbound::SendPayload{
+                                .payload = net::outbound::Payload{arg.payload.dump()}};
+                        } else if constexpr (std::is_same_v<T, Fanout>) {
+                            out_msg.target = net::outbound::Target::many(arg.conns);
+                            out_msg.action = net::outbound::SendPayload{
+                                .payload = net::outbound::Payload{arg.payload.dump()}};
+                        }
+                        out_queue_.push(std::move(out_msg));
+                    },
+                    intent);
+            }
+        }
+
+        {
+            // remove from executing commands cache
+            std::lock_guard<std::mutex> lock(executing_commands_mtx_);
+            executing_commands_.erase(event.conn_id);
+        }
     }
 }
 
-void WorkerPool::send_error(const CommandRequest& req, std::string_view code,
+void WorkerPool::send_error(const GlobalConnId& req, std::string_view code,
                             std::string_view message) {
     nlohmann::json err = {{"type", "error"}, {"code", code}, {"message", message}};
 
-    DirectMessage out;
-    out.conn_id = req.conn_id;
-    out.payload = err.dump();
-    out_queue_.push(std::move(out));
+    net::outbound::OutgoingMessage out_msg;
+    out_msg.target = net::outbound::Target::one(req);
+    out_msg.action = net::outbound::SendPayload{.payload = net::outbound::Payload{err.dump()}};
+    out_queue_.push(std::move(out_msg));
 }
 
-}  // namespace app
+}  // namespace app::worker

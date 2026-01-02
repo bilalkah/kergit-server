@@ -6,7 +6,7 @@
 #include <sstream>
 
 using infra::security::token::SupabaseJWTVerifier;
-
+using utils::EnvLoader;
 class CoutCapture {
    public:
     CoutCapture() : old_(std::cout.rdbuf(buf_.rdbuf())) {}
@@ -25,7 +25,16 @@ TEST(JwtVerifier, EmptyTokenReturnsNullAndWarns) {
     EnvLoader::set_env("SUPABASE_JWT_STANDBY_KEY", "");
 
     try {
-        SupabaseJWTVerifier verifier;  // uses EnvLoader internally
+        auto verifier_exp = SupabaseJWTVerifier::create();  // uses EnvLoader internally
+
+        if (!verifier_exp.has_value()) {
+            // If keys are not set, constructor returns error; we can consider that a pass for this
+            // test.
+            FAIL();
+            EnvLoader::clear_env();  // Clean up for other tests
+            return;
+        }
+        SupabaseJWTVerifier verifier = verifier_exp.value();
 
         CoutCapture cap;
         auto res = verifier.verify_token("");  // empty token
@@ -46,7 +55,16 @@ TEST(JwtVerifier, EmptyTokenReturnsNullAndWarns) {
 TEST(JwtVerifier, GarbageTokenReturnsNull) {
     EnvLoader::load_env_file();
 
-    SupabaseJWTVerifier verifier;
+    auto verifier_exp = SupabaseJWTVerifier::create();  // uses EnvLoader internally
+
+    if (!verifier_exp.has_value()) {
+        // If keys are not set, constructor returns error; we can consider that a pass for this
+        // test.
+        FAIL();
+        EnvLoader::clear_env();  // Clean up for other tests
+        return;
+    }
+    SupabaseJWTVerifier verifier = verifier_exp.value();
 
     CoutCapture cap;
     auto res = verifier.verify_token("not.a.jwt");

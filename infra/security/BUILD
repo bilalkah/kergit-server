@@ -21,9 +21,9 @@ cc_library(
     name = "message_validator",
     srcs = ["validation/MessageValidator.cpp"],
     hdrs = ["validation/MessageValidator.h"],
+    copts = ["-std=gnu++23"],
     visibility = ["//visibility:public"],
     deps = [
-        "//app:dispatcher",
         "@nlohmann_json",
     ],
 )

@@ -5,7 +5,7 @@ cc_library(
     srcs = ["ChannelCache.cpp"],
     hdrs = ["ChannelCache.h"],
     copts = ["-std=gnu++23"],
-    visibility = ["//app/services:__subpackages__"],
+    visibility = ["//app:__subpackages__"],
     deps = [
         "//core/cache:on_memory_cache",
         "//domains:channel_domain",
@@ -17,7 +17,7 @@ cc_library(
     srcs = ["ChannelService.cpp"],
     hdrs = ["ChannelService.h"],
     copts = ["-std=gnu++23"],
-    visibility = ["//app/services:__subpackages__"],
+    visibility = ["//app:__subpackages__"],
     deps = [
         ":channel_cache",
         "//domains:channel_domain",

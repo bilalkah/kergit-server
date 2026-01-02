@@ -18,6 +18,9 @@ class NetworkRouter : public utils::Loggable, public outbound::IOutboundSink {
     void push(const outbound::OutgoingMessage& msg) override;
     void push(outbound::OutgoingMessage&& msg) override;
 
+    void stop_all();
+    void start_all();
+
    private:
     /**
      * Network stacks by id
