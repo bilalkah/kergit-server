@@ -151,6 +151,14 @@ export function wireRealtime({ ws, els }) {
           hideConnectionLost();
           actions.setConnection('connected');
           actions.setAuth(true, state.self);
+          actions.setHubCount(typeof authRes?.hub_count === 'number' ? authRes.hub_count : 0);
+          if (Array.isArray(authRes?.hubs)) {
+            actions.setList({
+              hubs: authRes.hubs,
+              channels_by_hub: authRes.channels_by_hub || {}
+            });
+            actions.setHubPresenceMap(authRes.members_by_hub || {});
+          }
           actions.setHeartbeat({});
           updatePingDisplay(null);
           resetReconnectState();
@@ -235,6 +243,9 @@ export function wireRealtime({ ws, els }) {
     const channels_by_hub = msg?.channels_by_hub || {};
     const online_by_hub = msg?.online_by_hub || {};
 
+    actions.setHubCount(
+      typeof msg?.hub_count === 'number' ? msg.hub_count : (Array.isArray(hubs) ? hubs.length : 0)
+    );
     actions.setHubPresenceMap(online_by_hub);
     actions.setList({ hubs, channels_by_hub });
 
@@ -342,6 +353,31 @@ export function wireRealtime({ ws, els }) {
     if (!channel_id) return;
     actions.upsertPresence({ channel_id, handle, display_name, online });
     document.dispatchEvent(new CustomEvent('presence:updated', { detail: { channel_id } }));
+  });
+
+  ws.on('member_online', (msg = {}) => {
+    const hubId = msg.hub_id;
+    const userId = msg.user_id;
+    const displayName = msg.display_name || msg.handle;
+    if (!hubId || !userId) return;
+    actions.updateHubMemberPresence(hubId, userId, true, displayName);
+    if (state.current.hubId === hubId && !state.current.channelId && usersList && userCount) {
+      const roster = sel.membersInHub(hubId);
+      renderUsers(usersList, userCount, roster);
+      membersSidebar?.classList.remove('hidden');
+    }
+  });
+
+  ws.on('member_offline', (msg = {}) => {
+    const hubId = msg.hub_id;
+    const userId = msg.user_id;
+    const displayName = msg.display_name || msg.handle;
+    if (!hubId || !userId) return;
+    actions.updateHubMemberPresence(hubId, userId, false, displayName);
+    if (state.current.hubId === hubId && !state.current.channelId && usersList && userCount) {
+      const roster = sel.membersInHub(hubId);
+      renderUsers(usersList, userCount, roster);
+    }
   });
 
   // Messages from server (just pass to your existing messageController via store)
