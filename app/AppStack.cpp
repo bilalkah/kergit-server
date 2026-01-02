@@ -52,9 +52,10 @@ void AppStack::init_services() {
     hub_snapshot_builder_ = std::make_unique<services::HubSnapshotBuilder>(
         *channel_service_, *hub_service_, *presence_manager_, *public_id_service_);
 
-    cmd_ctx_ = std::make_unique<CommandContext>(CommandContext{
-        *auth_service_, *channel_service_, *hub_service_, *hub_notifier_, *hub_snapshot_builder_,
-        *user_service_, *presence_manager_, *subscription_manager_, *session_manager_});
+    cmd_ctx_ = std::make_unique<CommandContext>(
+        CommandContext{*public_id_service_, *auth_service_, *channel_service_, *hub_service_,
+                       *hub_notifier_, *hub_snapshot_builder_, *user_service_, *presence_manager_,
+                       *subscription_manager_, *session_manager_});
 }
 
 void AppStack::init_dispatcher() {
