@@ -1,6 +1,5 @@
 #ifndef INFRA_PERSISTENCE_PERSISTENCE_GATEWAY_H
 #define INFRA_PERSISTENCE_PERSISTENCE_GATEWAY_H
-#include "app/services/PublicIdService.h"
 #include "infra/persistence/ConnectionPool.h"
 #include "infra/persistence/RepositoryMux.h"
 #include "infra/persistence/repositories/ChannelRepository.h"
@@ -21,16 +20,12 @@ class PersistenceGateway {
     const ChannelRepository& channels() const { return channel_repo_; }
     const UserRepository& users() const { return user_repo_; }
 
-    app::services::PublicIdService& ids() { return ids_; }
-    const app::services::PublicIdService& ids() const { return ids_; }
-
    private:
     ConnectionPool pool_;
     RepositoryMux repo_mux_;
     HubRepository hub_repo_;
     ChannelRepository channel_repo_;
     UserRepository user_repo_;
-    app::services::PublicIdService ids_;
 };
 
 #endif  // INFRA_PERSISTENCE_PERSISTENCE_GATEWAY_H

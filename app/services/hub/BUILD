@@ -5,7 +5,7 @@ cc_library(
     srcs = ["HubCache.cpp"],
     hdrs = ["HubCache.h"],
     copts = ["-std=gnu++23"],
-    visibility = ["//app/services:__subpackages__"],
+    visibility = ["//app:__subpackages__"],
     deps = [
         "//core/cache:on_memory_cache",
         "//domains:hub_domain",
@@ -17,7 +17,7 @@ cc_library(
     srcs = ["HubService.cpp"],
     hdrs = ["HubService.h"],
     copts = ["-std=gnu++23"],
-    visibility = ["//app/services:__subpackages__"],
+    visibility = ["//app:__subpackages__"],
     deps = [
         ":hub_cache",
         "//domains:hub_domain",
@@ -30,7 +30,7 @@ cc_library(
     srcs = ["SnapshotBuilder.cpp"],
     hdrs = ["SnapshotBuilder.h"],
     copts = ["-std=gnu++23"],
-    visibility = ["//app/services:__subpackages__"],
+    visibility = ["//app:__subpackages__"],
     deps = [
         ":hub_service",
         "//app/services:public_id_service",
@@ -47,7 +47,7 @@ cc_library(
     srcs = ["HubNotifier.cpp"],
     hdrs = ["HubNotifier.h"],
     copts = ["-std=gnu++23"],
-    visibility = ["//app/services:__subpackages__"],
+    visibility = ["//app:__subpackages__"],
     deps = [
         "//app/services:public_id_service",
         "//domains/ids:domain_ids",

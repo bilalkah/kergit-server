@@ -20,7 +20,6 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "//app/services:public_id_service",
         "//domains:channel_domain",
         "//domains:hub_domain",
         "//domains:message_domain",

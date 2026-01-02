@@ -12,7 +12,7 @@ cc_library(
     srcs = ["NetworkStack.cpp"],
     hdrs = ["NetworkStack.h"],
     copts = ["-std=gnu++23"],
-    visibility = ["//app:__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [
         "//app/queue:event_queue",
         "//net/connection:connection_registery",
@@ -28,7 +28,7 @@ cc_library(
     srcs = ["NetworkRouter.cpp"],
     hdrs = ["NetworkRouter.h"],
     copts = ["-std=gnu++23"],
-    visibility = ["//app:__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [
         ":network_stack",
         "//domains/ids:domain_ids",

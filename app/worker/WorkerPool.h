@@ -1,10 +1,11 @@
 #ifndef APP_WORKER_WORKERPOOL_H
 #define APP_WORKER_WORKERPOOL_H
 
-#include "app/Dispatcher.h"
+#include "app/dispatcher/Dispatcher.h"
 #include "app/queue/EventQueue.h"
-#include "app/queue/OutgoingQueue.h"
+#include "core/ServerConfig.h"
 #include "infra/security/validation/MessageValidator.h"
+#include "net/outbound/IOutBoundSink.h"
 #include "utils/Loggable.h"
 
 #include <atomic>
@@ -13,19 +14,16 @@
 #include <nlohmann/json.hpp>
 #include <string>
 #include <thread>
-#include <vector>
 #include <unordered_map>
+#include <vector>
 
-namespace app {
-
-struct WorkerPoolConfig {
-    std::size_t worker_count{2};
-};
+namespace app::worker {
 
 class WorkerPool : public utils::Loggable {
    public:
-    WorkerPool(EventQueue& in_queue, OutgoingQueue& out_queue, Dispatcher& dispatcher,
-               WorkerPoolConfig config = {});
+    WorkerPool(queue::EventQueue& in_queue, net::outbound::IOutboundSink& out_queue,
+               Dispatcher& dispatcher_, CommandContext& cmd_ctx,
+               core::AppStackConfig appstack_config = {});
 
     ~WorkerPool();
 
@@ -39,18 +37,21 @@ class WorkerPool : public utils::Loggable {
     bool is_running() const { return running_.load(); }
 
    private:
-    EventQueue& in_queue_;
-    OutgoingQueue& out_queue_;
+    queue::EventQueue& in_queue_;
+    net::outbound::IOutboundSink& out_queue_;
     Dispatcher& dispatcher_;
-    infra::security::validation::MessageValidator message_validator_{dispatcher_};
+    CommandContext& cmd_ctx_;
 
-    WorkerPoolConfig config_;
+    infra::security::validation::MessageValidator message_validator_;
+
+    core::AppStackConfig config_;
     std::atomic_bool running_{false};
     std::atomic_bool paused_{false};
-    std::vector<std::thread> workers_;
-    // cache for currently executing commands to prevent duplicate processing
-    std::unordered_map<UserId, std::string, UserIdHash, UserIdEq> executing_commands_;
-    std::mutex executing_commands_mtx_;
+    std::vector<std::jthread> workers_;
+
+    // cache for currently executing commands to prevent duplicate processing for connection id
+    std::unordered_map<GlobalConnId, std::string> executing_commands_;
+    mutable std::mutex executing_commands_mtx_;
 
     // pause gate
     mutable std::mutex pause_mtx_;
@@ -59,9 +60,9 @@ class WorkerPool : public utils::Loggable {
     void worker_loop(std::size_t worker_index);
     void wait_if_paused();
 
-    void send_error(const CommandRequest& req, std::string_view code, std::string_view message);
+    void send_error(const GlobalConnId& req, std::string_view code, std::string_view message);
 };
 
-}  // namespace app
+}  // namespace app::worker
 
 #endif  // APP_WORKER_WORKERPOOL_H
