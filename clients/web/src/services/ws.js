@@ -181,6 +181,11 @@ export class WSClient {
         this.stalled = false;
         this._emit("__unstalled__", { rtt_ms: this.lastRttMs });
       }
+      this._emit("__ping__", {
+        latencyMs: this.lastRttMs,
+        serverTs: null,
+        receivedAt: now
+      });
     } else if (status === "stale") {
       if (!this.stalled) {
         this.stalled = true;
