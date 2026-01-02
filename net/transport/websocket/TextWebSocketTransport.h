@@ -12,6 +12,7 @@
 #include "net/transport/websocket/UwsTypes.h"
 #include "utils/Loggable.h"
 
+#include <atomic>
 #include <functional>
 #include <memory>
 #include <string>
@@ -40,6 +41,9 @@ class TextWSServer : public ITransportServer, public utils::Loggable {
     void start() override;
     void stop() override;
 
+    bool is_started() const override { return started_; }
+    bool is_stopped() const override { return stopped_; }
+
     const char* name() const override;
     void* loop_id() const override;
     void set_hooks(Hooks hooks) override;
@@ -65,9 +69,17 @@ class TextWSServer : public ITransportServer, public utils::Loggable {
      */
     std::unique_ptr<IApp> app_;
     ::us_listen_socket_t* listen_token_{nullptr};
+    std::atomic<uWS::Loop*> loop_{nullptr};
     runtime::HeartbeatService heartbeat_service_;
     outbound::OutgoingWorker out_worker_;
     Hooks hooks_{};
+
+    /**
+     * State
+     */
+    std::atomic<bool> started_{false};
+    std::atomic<bool> stopped_{false};
+    std::atomic<bool> stop_requested_{false};
 };
 
 }  // namespace net::transport::websocket

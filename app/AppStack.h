@@ -34,19 +34,10 @@ class AppStack : public utils::Loggable {
     void pause();
     void resume();
 
-    void bootstrap() {
-        if (!out_queue_) {
-            throw std::runtime_error("Out queue not initialized before bootstrap");
-        }
-        init_database();
-        init_managers();
-        init_services();
-        init_dispatcher();
-        init_workers();
-    }
+    void bootstrap();
 
-    app::queue::IEventSink& EventSink() { return *event_queue_; }
-    void AttachOutboundSink(net::outbound::IOutboundSink& sink) { out_queue_ = &sink; }
+    app::queue::IEventSink& event_sink();
+    void attach_outbound_sink(net::outbound::IOutboundSink& sink);
 
    private:
     void init_database();

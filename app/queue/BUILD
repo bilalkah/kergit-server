@@ -11,11 +11,8 @@ cc_library(
 )
 
 cc_library(
-    name = "event_queue",
-    hdrs = [
-        "EventQueue.h",
-        "IEventSink.h",
-    ],
+    name = "i_event_sink",
+    hdrs = ["IEventSink.h"],
     copts = ["-std=gnu++23"],
     visibility = [
         "//app:__subpackages__",
@@ -23,6 +20,21 @@ cc_library(
     ],
     deps = [
         ":event_msg",
+    ],
+)
+
+cc_library(
+    name = "event_queue",
+    hdrs = [
+        "EventQueue.h",
+    ],
+    copts = ["-std=gnu++23"],
+    visibility = [
+        "//app:__subpackages__",
+    ],
+    deps = [
+        ":event_msg",
+        ":i_event_sink",
         "//core/base:ts_queue",
     ],
 )

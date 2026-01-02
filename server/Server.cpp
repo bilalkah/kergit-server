@@ -7,10 +7,10 @@ Server::Server(const core::ServerConfig& config) : config_(config), app_stack_(c
 void Server::init_stacks() {
     for (size_t i = 0; i < config_.network.socket_threads; ++i) {
         auto net_stack = std::make_unique<net::NetworkStack>(config_.network);
-        net_stack->AttachEventSink(app_stack_.EventSink());
+        net_stack->attach_event_sink(app_stack_.event_sink());
         network_router_.register_stack(std::move(net_stack));
     }
-    app_stack_.AttachOutboundSink(network_router_);
+    app_stack_.attach_outbound_sink(network_router_);
 }
 
 void Server::start() {

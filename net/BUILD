@@ -4,7 +4,7 @@ cc_library(
     name = "net_types",
     hdrs = ["Types.h"],
     copts = ["-std=gnu++23"],
-    visibility = ["//visibility:public"],
+    visibility = ["//net:__subpackages__"],
 )
 
 cc_library(
@@ -12,9 +12,9 @@ cc_library(
     srcs = ["NetworkStack.cpp"],
     hdrs = ["NetworkStack.h"],
     copts = ["-std=gnu++23"],
-    visibility = ["//visibility:public"],
+    visibility = ["//server:__subpackages__"],
     deps = [
-        "//app/queue:event_queue",
+        "//app/queue:i_event_sink",
         "//net/connection:connection_registery",
         "//net/outbound:outgoing_queue",
         "//net/runtime:heartbeat_service",
@@ -28,10 +28,11 @@ cc_library(
     srcs = ["NetworkRouter.cpp"],
     hdrs = ["NetworkRouter.h"],
     copts = ["-std=gnu++23"],
-    visibility = ["//visibility:public"],
+    visibility = ["//server:__subpackages__"],
     deps = [
         ":network_stack",
         "//domains/ids:domain_ids",
+        "//net/outbound:i_outbound_sink",
         "//net/outbound:outgoing_queue",
     ],
 )

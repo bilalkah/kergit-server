@@ -16,7 +16,7 @@ cc_library(
         "//core:server_config",
         "//domains/ids:domain_ids",
         "//infra/security:message_validator",
-        "//net/outbound:outgoing_worker",
+        "//net/outbound:i_outbound_sink",
         "//utils:loggable",
         "@nlohmann_json",
     ],
