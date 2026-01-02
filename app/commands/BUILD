@@ -27,6 +27,26 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "send_message_command",
+    srcs = ["message/SendMessageCommand.cpp"],
+    hdrs = ["message/SendMessageCommand.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":i_command",
+        "//app/dispatcher:command_context",
+        "//app/managers/session:session_manager",
+        "//app/managers/subscription:topic",
+        "//app/managers/subscription:subscription_manager",
+        "//app/services/channel:channel_service",
+        "//app/services/hub:hub_service",
+        "//app/services/user:user_service",
+        "//domains:channel_domain",
+        "//domains:message_domain",
+        "@nlohmann_json",
+    ],
+)
+
 # cc_library(
 #     name = "auth_command",
 #     srcs = ["AuthCommand.cpp"],
