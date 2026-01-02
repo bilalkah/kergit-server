@@ -19,6 +19,10 @@ class ITransportServer {
     virtual void start() = 0;
     virtual void stop() = 0;
 
+    // access lifecycle
+    virtual bool is_started() const = 0;
+    virtual bool is_stopped() const = 0;
+
     // identity
     virtual const char* name() const = 0;
 

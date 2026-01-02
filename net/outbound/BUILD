@@ -22,20 +22,32 @@ cc_library(
 )
 
 cc_library(
-    name = "outgoing_worker",
-    srcs = ["OutgoingWorker.cpp"],
-    hdrs = [
-        "IOutBoundSink.h",
-        "OutgoingWorker.h",
-    ],
+    name = "i_outbound_sink",
+    hdrs = ["IOutBoundSink.h"],
     copts = ["-std=gnu++23"],
     visibility = [
         "//app:__subpackages__",
         "//net:__subpackages__",
     ],
     deps = [
+        ":outbound_msg",
+    ],
+)
+
+cc_library(
+    name = "outgoing_worker",
+    srcs = ["OutgoingWorker.cpp"],
+    hdrs = [
+        "OutgoingWorker.h",
+    ],
+    copts = ["-std=gnu++23"],
+    visibility = [
+        "//net:__subpackages__",
+    ],
+    deps = [
         ":outgoing_queue",
         "//net/connection:connection_registery",
+        "//net/outbound:i_outbound_sink",
         "//net/transport:i_loop",
         "//utils:loggable",
         "@uwebsockets",

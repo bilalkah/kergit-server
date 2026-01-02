@@ -27,12 +27,18 @@ class NetworkStack : utils::Loggable {
     LoopId loop_id() const;
 
     // Start/stop lifecycle
-    std::expected<bool, std::string> start();
-    std::expected<bool, std::string> stop();
+    bool start();
+    bool stop();
 
-    net::outbound::IOutboundSink& outbound_sink() { return *outgoing_queue_; }
-    void AttachEventSink(app::queue::IEventSink& sink) { event_sink_ = &sink; }
-    NetStackId id() const { return id_; }
+    net::outbound::IOutboundSink& outbound_sink();
+
+    /**
+     * Attach event sink to send events to App layer
+     * @param sink Event sink reference
+     * Without this, the stack cannot start
+     */
+    void attach_event_sink(app::queue::IEventSink& sink);
+    NetStackId id() const;
 
    private:
     /**
@@ -54,7 +60,6 @@ class NetworkStack : utils::Loggable {
      */
     std::jthread server_thread_;
     std::atomic<bool> started_{false};
-    std::atomic<bool> running_{false};
     std::atomic<bool> stopped_{false};
     void run_server();
     void wire_components();

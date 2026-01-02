@@ -1,6 +1,9 @@
 #include "net/NetworkStack.h"
 
 namespace net {
+namespace {
+constexpr auto timeout = std::chrono::seconds(5);
+}
 
 NetworkStack::NetworkStack(core::NetworkStackConfig cfg)
     : id_(IdGenerator::next(cfg.net_stack_name)), cfg_(std::move(cfg)) {}
@@ -17,43 +20,42 @@ LoopId NetworkStack::loop_id() const {
     return 0;
 }
 
-std::expected<bool, std::string> NetworkStack::start() {
+net::outbound::IOutboundSink& NetworkStack::outbound_sink() { return *outgoing_queue_; }
+
+void NetworkStack::attach_event_sink(app::queue::IEventSink& sink) { event_sink_ = &sink; }
+
+NetStackId NetworkStack::id() const { return id_; }
+
+bool NetworkStack::start() {
     if (event_sink_ == nullptr) {
-        return std::unexpected("Event sink not attached");
+        log(utils::LogLevel::ERROR, "Cannot start NetworkStack without an event sink attached.");
+        return false;
     }
 
-    if (running_.exchange(true) || started_.exchange(true))
-        return std::unexpected("NetworkStack already started or running");
+    if (started_.exchange(true)) return true;  // already started
 
     log(utils::LogLevel::WARN, "Starting server thread for " + id_.value + " ...");
     server_thread_ = std::jthread(&NetworkStack::run_server, this);
 
     // Wait for server to start
-    auto timeout = std::chrono::seconds(5);
     auto start_time = std::chrono::system_clock::now();
     while (!started_.load()) {
         if (std::chrono::system_clock::now() - start_time > timeout) {
-            running_.store(false);
             started_.store(false);
-            return std::unexpected("Failed to start server within timeout");
+            return false;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
-    if (!running_.load()) {
-        started_.store(false);
-        return std::unexpected("Server failed to start");
-    }
-    started_.store(true);
+
     return true;
 }
 
-std::expected<bool, std::string> NetworkStack::stop() {
+bool NetworkStack::stop() {
     log(utils::LogLevel::WARN, "Stop NetworkStack is requested for " + id_.value);
 
     // Guarantee we only stop once
-    bool was_running = running_.exchange(false);
-    if (!was_running) {
-        log(utils::LogLevel::INFO, "NetworkStack already stopping / stopped.");
+    if (stopped_.load()) {
+        log(utils::LogLevel::INFO, "NetworkStack is already stopped.");
         return true;
     }
 
@@ -63,9 +65,23 @@ std::expected<bool, std::string> NetworkStack::stop() {
 
     server_thread_.request_stop();
 
-    stopped_.store(true);
+    // Wait for thread to stop
+    auto start_time = std::chrono::system_clock::now();
+    while (!stopped_.load(std::memory_order_acquire)) {
+        if (std::chrono::system_clock::now() - start_time > timeout) {
+            log(utils::LogLevel::ERROR, "Timeout waiting for server thread to stop.");
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    if (server_thread_.joinable()) {
+        log(utils::LogLevel::INFO, "Joining server thread...");
+        server_thread_.join();
+    }
+    stopped_.store(true, std::memory_order_release);
+    started_.store(false, std::memory_order_release);
     log(utils::LogLevel::INFO, "Stop NetworkStack is completed.");
-    return true;
+    return stopped_.load(std::memory_order_acquire);
 }
 
 void NetworkStack::run_server() {
@@ -75,15 +91,14 @@ void NetworkStack::run_server() {
 
     if (!transport_layer_) {
         log(utils::LogLevel::ERROR, "No transport server configured.");
-        running_.store(false);
         started_.store(false);
         return;
     }
-
+    started_.store(true);
     transport_layer_->start();  // Program will block here until stop is called
 
     log(utils::LogLevel::WARN, "Exiting run_server");
-    running_.store(false);
+    started_.store(false);
     stopped_.store(true);
 }
 

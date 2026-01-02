@@ -14,6 +14,22 @@ void AppStack::pause() { worker_pool_->pause(); }
 
 void AppStack::resume() { worker_pool_->resume(); }
 
+void AppStack::bootstrap() {
+    if (!out_queue_) {
+        log(utils::LogLevel::ERROR, "Outbound sink not attached!");
+        exit(EXIT_FAILURE);
+    }
+    init_database();
+    init_managers();
+    init_services();
+    init_dispatcher();
+    init_workers();
+}
+
+app::queue::IEventSink& AppStack::event_sink() { return *event_queue_; }
+
+void AppStack::attach_outbound_sink(net::outbound::IOutboundSink& sink) { out_queue_ = &sink; }
+
 void AppStack::init_database() {
     persistence_gateway_ = std::make_unique<PersistenceGateway>(
         config_.database.to_connection_string(), config_.database.pool_size);
