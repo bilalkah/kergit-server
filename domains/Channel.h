@@ -1,11 +1,9 @@
 #ifndef DOMAINS_CHANNEL_H
 #define DOMAINS_CHANNEL_H
 
-#pragma once
 #include "domains/ids/Ids.h"
 
 #include <string>
-#include <unordered_set>
 
 enum class ChannelType { CHAT, VOICE };
 
@@ -21,7 +19,6 @@ struct Channel {
     ChannelId id{""};
     HubId hub_id{""};
     ChannelType type{ChannelType::CHAT};
-    std::unordered_set<UserId> active_members{};
 };
 
 #endif  // DOMAINS_CHANNEL_H

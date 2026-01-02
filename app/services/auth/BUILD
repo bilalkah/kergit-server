@@ -7,7 +7,7 @@ cc_library(
         "AuthService.h",
     ],
     copts = ["-std=gnu++23"],
-    visibility = ["//visibility:public"],
+    visibility = ["//app:__subpackages__"],
     deps = [
         "//infra/security:supabase_jwt_verifier",
         "//utils:loggable",

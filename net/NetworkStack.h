@@ -20,7 +20,7 @@ using LoopId = std::uintptr_t;
 
 class NetworkStack : utils::Loggable {
    public:
-    NetworkStack(app::queue::IEventSink& event_queue, core::NetworkStackConfig cfg_ = {});
+    NetworkStack(core::NetworkStackConfig cfg_ = {});
     ~NetworkStack();
 
     // Identity of the loop this stack lives on
@@ -31,6 +31,7 @@ class NetworkStack : utils::Loggable {
     std::expected<bool, std::string> stop();
 
     net::outbound::IOutboundSink& outbound_sink() { return *outgoing_queue_; }
+    void AttachEventSink(app::queue::IEventSink& sink) { event_sink_ = &sink; }
     NetStackId id() const { return id_; }
 
    private:
@@ -46,7 +47,7 @@ class NetworkStack : utils::Loggable {
     /**
      * References
      */
-    app::queue::IEventSink& event_queue_;
+    app::queue::IEventSink* event_sink_{nullptr};
 
     /**
      * Server thread

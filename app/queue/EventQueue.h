@@ -16,12 +16,10 @@ class EventQueue : public IEventSink {
 
     void push(Event&& event) noexcept { queue_.push(std::move(event)); }
 
-    [[nodiscard]] std::expected<Event, std::string_view> pop(Event& event) noexcept {
-        return queue_.pop(event);
-    }
+    [[nodiscard]] std::expected<Event, std::string_view> pop() noexcept { return queue_.pop(); }
 
-    [[nodiscard]] std::expected<Event, std::string_view> try_pop(Event& event) noexcept {
-        return queue_.try_pop(event);
+    [[nodiscard]] std::expected<Event, std::string_view> try_pop() noexcept {
+        return queue_.try_pop();
     }
 
     void stop() noexcept { queue_.stop(); }

@@ -5,7 +5,8 @@ namespace app::services {
 UserCache::UserCache() : cache_(std::make_unique<core::cache::OnMemoryCache>()) {}
 
 std::expected<User, UserCacheError> UserCache::get(UserId id) {
-    auto res = cache_->get(core::cache::AnyKey::make(id));
+    auto key = core::cache::AnyKey::make(id);
+    auto res = cache_->get(key);
     if (!res) {
         return std::unexpected(UserCacheError::NotFound);
     }

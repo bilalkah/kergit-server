@@ -30,6 +30,7 @@ cc_library(
     ],
     copts = ["-std=gnu++23"],
     visibility = [
+        "//app:__subpackages__",
         "//net:__subpackages__",
     ],
     deps = [

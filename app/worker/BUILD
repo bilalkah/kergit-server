@@ -8,13 +8,15 @@ cc_library(
     hdrs = [
         "WorkerPool.h",
     ],
+    copts = ["-std=gnu++23"],
     visibility = ["//visibility:public"],
     deps = [
-        "//app:dispatcher",
+        "//app/dispatcher",
         "//app/queue:event_queue",
-        "//app/queue:outgoing_queue",
+        "//core:server_config",
         "//domains/ids:domain_ids",
         "//infra/security:message_validator",
+        "//net/outbound:outgoing_worker",
         "//utils:loggable",
         "@nlohmann_json",
     ],

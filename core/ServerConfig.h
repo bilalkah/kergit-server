@@ -41,16 +41,21 @@ struct NetworkStackConfig {
     std::string ws_path{"/*"};
     utils::TlsConfig tls{};
     std::string net_stack_name{"default_netstack"};
+
+    size_t socket_threads{2};
+};
+
+struct AppStackConfig {
+    std::string app_stack_name{"default_appstack"};
+    std::string environment{"development"};
+    std::string log_level{"info"};
+    size_t worker_threads{3};
 };
 
 struct ServerConfig {
     NetworkStackConfig network{};
     DataBaseConfig database{};
-
-    std::string environment{"development"};
-    std::string log_level{"info"};
-    bool debug_gateway{true};
-    size_t worker_threads{std::thread::hardware_concurrency()};
+    AppStackConfig app_stack{};
 };
 
 class ServerConfigFiller {

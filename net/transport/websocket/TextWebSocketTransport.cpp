@@ -55,66 +55,69 @@ void TextWSServer::set_hooks(const Hooks hooks) { hooks_ = hooks; }
 
 void TextWSServer::wire() {
     app_->uws().ws<TextPerSocketData>(
-        cfg_.ws_path, {
-                          .sendPingsAutomatically = false,
-                          .upgrade =
-                              [this](auto* res, auto* req, auto* ctx) {
-                                  std::string origin = std::string(req->getHeader("origin"));
-                                  if (!origins_.is_allowed(origin)) {
-                                      res->writeStatus("403 Forbidden")->end("Origin not allowed");
-                                      return;
-                                  }
-                                  res->template upgrade<TextPerSocketData>(
-                                      {}, req->getHeader("sec-websocket-key"),
-                                      req->getHeader("sec-websocket-protocol"),
-                                      req->getHeader("sec-websocket-extensions"), ctx);
-                              },
+        cfg_.ws_path,
+        {
+            .sendPingsAutomatically = false,
+            .upgrade =
+                [this](auto* res, auto* req, auto* ctx) {
+                    std::string origin = std::string(req->getHeader("origin"));
+                    if (!origins_.is_allowed(origin)) {
+                        res->writeStatus("403 Forbidden")->end("Origin not allowed");
+                        return;
+                    }
+                    res->template upgrade<TextPerSocketData>(
+                        {}, req->getHeader("sec-websocket-key"),
+                        req->getHeader("sec-websocket-protocol"),
+                        req->getHeader("sec-websocket-extensions"), ctx);
+                },
 
-                          .open =
-                              [this](UwsSocket* ws) {
-                                  auto* psd = ws->getUserData();
-                                  psd->conn_id = make_conn_id(ws);
-                                  conns_.attach(
-                                      psd->conn_id,
-                                      connection::ConnectionContext(
-                                          psd->conn_id, transport::ConnHandle{TextWsHandle{ws}},
-                                          TransportKind::TextWebSocket));
+            .open =
+                [this](UwsSocket* ws) {
+                    auto* psd = ws->getUserData();
+                    psd->conn_id = make_conn_id(ws);
+                    conns_.attach(psd->conn_id,
+                                  connection::ConnectionContext(
+                                      psd->conn_id, transport::ConnHandle{TextWsHandle{ws}},
+                                      TransportKind::TextWebSocket));
 
-                                  hooks_.on_open(psd->conn_id);
-                                  heartbeat_service_.on_open(psd->conn_id);
-                              },
-                          .message =
-                              [this](UwsSocket* ws, std::string_view data, uWS::OpCode op) {
-                                  if (op != uWS::OpCode::TEXT) return;
-                                  auto* psd = ws->getUserData();
+                    hooks_.on_open(psd->conn_id);
+                    heartbeat_service_.on_open(psd->conn_id);
+                },
+            .message =
+                [this](UwsSocket* ws, std::string_view data, uWS::OpCode op) {
+                    if (op != uWS::OpCode::TEXT) return;
+                    auto* psd = ws->getUserData();
 
-                                  hooks_.on_message(psd->conn_id, data);
-                              },
-                          .drain =
-                              [](UwsSocket* /*ws*/) {
-                                  // No-op for now
-                              },
+                    hooks_.on_message(psd->conn_id, data);
+                },
+            .drain =
+                [](UwsSocket* /*ws*/) {
+                    // No-op for now
+                },
 
-                          .pong =
-                              [this](UwsSocket* ws, std::string_view data) {
-                                  auto* psd = ws->getUserData();
-                                  const auto& status = heartbeat_service_.on_pong(psd->conn_id);
+            .pong =
+                [this](UwsSocket* ws, std::string_view data) {
+                    auto* psd = ws->getUserData();
+                    const auto& status = heartbeat_service_.on_pong(psd->conn_id);
 
-                                  if (!status.has_value()) return;
+                    if (!status.has_value()) return;
 
-                                  ws->send(status.value(), uWS::OpCode::TEXT);
-                              },
-                          .close =
-                              [this](UwsSocket* ws, int code, std::string_view reason) {
-                                  auto* psd = ws->getUserData();
-                                  if (!psd) return;
+                    ws->send(status.value(), uWS::OpCode::TEXT);
+                },
+            .close =
+                [this](UwsSocket* ws, int code, std::string_view reason) {
+                    auto* psd = ws->getUserData();
+                    if (!psd) return;
 
-                                  auto conn_id = psd->conn_id;
-                                  conns_.detach(conn_id);
+                    log(utils::LogLevel::INFO, "Connection closed: ", psd->conn_id.value,
+                        " Code: ", code, " Reason: ", reason);
 
-                                  hooks_.on_close(conn_id, code, std::string(reason));
-                              },
-                      });
+                    auto conn_id = psd->conn_id;
+                    conns_.detach(conn_id);
+
+                    hooks_.on_close(conn_id, code, std::string(reason));
+                },
+        });
 
     heartbeat_service_.start();
     out_worker_.start();

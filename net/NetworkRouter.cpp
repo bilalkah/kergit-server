@@ -5,7 +5,6 @@ namespace net {
 void NetworkRouter::register_stack(std::unique_ptr<NetworkStack> stack) {
     auto id = stack->id();
     net_stacks_by_id_.emplace(id, std::move(stack));
-    outbound_sinks_by_id_.emplace(id, net_stacks_by_id_[id]->outbound_sink());
 }
 
 void NetworkRouter::push(const outbound::OutgoingMessage& msg) {
@@ -18,13 +17,13 @@ void NetworkRouter::push(const outbound::OutgoingMessage& msg) {
 
     // send once per netstack
     for (auto& [netstack_id, conns] : grouped) {
-        auto it = outbound_sinks_by_id_.find(netstack_id);
-        if (it == outbound_sinks_by_id_.end()) continue;
+        auto it = net_stacks_by_id_.find(netstack_id);
+        if (it == net_stacks_by_id_.end()) continue;
 
         outbound::OutgoingMessage forwarded{.target = outbound::Target{std::move(conns)},
                                             .action = msg.action};
 
-        it->second.push(std::move(forwarded));
+        it->second->outbound_sink().push(std::move(forwarded));
     }
 }
 
@@ -38,13 +37,26 @@ void NetworkRouter::push(outbound::OutgoingMessage&& msg) {
 
     // send once per netstack
     for (auto& [netstack_id, conns] : grouped) {
-        auto it = outbound_sinks_by_id_.find(netstack_id);
-        if (it == outbound_sinks_by_id_.end()) continue;
+        auto it = net_stacks_by_id_.find(netstack_id);
+        if (it == net_stacks_by_id_.end()) continue;
 
         outbound::OutgoingMessage forwarded{.target = outbound::Target{std::move(conns)},
                                             .action = msg.action};
 
-        it->second.push(std::move(forwarded));
+        it->second->outbound_sink().push(std::move(forwarded));
+    }
+}
+
+void NetworkRouter::stop_all() {
+    for (auto& [id, stack] : net_stacks_by_id_) {
+        stack->stop();
+    }
+}
+
+void NetworkRouter::start_all() {
+    for (auto& [id, stack] : net_stacks_by_id_) {
+        stack->start();
+        outbound_sinks_by_id_.emplace(id, stack->outbound_sink());
     }
 }
 

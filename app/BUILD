@@ -1,27 +1,26 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
-load("//app/commands:command_list.bzl", "COMMAND_LIST")
 
 cc_library(
-    name = "dispatcher",
-    srcs = ["Dispatcher.cpp"],
-    hdrs = ["Dispatcher.h"],
+    name = "app_stack",
+    srcs = ["AppStack.cpp"],
+    hdrs = ["AppStack.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//app/commands:i_command",
-        "@nlohmann_json",
+        "//app/dispatcher",
+        "//app/queue:event_queue",
+        "//app/services:public_id_service",
+        "//app/services/auth:auth_service",
+        "//app/services/channel:channel_service",
+        "//app/services/hub:hub_notifier",
+        "//app/services/hub:hub_service",
+        "//app/services/hub:hub_snapshot_builder",
+        "//app/services/presence:presence_service",
+        "//app/services/user:user_service",
+        "//app/worker:worker_pool",
+        "//core:server_config",
+        "//infra/persistence:persistence_gateway_lib",
+        "//infra/security:message_validator",
+        "//net/outbound:outgoing_worker",
+        "//utils:loggable",
     ],
 )
-
-cc_library(
-    name = "command_registry",
-    srcs = ["CommandRegistery.cpp"],
-    hdrs = [
-        "CommandRegistery.h",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//app/memory:on_memory_cache",
-        ":dispatcher",
-    ] + COMMAND_LIST,
-)
-

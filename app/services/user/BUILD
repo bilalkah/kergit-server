@@ -5,7 +5,7 @@ cc_library(
     srcs = ["UserCache.cpp"],
     hdrs = ["UserCache.h"],
     copts = ["-std=gnu++23"],
-    visibility = ["//app/services:__subpackages__"],
+    visibility = ["//app:__subpackages__"],
     deps = [
         "//core/cache:on_memory_cache",
         "//domains:user_domain",
@@ -17,7 +17,7 @@ cc_library(
     srcs = ["UserService.cpp"],
     hdrs = ["UserService.h"],
     copts = ["-std=gnu++23"],
-    visibility = ["//app/services:__subpackages__"],
+    visibility = ["//app:__subpackages__"],
     deps = [
         ":user_cache",
         "//domains:user_domain",

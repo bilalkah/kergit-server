@@ -2,6 +2,7 @@
 #define APP_DISPATCHER_H
 
 #include "app/commands/ICommand.h"
+#include "app/dispatcher/CommandContext.h"
 #include "domains/ids/Ids.h"
 
 #include <functional>
@@ -16,14 +17,9 @@ namespace app {
 class Dispatcher {
    public:
     void register_cmd(std::string type, std::unique_ptr<ICommand> cmd);
-
-    /**
-     * Dispatch a command by its type.
-     * @param type Command type string
-     * @param ctx Command context to be filled/used by the command
-     */
-    void dispatch(const std::string& type, CommandContext& ctx);
+    CommandResult dispatch(const std::string& type, CommandContext& ctx, const CommandInput cmd);
     std::unordered_set<std::string> registered_commands() const;
+    void register_all();
 
    private:
     std::unordered_map<std::string, std::unique_ptr<ICommand>> map_;
