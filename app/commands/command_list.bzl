@@ -2,6 +2,7 @@
 
 COMMAND_LIST = [
     "//app/commands/auth:auth_command",
+    "//app/commands/system:disconnection_command",
     # "//app/commands:join_channel_command",
     # "//app/commands:send_message_command",
     # "//app/commands:create_channel_command",
