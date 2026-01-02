@@ -1,6 +1,6 @@
 #include "app/dispatcher/Dispatcher.h"
 
-// #include "app/commands/AuthCommand.h"
+#include "app/commands/auth/AuthCommand.h"
 // #include "app/commands/CreateChannelCommand.h"
 // #include "app/commands/CreateHubCommand.h"
 // #include "app/commands/DeleteChannelCommand.h"
@@ -40,7 +40,7 @@ std::unordered_set<std::string> Dispatcher::registered_commands() const {
 }
 
 void Dispatcher::register_all() {
-    // register_cmd("auth", std::make_unique<AuthCommand>());
+    register_cmd("auth", std::make_unique<AuthCommand>());
     // register_cmd("join_channel", std::make_unique<JoinChannelCommand>());
     // register_cmd("send_message", std::make_unique<SendMessageCommand>());
     // register_cmd("create_channel", std::make_unique<CreateChannelCommand>());

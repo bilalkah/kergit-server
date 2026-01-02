@@ -3,6 +3,7 @@ const defaultSelf = () => ({ id: null, publicId: null, email: null, username: nu
 const defaultCurrent = () => ({ hubId: null, channelId: null, channelName: '' });
 const defaultHeartbeat = () => ({ latencyMs: null, serverTs: null, receivedAt: null });
 const defaultSession = () => ({ url: null, token: null, username: null });
+const defaultHubCount = () => 0;
 
 const STORAGE_KEYS = {
   hub: 'sc:lastHubId'
@@ -43,6 +44,7 @@ export const state = {
   self: defaultSelf(),
   hubs: [],                    // [{id,name,created_at}]
   channelsByHub: {},           // hubId -> [{id,name,type,created_at}]
+  hubCount: defaultHubCount(),
   current: defaultCurrent(),
   usersByChannel: {},          // channelId -> [{handle,display_name,online}]
   messagesByChannel: {},       // channelId -> [{sender,content,sent_at}]
@@ -57,6 +59,7 @@ function resetState() {
   state.self = defaultSelf();
   state.hubs = [];
   state.channelsByHub = {};
+  state.hubCount = defaultHubCount();
   state.current = defaultCurrent();
   state.usersByChannel = {};
   state.messagesByChannel = {};
@@ -100,6 +103,11 @@ export const actions = {
       ? hubs.map((hub) => ({ ...hub, role: hub.role || '' }))
       : [];
     state.channelsByHub = channels_by_hub || {};
+    state.hubCount = Array.isArray(hubs) ? hubs.length : state.hubCount;
+  },
+  setHubCount(count) {
+    const next = Number.isFinite(count) ? Number(count) : defaultHubCount();
+    state.hubCount = next < 0 ? 0 : next;
   },
   setJoinedChannel({ channel_id, channel_name, members, history }) {
     state.current.channelId = channel_id;
@@ -296,4 +304,28 @@ actions.removeHub = function removeHub(hubId) {
     state.current.channelName = '';
   }
   return updated.length ? updated[0].id : null;
+};
+
+actions.updateHubMemberPresence = function updateHubMemberPresence(hubId, userId, online, displayName) {
+  if (!hubId || !userId) return;
+  const members = state.membersByHub[hubId] ? [...state.membersByHub[hubId]] : [];
+  const idx = members.findIndex((m) => m.user_id === userId);
+
+  if (idx >= 0) {
+    const updated = { ...members[idx], online };
+    if (displayName) {
+      updated.display_name = displayName;
+      updated.handle = members[idx].handle || displayName;
+    }
+    members[idx] = updated;
+  } else {
+    const name = displayName || 'Member';
+    members.push({
+      handle: displayName || userId,
+      display_name: name,
+      online,
+      user_id: userId
+    });
+  }
+  state.membersByHub[hubId] = members;
 };
