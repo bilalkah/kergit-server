@@ -40,6 +40,7 @@ cc_library(
         "//app/managers/subscription:subscription_manager",
         "//app/services/channel:channel_service",
         "//app/services/hub:hub_service",
+        "//domains:hub_domain",
         "//app/services/user:user_service",
         "//domains:channel_domain",
         "//domains:message_domain",
@@ -47,6 +48,24 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "create_channel_command",
+    srcs = ["channel/CreateChannelCommand.cpp"],
+    hdrs = ["channel/CreateChannelCommand.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":i_command",
+        "//app/dispatcher:command_context",
+        "//app/managers/session:session_manager",
+        "//app/managers/subscription:topic",
+        "//app/managers/subscription:subscription_manager",
+        "//app/services/channel:channel_service",
+        "//app/services/hub:hub_service",
+        "//domains:channel_domain",
+        "//domains:hub_domain",
+        "@nlohmann_json",
+    ],
+)
 # cc_library(
 #     name = "auth_command",
 #     srcs = ["AuthCommand.cpp"],
