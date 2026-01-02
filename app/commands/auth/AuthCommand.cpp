@@ -1,381 +1,180 @@
-#include "app/commands/AuthCommand.h"
+#include "app/commands/auth/AuthCommand.h"
 
-#include "app/queue/OutgoingQueue.h"  // DirectMessage, PublishMessage, OutgoingMessage
-#include "net/PerSocketData.h"
+#include "app/managers/subscription/Topic.h"
+#include "domains/Channel.h"
 
-#include <algorithm>
-#include <cctype>
-#include <exception>
 #include <nlohmann/json.hpp>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <variant>
 #include <vector>
 
-using namespace app::services;
 using nlohmann::json;
 
 namespace app {
 
 namespace {
-
-// NOTE: PSD in worker is not available anymore.
-// We only read other sockets' PSDs inside collect_online_members,
-// and only WRITE PSD inside apply_psd (WS thread).
-
-std::string safe_display(const net::PerSocketData& psd) {
-    if (!psd.snapshot->username.empty()) return psd.snapshot->username;
-    return "Member";
+CommandResult make_failure(const JsonInput& input, std::string code, std::string message) {
+    CommandSuccess res;
+    json payload = {{"type", "auth_response"},
+                    {"success", false},
+                    {"code", std::move(code)},
+                    {"error", std::move(message)}};
+    res.intents.push_back(Unicast{.conn = input.conn, .payload = std::move(payload)});
+    return res;
 }
-
-std::string role_to_string(Role role) {
-    switch (role) {
-        case Role::OWNER:
-            return "owner";
-        case Role::ADMIN:
-            return "admin";
-        default:
-            return "member";
-    }
-}
-
-std::string channel_type_to_string(ChannelType type) {
-    return type == ChannelType::VOICE ? "voice" : "text";
-}
-
 }  // namespace
 
-AuthCommand::AuthCommand(ServiceObjects& services) : auth_service_(), services_(services) {}
-
-void AuthCommand::execute(CommandContext& ctx) {
-    const auto& input = ctx.input;
-    auto& output = ctx.output;
-
-    const std::string token = input.data.value("token", "");
-    std::string preferred_username;
-    if (auto it = input.data.find("username"); it != input.data.end() && it->is_string()) {
-        preferred_username = it->get<std::string>();
+CommandResult AuthCommand::execute(CommandContext& ctx, const CommandInput cmd) {
+    const auto* input = std::get_if<JsonInput>(&cmd);
+    if (!input) {
+        return std::unexpected(
+            CommandError{"invalid_input", "Auth command expects a JSON payload"});
     }
 
-    // trim username
-    auto trim = [](std::string& s) {
-        auto not_space = [](unsigned char ch) { return !std::isspace(ch); };
-        s.erase(s.begin(), std::find_if(s.begin(), s.end(), not_space));
-        s.erase(std::find_if(s.rbegin(), s.rend(), not_space).base(), s.end());
-    };
-    trim(preferred_username);
+    const std::string token = input->body.value("token", "");
+    const std::string username = input->body.value("username", "");
 
-    // -------------------------
-    // Validate token
-    // -------------------------
     if (token.empty()) {
-        output.success = false;
-        output.error_code = "missing_token";
-        output.error_message = "Authentication token is required";
-
-        json err = {{"type", "auth_response"},
-                    {"success", false},
-                    {"error", "missing_token"},
-                    {"error_message", "Authentication token is required"}};
-
-        DirectMessage msg;
-        msg.conn_id = ctx.conn_id;
-        msg.payload = err.dump();
-        ctx.output.messages.push_back(std::move(msg));
-        return;
+        return make_failure(*input, "missing_token", "Authentication token is required");
     }
 
-    auto auth_result = auth_service_.authenticate(token);
-
-    if (!auth_result.success || auth_result.claims.id.empty()) {
-        output.success = false;
-        output.error_code = "auth_failed";
-        output.error_message =
-            auth_result.error_message.empty() ? "Authentication failed" : auth_result.error_message;
-
-        json err = {{"type", "auth_response"},
-                    {"success", false},
-                    {"error", "auth_failed"},
-                    {"error_message", output.error_message}};
-
-        DirectMessage msg;
-        msg.conn_id = ctx.conn_id;
-        msg.payload = err.dump();
-        ctx.output.messages.push_back(std::move(msg));
-        return;
+    auto auth_result = ctx.auth_service.authenticate(token);
+    if (!auth_result.has_value()) {
+        std::string message;
+        switch (auth_result.error()) {
+            case services::AuthError::InvalidToken:
+                message = "Invalid authentication token";
+                break;
+            case services::AuthError::ExpiredToken:
+                message = "Authentication token has expired";
+                break;
+            case services::AuthError::Other:
+            default:
+                message = "Authentication error";
+                break;
+        }
+        return make_failure(*input, "auth_error", message);
     }
 
-    // -------------------------
-    // Auth success -> bootstrap
-    // -------------------------
-    const auto& claims = auth_result.claims;
+    const auto& claims = auth_result.value();
+    UserId user_id{claims.id};
 
-    try {
-        // Build worker-side user fields
-        UserId user_id{claims.id};
-        std::string email = claims.email;
-        std::string username;
-
-        if (!preferred_username.empty()) {
-            username = preferred_username;
-        } else if (!claims.username.empty()) {
-            username = claims.username;
-        } else if (!claims.full_name.empty()) {
-            username = claims.full_name;
-        } else {
-            if (auto db_name = services_.db_.users().getUserDisplayName(user_id)) {
-                username = *db_name;
-            }
-        }
-        if (username.empty()) username = "Member";
-
-        services_.ids_.remember_display(user_id, username);
-        services_.ids_.to_public(user_id);
-
-        // Gather hubs & channels
-        const std::vector<Hub> hubs = services_.db_.hubs().getUserHubs(user_id);
-
-        std::unordered_map<HubId, std::vector<Channel>> channels_by_hub;
-        channels_by_hub.reserve(hubs.size());
-
-        // Build snapshot for this user/connection
-        auto snapshot = std::make_shared<net::Snapshot>();
-        snapshot->hubs.clear();
-        snapshot->roles.clear();
-
-        for (const auto& hub : hubs) {
-            services_.ids_.to_public(hub.id);
-            snapshot->hubs.insert(hub.id);
-
-            Role role = Role::USER;
-            auto it = hub.members.find(user_id);
-            if (it != hub.members.end()) role = it->second;
-            snapshot->roles[hub.id] = role;
-
-            // auto channels = db_.channels().getHubChannels(hub.id);
-            // for (const auto& channel : channels) {
-            //     ids_.to_public(channel.channel_id);
-            //     ids_.to_public(channel.hub_id);
-            //     snapshot->channels.insert(channel.channel_id);
-            // }
-            // channels_by_hub.emplace(hub.id, std::move(channels));
-        }
-
-        // Online members by hub (reads other PSD snapshots)
-        auto online_by_hub = collect_online_members(hubs);
-
-        // Bootstrap payload
-        auto bootstrap = build_bootstrap_payload(hubs, channels_by_hub, online_by_hub, user_id);
-
-        // 1) Send bootstrap list to this client
-        {
-            DirectMessage boot_msg;
-            boot_msg.conn_id = ctx.conn_id;
-            boot_msg.payload = bootstrap.dump();
-            ctx.output.messages.push_back(std::move(boot_msg));
-        }
-
-        // 2) Send auth_response + apply_psd to update PSD & subscribe hubs in WS thread
-        const auto public_user_id = services_.ids_.to_public(user_id);
-
-        json auth_resp = {
-            {"type", "auth_response"},
-            {"success", true},
-            {"user_id", public_user_id.value},
-            {"username", username},
-        };
-
-        DirectMessage auth_msg;
-        auth_msg.conn_id = ctx.conn_id;
-        auth_msg.payload = auth_resp.dump();
-
-        // Capture what WS thread needs
-        snapshot->authenticated = true;
-        snapshot->authenticated_at = std::chrono::system_clock::now();
-        snapshot->user_id = user_id;
-        snapshot->email = email;
-        snapshot->username = username;
-        auto snap_const = std::shared_ptr<const net::Snapshot>(snapshot);
-        auto hubs_copy = snapshot->hubs;
-
-        auth_msg.apply_psd = [this, user_id, email, username, snap_const,
-                              hubs_copy](net::PerSocketData* psd) mutable {
-            if (!psd) return;
-            auto snapshot = *psd->snapshot;
-            psd->alive = true;
-            psd->snapshot = std::move(snap_const);
-
-            // Subscribe to hub topics (WS thread)
-            for (const auto& hub_id : hubs_copy) {
-                if (!hub_id.value.empty()) {
-                    services_.gateway_.subscribe(psd->conn_id, HubPublisher::topic_for(hub_id));
-                }
-            }
-
-            // Publish hub updates if you want this side-effect on auth
-            if (!hubs_copy.empty()) {
-                services_.hub_publisher_.publish_hubs(hubs_copy);
-            }
-        };
-
-        ctx.output.messages.push_back(std::move(auth_msg));
-
-        output.success = true;
-        output.error_code.clear();
-        output.error_message.clear();
-        output.sent_at = std::chrono::system_clock::now();
-    } catch (const std::exception& ex) {
-        output.success = false;
-        output.error_code = "bootstrap_failed";
-        output.error_message = ex.what();
-        output.sent_at = std::chrono::system_clock::now();
-
-        json err = {{"type", "auth_response"},
-                    {"success", false},
-                    {"error", "bootstrap_failed"},
-                    {"error_message", ex.what()}};
-
-        DirectMessage msg;
-        msg.conn_id = ctx.conn_id;
-        msg.payload = err.dump();
-        ctx.output.messages.push_back(std::move(msg));
+    auto db_user = ctx.user_service.getUser(user_id);
+    if (!db_user) {
+        return make_failure(*input, "user_not_found", "User not found in database");
     }
-}
+    const std::string display_name =
+        !db_user->full_name.empty() ? db_user->full_name
+                                    : (!db_user->username.empty() ? db_user->username : username);
 
-nlohmann::json AuthCommand::collect_online_members(const std::vector<Hub>& hubs) {
-    std::unordered_set<HubId> target_hubs;
-    target_hubs.reserve(hubs.size());
+    // Track session + subscribe to hubs for presence
+    ctx.session_manager.createSession(input->conn, user_id);
+    const auto hubs = ctx.hub_service.getUserHubs(user_id);
     for (const auto& hub : hubs) {
-        if (!hub.id.value.empty()) target_hubs.insert(hub.id);
+        ctx.subscription_manager.subscribe(user_id, Topic::HubTopic(hub.id));
     }
 
-    std::unordered_map<HubId, std::unordered_map<UserId, std::string>> online_by_hub;
+    const auto public_user_id = ctx.ids.to_public(user_id);
+    auto hubs_meta = json::array();
+    json channels_by_hub = json::object();
+    json members_by_hub = json::object();
 
-    services_.connections_.for_each([&](UwsSocket* ws) {
-        if (!ws) return;
-        auto* other_psd = ws->getUserData();
-        if (!other_psd || !other_psd->snapshot->authenticated) return;
-        if (other_psd->snapshot->user_id.value.empty()) return;
-        if (!other_psd->snapshot) return;
-
-        const auto display = safe_display(*other_psd);
-        if (!display.empty())
-            services_.ids_.remember_display(other_psd->snapshot->user_id, display);
-
-        for (const auto& hub_id : other_psd->snapshot->hubs) {
-            if (!target_hubs.empty() && !target_hubs.count(hub_id)) continue;
-            services_.ids_.to_public(hub_id);
-            online_by_hub[hub_id][other_psd->snapshot->user_id] = display;
-        }
-    });
-
-    json result = json::object();
     for (const auto& hub : hubs) {
-        const auto public_id = services_.ids_.to_public(hub.id);
-        const auto members = services_.db_.hubs().getHubMembers(hub.id);
+        const auto public_hub_id = ctx.ids.to_public(hub.id);
+        std::string role = "member";
+        if (auto it = hub.members.find(user_id); it != hub.members.end()) {
+            switch (it->second) {
+                case Role::ADMIN:
+                    role = "admin";
+                    break;
+                case Role::OWNER:
+                    role = "owner";
+                    break;
+                case Role::USER:
+                default:
+                    role = "member";
+                    break;
+            }
+        }
 
-        json arr = json::array();
-        std::unordered_set<UserId> seen;
-        auto it_online = online_by_hub.find(hub.id);
+        const auto hub_channels = ctx.channel_service.getHubChannels(hub.id);
+        hubs_meta.push_back({{"id", public_hub_id.value},
+                             {"name", hub.name},
+                             {"role", role},
+                             {"channels_count", hub_channels.size()}});
 
+        json channels_json = json::array();
+        for (const auto& channel : hub_channels) {
+            const auto public_channel = ctx.ids.to_public(channel.id);
+            const std::string type_str =
+                channel.type == ChannelType::VOICE ? "voice" : "text";
+            channels_json.push_back(
+                {{"id", public_channel.value}, {"name", channel.name}, {"type", type_str}});
+        }
+        channels_by_hub[public_hub_id.value] = std::move(channels_json);
+
+        json members_json = json::array();
+        const auto online_users = ctx.presence_manager.onlineUsersInHub(hub.id);
+        std::unordered_set<UserId> online_set(online_users.begin(), online_users.end());
+        const auto members = ctx.hub_service.getHubMembers(hub.id);
         for (const auto& [member_id, stored_display] : members) {
-            const bool is_online = it_online != online_by_hub.end() &&
-                                   it_online->second.find(member_id) != it_online->second.end();
-
-            if (!stored_display.empty()) services_.ids_.remember_display(member_id, stored_display);
-
-            std::string display = services_.ids_.display_for(member_id);
-            if (display.empty() && it_online != online_by_hub.end()) {
-                auto it_display = it_online->second.find(member_id);
-                if (it_display != it_online->second.end()) display = it_display->second;
-            }
-            if (display.empty() && !stored_display.empty()) display = stored_display;
-            if (display.empty()) {
-                if (auto db_name = services_.db_.users().getUserDisplayName(member_id)) {
-                    if (!db_name->empty()) {
-                        display = *db_name;
-                        services_.ids_.remember_display(member_id, display);
-                    }
-                }
-            }
-            if (display.empty()) display = "Member";
-
-            const auto public_user = services_.ids_.to_public(member_id);
-            arr.push_back({{"handle", display},
-                           {"display_name", display},
-                           {"online", is_online},
-                           {"user_id", public_user.value}});
-            seen.insert(member_id);
+            const auto public_member = ctx.ids.to_public(member_id);
+            const bool is_online = online_set.find(member_id) != online_set.end();
+            const std::string name =
+                !stored_display.empty() ? stored_display
+                                        : (member_id == user_id && !display_name.empty()
+                                               ? display_name
+                                               : "Member");
+            members_json.push_back(
+                {{"user_id", public_member.value}, {"display_name", name}, {"online", is_online}});
         }
-
-        if (it_online != online_by_hub.end()) {
-            for (const auto& [user_id, display0] : it_online->second) {
-                if (seen.find(user_id) != seen.end()) continue;
-
-                const auto public_user = services_.ids_.to_public(user_id);
-
-                std::string name =
-                    display0.empty() ? services_.ids_.display_for(user_id) : display0;
-                if (name.empty()) {
-                    if (auto db_name = services_.db_.users().getUserDisplayName(user_id)) {
-                        if (!db_name->empty()) {
-                            name = *db_name;
-                            services_.ids_.remember_display(user_id, name);
-                        }
-                    }
-                }
-                if (name.empty()) name = "Member";
-
-                arr.push_back({{"handle", name},
-                               {"display_name", name},
-                               {"online", true},
-                               {"user_id", public_user.value}});
-            }
-        }
-
-        result[public_id.value] = std::move(arr);
+        members_by_hub[public_hub_id.value] = std::move(members_json);
     }
 
-    return result;
-}
+    json auth_resp = {{"type", "auth_response"},
+                      {"success", true},
+                      {"user_id", public_user_id.value},
+                      {"username", username},
+                      {"hub_count", hubs.size()},
+                      {"hubs", hubs_meta},
+                      {"channels_by_hub", channels_by_hub},
+                      {"members_by_hub", members_by_hub}};
 
-nlohmann::json AuthCommand::build_bootstrap_payload(
-    const std::vector<Hub>& hubs,
-    const std::unordered_map<HubId, std::vector<Channel>>& channels_by_hub,
-    const nlohmann::json& online_by_hub, const UserId& current_user) {
-    nlohmann::json hubs_json = nlohmann::json::array();
+    CommandSuccess res;
+    res.intents.push_back(Unicast{.conn = input->conn, .payload = std::move(auth_resp)});
+
+    // Also push hubs_list for clients already wired to consume that channel
+    json hubs_list = {{"type", "hubs_list"},
+                      {"hub_count", hubs.size()},
+                      {"hubs", std::move(hubs_meta)},
+                      {"channels_by_hub", std::move(channels_by_hub)},
+                      {"online_by_hub", std::move(members_by_hub)}};
+    res.intents.push_back(Unicast{.conn = input->conn, .payload = std::move(hubs_list)});
+
+    // Notify online members in shared hubs that this user is now online
     for (const auto& hub : hubs) {
-        const auto public_hub_id = services_.ids_.to_public(hub.id);
-        nlohmann::json hub_json = {{"id", public_hub_id.value}, {"name", hub.name}};
-        auto it = hub.members.find(current_user);
-        if (it != hub.members.end()) hub_json["role"] = role_to_string(it->second);
-        hubs_json.push_back(std::move(hub_json));
-    }
+        const auto online_members = ctx.presence_manager.onlineUsersInHub(hub.id);
+        std::vector<GlobalConnId> recipients;
+        recipients.reserve(online_members.size());
 
-    nlohmann::json channels_json = nlohmann::json::object();
-    for (const auto& hub : hubs) {
-        const auto public_hub_id = services_.ids_.to_public(hub.id);
-        nlohmann::json arr = nlohmann::json::array();
-        auto it = channels_by_hub.find(hub.id);
-
-        if (it != channels_by_hub.end()) {
-            for (const auto& channel : it->second) {
-                const auto public_channel_id = services_.ids_.to_public(channel.id);
-                arr.push_back({{"id", public_channel_id.value},
-                               {"hub_id", public_hub_id.value},
-                               {"name", channel.name},
-                               {"type", channel_type_to_string(channel.type)}});
-            }
+        for (const auto& member_id : online_members) {
+            if (member_id == user_id) continue;
+            auto conn_exp = ctx.session_manager.getMainConnection(member_id);
+            if (!conn_exp.has_value()) continue;
+            recipients.push_back(conn_exp.value());
         }
-        channels_json[public_hub_id.value] = std::move(arr);
+
+        if (!recipients.empty()) {
+            auto payload = ctx.hub_notifier.memberOnline(hub.id, user_id);
+            if (!display_name.empty()) payload["display_name"] = display_name;
+            res.intents.push_back(Fanout{.conns = std::move(recipients),
+                                         .payload = std::move(payload)});
+        }
     }
 
-    return nlohmann::json{
-        {"type", "hubs_list"},
-        {"hubs", std::move(hubs_json)},
-        {"channels_by_hub", std::move(channels_json)},
-        {"online_by_hub", online_by_hub},
-    };
+    return res;
 }
 
 }  // namespace app
