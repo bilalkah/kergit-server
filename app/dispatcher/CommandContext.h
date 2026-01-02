@@ -1,21 +1,25 @@
 #ifndef APP_DISPATCHER_COMMANDCONTEXT_H
 #define APP_DISPATCHER_COMMANDCONTEXT_H
 
-namespace app {
-namespace services {
-struct AuthService;
-struct PresenceService;
-struct ChannelService;
-struct HubService;
-struct UserService;
-struct HubNotifier;
-struct HubSnapshotBuilder;
-};  // namespace services
+// include services headers
+#include "app/services/PublicIdService.h"
+#include "app/services/auth/AuthService.h"
+#include "app/services/channel/ChannelService.h"
+#include "app/services/hub/HubNotifier.h"
+#include "app/services/hub/HubService.h"
+#include "app/services/hub/SnapshotBuilder.h"
+#include "app/services/presence/PresenceService.h"
+#include "app/services/user/UserService.h"
 
-struct SubscriptionManager;
-struct SessionManager;
+// include managers headers
+#include "app/managers/session/SessionManager.h"
+#include "app/managers/subscription/SubscriptionManager.h"
+
+
+namespace app {
 
 struct CommandContext {
+    services::PublicIdService& ids;
     services::AuthService& auth_service;
     services::ChannelService& channel_service;
     services::HubService& hub_service;
