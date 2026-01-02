@@ -1,6 +1,8 @@
 #include "app/worker/WorkerPool.h"
 
+#include <chrono>
 #include <iostream>
+#include <thread>
 #include <variant>
 
 namespace app::worker {
@@ -12,6 +14,7 @@ WorkerPool::WorkerPool(queue::EventQueue& in_queue, net::outbound::IOutboundSink
       out_queue_(out_queue),
       dispatcher_(dispatcher),
       cmd_ctx_(cmd_ctx),
+      auth_guard_(cmd_ctx.session_manager, out_queue),
       message_validator_(dispatcher.registered_commands()),
       config_(appstack_config) {}
 
@@ -21,6 +24,7 @@ void WorkerPool::start() {
     if (running_) return;
     running_ = true;
     paused_ = false;
+    auth_guard_.start();
 
     workers_.reserve(config_.worker_threads);
     for (std::size_t i = 0; i < config_.worker_threads; ++i) {
@@ -33,6 +37,7 @@ void WorkerPool::stop() {
 
     running_ = false;
     paused_ = false;
+    auth_guard_.stop();
 
     // wake blocked workers on queue + pause gate
     in_queue_.stop();
@@ -129,6 +134,8 @@ void WorkerPool::worker_loop(std::size_t worker_index) {
                     cmd_result = CommandSuccess{};
                     cmd_result->intents.push_back(
                         Unicast{.conn = event.conn_id, .payload = welcome_payload});
+
+                    auth_guard_.schedule(event.conn_id, std::chrono::seconds(10));
 
                 } else if constexpr (std::is_same_v<T, app::queue::DisconnectionEvent>) {
                     // handle disconnect

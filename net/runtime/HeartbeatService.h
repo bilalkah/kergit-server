@@ -56,8 +56,10 @@ class HeartbeatService {
     /**
      * Helper to make connection status message
      */
-    inline std::string make_conn_status_msg(bool status, int rtt_ms) const {
-        return fmt::format(R"({{"type":"conn_status","status":"{}","rtt_ms":{}}})", status, rtt_ms);
+    inline std::string make_conn_status_msg(bool alive, int rtt_ms) const {
+        const char* status = alive ? "alive" : "stale";
+        return fmt::format(R"({{"type":"conn_status","status":"{}","rtt_ms":{}}})", status,
+                           rtt_ms);
     };
 };
 
