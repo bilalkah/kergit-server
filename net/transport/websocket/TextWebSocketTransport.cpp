@@ -17,33 +17,41 @@ TextWSServer::TextWSServer(core::NetworkStackConfig cfg, connection::ConnectionR
       heartbeat_service_(*app_, conns_),
       out_worker_(*app_, conns_, outgoing_queue) {}
 
-TextWSServer::~TextWSServer() { stop(); }
+TextWSServer::~TextWSServer() {}
 
 void TextWSServer::start() {
     wire();
 
-    listen_token_ = nullptr;
+    loop_.store(app_->uws().getLoop(), std::memory_order_release);
+
     app_->uws().listen(cfg_.host, cfg_.port, [&](auto* token) {
         if (token) {
             log(utils::LogLevel::INFO, "Listener bound successfully.");
             listen_token_ = token;
+            started_.store(true, std::memory_order_release);
         } else {
             log(utils::LogLevel::ERROR, "Listener failed to bind.");
+            started_.store(false, std::memory_order_release);
         }
     });
     app_->uws().run();
 }
 
 void TextWSServer::stop() {
+    if (stop_requested_.exchange(true)) return;
+
     heartbeat_service_.stop();
     out_worker_.stop();
 
-    auto* loop = app_->getUwsLoop();
-    if (loop) {
+    if (auto* loop = loop_.load(std::memory_order_acquire)) {
         loop->defer([this]() {
-            log(utils::LogLevel::INFO, "Defer close uWS app loop from TextWSServer::shutdown()");
+            log(utils::LogLevel::INFO, "Defer close uWS app loop from stop()");
             app_->uws().close();
         });
+    } else if (app_) {
+        // Loop was not captured; attempt a direct close on the app.
+        log(utils::LogLevel::INFO, "Closing uWS app directly from stop()");
+        app_->uws().close();
     }
 }
 

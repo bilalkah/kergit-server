@@ -20,7 +20,7 @@ cc_library(
         "//core:server_config",
         "//infra/persistence:persistence_gateway_lib",
         "//infra/security:message_validator",
-        "//net/outbound:outgoing_worker",
+        "//net/outbound:i_outbound_sink",
         "//utils:loggable",
     ],
 )

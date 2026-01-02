@@ -42,3 +42,8 @@ sh_binary(
     ],
 )
 
+# bazel run :depgraph -- //server:fake_discord server.svg --scope=local
+sh_binary(
+    name = "depgraph",
+    srcs = ["scripts/bazel_depgraph.sh"],
+)

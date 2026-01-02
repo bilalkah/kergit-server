@@ -17,11 +17,13 @@ class PlainApp : public IApp, utils::Loggable {
     }
     UwsApp& uws() override { return app_; }
     void defer(DeferFn fn) override {
-        // Post onto the current loop (callable from within the loop)
-        uWS::Loop::get()->defer(std::move(fn));
+        if (auto* loop = app_.getLoop()) {
+            // Ensure work is scheduled onto the app's loop (even when called cross-thread)
+            loop->defer(std::move(fn));
+        }
     }
 
-    uWS::Loop* getUwsLoop() override { return uWS::Loop::get(); }
+    uWS::Loop* getUwsLoop() override { return app_.getLoop(); }
 
    private:
     UwsApp app_;
@@ -34,9 +36,13 @@ class TLSApp : public IApp, utils::Loggable {
             kSslEnabled ? "enabled" : "disabled");
     }
     UwsApp& uws() override { return app_; }
-    void defer(DeferFn fn) override { uWS::Loop::get()->defer(std::move(fn)); }
+    void defer(DeferFn fn) override {
+        if (auto* loop = app_.getLoop()) {
+            loop->defer(std::move(fn));
+        }
+    }
 
-    uWS::Loop* getUwsLoop() override { return uWS::Loop::get(); }
+    uWS::Loop* getUwsLoop() override { return app_.getLoop(); }
 
    private:
     UwsApp app_;

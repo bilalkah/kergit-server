@@ -22,11 +22,12 @@ class NetworkRouter : public utils::Loggable, public outbound::IOutboundSink {
     void start_all();
 
    private:
+    std::unordered_map<NetStackId, std::vector<GlobalConnId>> group_outgoing_msg(
+        const outbound::OutgoingMessage& msg);
     /**
      * Network stacks by id
      */
     std::unordered_map<NetStackId, std::unique_ptr<NetworkStack>> net_stacks_by_id_;
-    std::unordered_map<NetStackId, outbound::IOutboundSink&> outbound_sinks_by_id_;
 };
 
 }  // namespace net

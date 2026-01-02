@@ -93,6 +93,7 @@ void HeartbeatService::on_timer(us_timer_t* timer) {
  * - update heartbeat state in connection registry
  */
 void HeartbeatService::tick() {
+    if (!running_.load()) return;
     const auto now = std::chrono::system_clock::now();
     auto connections = conns_.get();
 
