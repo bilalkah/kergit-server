@@ -12,6 +12,21 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "join_channel_command",
+    srcs = ["channel/JoinChannelCommand.cpp"],
+    hdrs = ["channel/JoinChannelCommand.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":i_command",
+        "//app/dispatcher:command_context",
+        "//domains:channel_domain",
+        "//domains:hub_domain",
+        "//domains:message_domain",
+        "@nlohmann_json",
+    ],
+)
+
 # cc_library(
 #     name = "auth_command",
 #     srcs = ["AuthCommand.cpp"],
