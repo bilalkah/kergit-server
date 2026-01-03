@@ -12,7 +12,7 @@ COMMAND_LIST = [
     "//app/commands:create_hub_command",
     "//app/commands:rename_hub_command",
     "//app/commands:get_hub_invite_command",
-    # "//app/commands:join_hub_by_invite_command",
+    "//app/commands:join_hub_by_invite_command",
     # "//app/commands:leave_hub_command",
     # "//app/commands:update_member_role_command",
     # "//app/commands:update_profile_command",

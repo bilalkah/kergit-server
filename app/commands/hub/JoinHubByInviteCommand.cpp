@@ -1,6 +1,7 @@
-#include "app/commands/JoinHubByInviteCommand.h"
+#include "app/commands/hub/JoinHubByInviteCommand.h"
 
-#include "net/PerSocketData.h"
+#include "app/dispatcher/CommandContext.h"
+#include "domains/Hub.h"
 
 #include <nlohmann/json.hpp>
 #include <string>
@@ -10,51 +11,13 @@ using nlohmann::json;
 
 namespace app {
 
-JoinHubByInviteCommand::JoinHubByInviteCommand(ServiceObjects& svc_objs)
-    : services_(svc_objs) {}
-
-json JoinHubByInviteCommand::build_members_payload(const HubId& hub_id) {
-    json members = json::array();
-    auto db_members = services_.db_.hubs().getHubMembers(hub_id);
-    std::unordered_set<UserId> online_members;
-
-    // Collect online members from db and dont use connection manager's snapshot
-    const auto hub_members = services_.db_.hubs().getHubMembers(hub_id);
-    for (const auto&[ user_id, _] : hub_members) {
-        online_members.insert(user_id);
-    }
-    
-
-    for (const auto& [user_id, display_hint] : db_members) {
-        std::string display = services_.ids_.display_for(user_id);
-        if (display.empty() && !display_hint.empty()) {
-            display = display_hint;
-            services_.ids_.remember_display(user_id, display);
-        }
-        if (display.empty()) {
-            if (auto db_name = services_.db_.users().getUserDisplayName(user_id)) {
-                if (!db_name->empty()) {
-                    display = *db_name;
-                    services_.ids_.remember_display(user_id, display);
-                }
-            }
-        }
-        if (display.empty()) display = "Member";
-        const auto public_user = services_.ids_.to_public(user_id);
-        members.push_back({{"handle", display},
-                           {"display_name", display},
-                           {"online", online_members.count(user_id) > 0},
-                           {"user_id", public_user.value}});
-    }
-    return members;
-}
-
-json JoinHubByInviteCommand::build_channels_payload(const HubId& hub_id) {
+namespace {
+json build_channels(CommandContext& ctx, const HubId& hub_id) {
     json channels_json = json::array();
-    const auto channels = services_.db_.channels().getHubChannels(hub_id);
+    const auto channels = ctx.channel_service.getHubChannels(hub_id);
     for (const auto& channel : channels) {
-        const auto public_channel_id = services_.ids_.to_public(channel.id);
-        const auto public_hub_id = services_.ids_.to_public(channel.hub_id);
+        const auto public_channel_id = ctx.ids.to_public(channel.id);
+        const auto public_hub_id = ctx.ids.to_public(channel.hub_id);
         std::string type = channel.type == ChannelType::VOICE ? "voice" : "text";
         channels_json.push_back({{"id", public_channel_id.value},
                                  {"hub_id", public_hub_id.value},
@@ -64,135 +27,101 @@ json JoinHubByInviteCommand::build_channels_payload(const HubId& hub_id) {
     return channels_json;
 }
 
-void JoinHubByInviteCommand::execute(CommandContext& ctx) {
-    const auto& input = ctx.input;
-    auto& output = ctx.output;
+json build_members(CommandContext& ctx, const HubId& hub_id, const UserId& self) {
+    json members = json::array();
+    const auto db_members = ctx.hub_service.getHubMembers(hub_id);
+    const auto online_members = ctx.presence_manager.onlineUsersInHub(hub_id);
+    std::unordered_set<UserId> online_set(online_members.begin(), online_members.end());
 
-    if (!ctx.snapshot.authenticated) {
-        output.success = false;
-        output.error_code = "not_authenticated";
-        output.error_message = "Authentication required.";
-        json err = {{"type", "error"},
-                    {"code", "not_authenticated"},
-                    {"message", "Authentication required"}};
-        DirectMessage msg;
-        msg.conn_id = ctx.conn_id;
-        msg.payload = err.dump();
-        ctx.output.messages.push_back(std::move(msg));
-        output.sent_at = std::chrono::system_clock::now();
-        return;
-    }
-
-    const std::string invite_code = input.data.value("invite_code", "");
-    if (invite_code.empty()) {
-        output.success = false;
-        output.error_code = "invalid_invite";
-        output.error_message = "Invite code is required.";
-        json err = {
-            {"type", "error"}, {"code", "invalid_invite"}, {"message", "Invite code is required"}};
-        DirectMessage msg;
-        msg.conn_id = ctx.conn_id;
-        msg.payload = err.dump();
-        ctx.output.messages.push_back(std::move(msg));
-        output.sent_at = std::chrono::system_clock::now();
-        return;
-    }
-
-    auto internal_hub = services_.ids_.to_internal(PublicHubId{invite_code});
-    if (!internal_hub.has_value()) {
-        output.success = false;
-        output.error_code = "invite_not_found";
-        output.error_message = "Invite code is invalid.";
-        json err = {
-            {"type", "error"}, {"code", "invite_not_found"}, {"message", "Invite code is invalid"}};
-        DirectMessage msg;
-        msg.conn_id = ctx.conn_id;
-        msg.payload = err.dump();
-        ctx.output.messages.push_back(std::move(msg));
-        output.sent_at = std::chrono::system_clock::now();
-        return;
-    }
-
-    auto hub_opt = services_.db_.hubs().getHub(*internal_hub);
-    if (!hub_opt.has_value()) {
-        output.success = false;
-        output.error_code = "hub_not_found";
-        output.error_message = "Hub not found.";
-        json err = {{"type", "error"}, {"code", "hub_not_found"}, {"message", "Hub not found"}};
-        DirectMessage msg;
-        msg.conn_id = ctx.conn_id;
-        msg.payload = err.dump();
-        ctx.output.messages.push_back(std::move(msg));
-        output.sent_at = std::chrono::system_clock::now();
-        return;
-    }
-
-    if (ctx.snapshot.hubs.count(*internal_hub) ||
-        services_.db_.hubs().isHubMember(*internal_hub, ctx.snapshot.user_id)) {
-        output.success = true;
-        output.error_code.clear();
-        output.error_message.clear();
-        const auto public_hub_id = services_.ids_.to_public(*internal_hub);
-        json hub_json = {{"id", public_hub_id.value}, {"name", hub_opt->name}, {"role", "member"}};
-        json data = {{"type", "hub_joined"},
-                     {"hub", std::move(hub_json)},
-                     {"channels", build_channels_payload(*internal_hub)},
-                     {"members", build_members_payload(*internal_hub)},
-                     {"already_member", true}};
-        DirectMessage msg;
-        msg.conn_id = ctx.conn_id;
-        msg.payload = data.dump();
-        ctx.output.messages.push_back(std::move(msg));
-        output.sent_at = std::chrono::system_clock::now();
-        return;
-    }
-
-    try {
-        services_.db_.hubs().addMember(*internal_hub, ctx.snapshot.user_id, "member");
-
-        services_.gateway_.subscribe(ctx.conn_id, app::services::HubPublisher::topic_for(*internal_hub));
-
-        const auto public_hub_id = services_.ids_.to_public(*internal_hub);
-        json hub_json = {
-            {"id", public_hub_id.value},
-            {"name", hub_opt->name},
-            {"role", "member"},
-        };
-
-        services_.hub_publisher_.publish_hub(*internal_hub);
-
-        output.success = true;
-        output.error_code.clear();
-        output.error_message.clear();
-        json data = {{"type", "hub_joined"},
-                     {"hub", std::move(hub_json)},
-                     {"channels", build_channels_payload(*internal_hub)},
-                     {"members", build_members_payload(*internal_hub)},
-                     {"already_member", false}};
-        DirectMessage msg;
-        msg.conn_id = ctx.conn_id;
-        msg.payload = data.dump();
-        msg.apply_psd = [internal_hub](net::PerSocketData* psd) {
-            if (psd) {
-                auto snapshot = *psd->snapshot;
-                snapshot.hubs.insert(internal_hub.value());
-                snapshot.roles[internal_hub.value()] = Role::USER;
-                psd->snapshot = std::make_shared<net::Snapshot>(snapshot);
+    for (const auto& [user_id, stored_display] : db_members) {
+        const auto public_user = ctx.ids.to_public(user_id);
+        std::string display = stored_display;
+        if (display.empty()) {
+            if (auto user = ctx.user_service.getUser(user_id)) {
+                if (!user->username.empty()) display = user->username;
+                else if (!user->full_name.empty()) display = user->full_name;
             }
-        };
-        ctx.output.messages.push_back(std::move(msg));
-        output.sent_at = std::chrono::system_clock::now();
-    } catch (const std::exception& ex) {
-        output.success = false;
-        output.error_code = "join_hub_failed";
-        output.error_message = ex.what();
-        json err = {{"type", "error"}, {"code", "join_hub_failed"}, {"message", ex.what()}};
-        DirectMessage msg;
-        msg.conn_id = ctx.conn_id;
-        msg.payload = err.dump();
-        ctx.output.messages.push_back(std::move(msg));
-        output.sent_at = std::chrono::system_clock::now();
+        }
+        if (display.empty()) display = "Member";
+        const bool is_online = online_set.count(user_id) > 0 || user_id == self;
+        members.push_back({{"handle", display},
+                           {"display_name", display},
+                           {"online", is_online},
+                           {"user_id", public_user.value}});
     }
+    return members;
+}
+}  // namespace
+
+CommandResult JoinHubByInviteCommand::execute(CommandContext& ctx, const CommandInput cmd) {
+    const auto* input = std::get_if<JsonInput>(&cmd);
+    if (!input) {
+        return std::unexpected(CommandError{"invalid_input", "join_hub_by_code expects JSON input"});
+    }
+
+    auto user_exp = ctx.session_manager.sessionOfConnection(input->conn);
+    if (!user_exp.has_value()) {
+        return std::unexpected(CommandError{"not_authenticated", "Authenticate first"});
+    }
+    const UserId user_id = user_exp.value();
+
+    const std::string invite_code = input->body.value("invite_code", "");
+    if (invite_code.empty()) {
+        return std::unexpected(CommandError{"invalid_invite", "Invite code is required"});
+    }
+
+    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{invite_code});
+    if (!hub_id_opt.has_value()) {
+        return std::unexpected(CommandError{"invite_not_found", "Invite code is invalid"});
+    }
+    const HubId hub_id = hub_id_opt.value();
+
+    auto hub_opt = ctx.hub_service.getHub(hub_id);
+    if (!hub_opt.has_value()) {
+        return std::unexpected(CommandError{"hub_not_found", "Hub not found"});
+    }
+
+    // If already a member, just return snapshot data
+    const bool already_member = ctx.hub_service.isHubMember(hub_id, user_id);
+    if (!already_member) {
+        ctx.hub_service.addMember(hub_id, user_id, Role::USER);
+    }
+
+    const auto public_hub_id = ctx.ids.to_public(hub_id);
+    json hub_json = {{"id", public_hub_id.value}, {"name", hub_opt->name}, {"role", "member"}};
+    json payload = {{"type", "hub_joined"},
+                    {"hub", std::move(hub_json)},
+                    {"channels", build_channels(ctx, hub_id)},
+                    {"members", build_members(ctx, hub_id, user_id)},
+                    {"already_member", already_member}};
+
+    CommandSuccess res;
+    res.intents.push_back(Unicast{.conn = input->conn, .payload = std::move(payload)});
+
+    // Subscribe user to hub topic for future broadcasts
+    ctx.subscription_manager.subscribe(user_id, Topic::HubTopic(hub_id));
+
+    // Notify existing online members about the new online user
+    const auto online_members = ctx.presence_manager.onlineUsersInHub(hub_id);
+    if (!online_members.empty()) {
+        std::vector<GlobalConnId> conns;
+        conns.reserve(online_members.size());
+        for (const auto& member_id : online_members) {
+            if (member_id == user_id) continue;
+            auto conn = ctx.session_manager.getMainConnection(member_id);
+            if (conn.has_value()) conns.push_back(conn.value());
+        }
+        if (!conns.empty()) {
+            auto payload_online = ctx.hub_notifier.memberOnline(hub_id, user_id);
+            if (auto u = ctx.user_service.getUser(user_id)) {
+                if (!u->username.empty()) payload_online["display_name"] = u->username;
+                else if (!u->full_name.empty()) payload_online["display_name"] = u->full_name;
+            }
+            res.intents.push_back(Fanout{.conns = std::move(conns), .payload = std::move(payload_online)});
+        }
+    }
+
+    return res;
 }
 
 }  // namespace app
