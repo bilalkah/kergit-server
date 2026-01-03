@@ -96,6 +96,7 @@ std::expected<UserId, SessionError> SessionManager::sessionOfConnection(
 
 const std::expected<SessionInfo, SessionError> SessionManager::getSession(
     const UserId& session) const {
+    std::shared_lock lock(mutex_);
     auto it = sessions_.find(session);
     if (it == sessions_.end()) return std::unexpected<SessionError>("Session not found");
     return it->second;
@@ -108,11 +109,6 @@ const std::expected<GlobalConnId, SessionError> SessionManager::getMainConnectio
     if (!it->second.main_conn)
         return std::unexpected<SessionError>("Main connection not found for session");
     return *(it->second.main_conn);
-}
-
-const std::unordered_map<UserId, SessionInfo>& SessionManager::allSessions() const {
-    std::shared_lock lock(mutex_);
-    return sessions_;
 }
 
 std::vector<UserId> SessionManager::activeUsers() const {

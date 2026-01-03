@@ -16,8 +16,7 @@ void AppStack::resume() { worker_pool_->resume(); }
 
 void AppStack::bootstrap() {
     if (!out_queue_) {
-        log(utils::LogLevel::ERROR, "Outbound sink not attached!");
-        exit(EXIT_FAILURE);
+        throw std::runtime_error("Outbound sink not attached to AppStack");
     }
     init_database();
     init_managers();

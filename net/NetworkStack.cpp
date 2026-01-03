@@ -78,7 +78,6 @@ bool NetworkStack::stop() {
         log(utils::LogLevel::INFO, "Joining server thread...");
         server_thread_.join();
     }
-    stopped_.store(true, std::memory_order_release);
     started_.store(false, std::memory_order_release);
     log(utils::LogLevel::INFO, "Stop NetworkStack is completed.");
     return stopped_.load(std::memory_order_acquire);
