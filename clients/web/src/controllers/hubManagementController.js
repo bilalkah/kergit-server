@@ -311,7 +311,20 @@ export function createHubManagementController({ ws, els }) {
       setBusy(false);
       setInviteBusy(false);
       setInviteCode(hub?.invite_code || '');
-      if (hubSettingsName) hubSettingsName.value = hub?.name || '';
+      const role = hub?.role || '';
+      const isOwner = role === 'owner';
+      const canInvite = role === 'owner' || role === 'admin';
+      if (hubSettingsName) {
+        hubSettingsName.value = hub?.name || '';
+        hubSettingsName.disabled = !isOwner;
+      }
+      if (hubSettingsSave) hubSettingsSave.disabled = !isOwner;
+      if (hubSettingsDelete) {
+        hubSettingsDelete.disabled = !isOwner;
+        hubSettingsDelete.classList.toggle('hidden', !isOwner);
+      }
+      if (hubSettingsCopy) hubSettingsCopy.disabled = !canInvite;
+      if (hubSettingsRefresh) hubSettingsRefresh.disabled = !canInvite;
       hubSettingsModal.classList.remove('hidden');
       queueMicrotask(() => hubSettingsName?.focus());
     };
