@@ -7,6 +7,7 @@
 #include "app/commands/channel/RenameChannelCommand.h"
 #include "app/commands/hub/DeleteHubCommand.h"
 #include "app/commands/hub/CreateHubCommand.h"
+#include "app/commands/hub/RenameHubCommand.h"
 #include "app/commands/message/SendMessageCommand.h"
 #include "app/commands/system/DisconnectionCommand.h"
 
@@ -43,6 +44,7 @@ void Dispatcher::register_all() {
     register_cmd("rename_channel", std::make_unique<RenameChannelCommand>());
     register_cmd("delete_hub", std::make_unique<DeleteHubCommand>());
     register_cmd("create_hub", std::make_unique<CreateHubCommand>());
+    register_cmd("rename_hub", std::make_unique<RenameHubCommand>());
     // register_cmd("delete_channel", std::make_unique<DeleteChannelCommand>());
     // register_cmd("create_hub", std::make_unique<CreateHubCommand>());
     // register_cmd("rename_hub", std::make_unique<RenameHubCommand>());
