@@ -1,201 +1,111 @@
-#include "app/commands/UpdateMemberRoleCommand.h"
+#include "app/commands/member/UpdateMemberRoleCommand.h"
 
-#include "net/PerSocketData.h"
+#include "app/dispatcher/CommandContext.h"
+#include "domains/Hub.h"
 
 #include <nlohmann/json.hpp>
-#include <unordered_set>
+#include <string>
 
 using nlohmann::json;
 
 namespace app {
 
-UpdateMemberRoleCommand::UpdateMemberRoleCommand(ServiceObjects& svc_objs)
-    : services_(svc_objs) {}
-
-bool UpdateMemberRoleCommand::is_owner(const CommandContext& ctx, const HubId& hub_id) {
-    auto it = ctx.snapshot.roles.find(hub_id);
-    if (it == ctx.snapshot.roles.end()) {
-        return false;
-    }
-    Role role = it->second;
-    return role == Role::OWNER;
+namespace {
+std::optional<Role> parse_role(const std::string& role_str) {
+    if (role_str == "admin") return Role::ADMIN;
+    if (role_str == "member") return Role::USER;
+    return std::nullopt;
 }
+}  // namespace
 
-void UpdateMemberRoleCommand::execute(CommandContext& ctx) {
-    const auto& input = ctx.input;
-    auto& output = ctx.output;
-
-    if (!ctx.snapshot.authenticated) {
-        output.success = false;
-        output.error_code = "not_authenticated";
-        output.error_message = "Authenticate before updating roles.";
-        json err = {{"type", "error"},
-                    {"code", "not_authenticated"},
-                    {"message", "Authentication required"}};
-        DirectMessage msg;
-        msg.conn_id = ctx.conn_id;
-        msg.payload = err.dump();
-        output.messages.push_back(msg);
-        output.sent_at = std::chrono::system_clock::now();
-        return;
+CommandResult UpdateMemberRoleCommand::execute(CommandContext& ctx, const CommandInput cmd) {
+    const auto* input = std::get_if<JsonInput>(&cmd);
+    if (!input) {
+        return std::unexpected(CommandError{"invalid_input", "update_member_role expects JSON input"});
     }
 
-    const std::string hub_id_str = input.data.value("hub_id", "");
-    const std::string user_id_str = input.data.value("user_id", "");
-    const std::string role_str = input.data.value("role", "");
+    auto actor_exp = ctx.session_manager.sessionOfConnection(input->conn);
+    if (!actor_exp.has_value()) {
+        return std::unexpected(CommandError{"not_authenticated", "Authenticate first"});
+    }
+    const UserId actor = actor_exp.value();
 
-    if (hub_id_str.empty() || user_id_str.empty() || role_str.empty()) {
-        output.success = false;
-        output.error_code = "invalid_request";
-        output.error_message = "hub_id, user_id and role are required.";
-        json err = {{"type", "error"},
-                    {"code", "invalid_request"},
-                    {"message", "hub_id, user_id and role are required"}};
-        DirectMessage msg;
-        msg.conn_id = ctx.conn_id;
-        msg.payload = err.dump();
-        output.messages.push_back(msg);
-        output.sent_at = std::chrono::system_clock::now();
-        return;
+    const std::string hub_raw = input->body.value("hub_id", "");
+    const std::string user_raw = input->body.value("user_id", "");
+    const std::string role_raw = input->body.value("role", "");
+
+    if (hub_raw.empty() || user_raw.empty() || role_raw.empty()) {
+        return std::unexpected(
+            CommandError{"invalid_request", "hub_id, user_id and role are required"});
     }
 
-    auto internal_hub = services_.ids_.to_internal(PublicHubId{hub_id_str});
-    auto internal_user = services_.ids_.to_internal(PublicUserId{user_id_str});
-    if (!internal_hub.has_value() || !internal_user.has_value()) {
-        output.success = false;
-        output.error_code = "not_found";
-        output.error_message = "Invalid hub or user identifier.";
-        json err = {{"type", "error"},
-                    {"code", "not_found"},
-                    {"message", "Invalid hub or user identifier"}};
-        DirectMessage msg;
-        msg.conn_id = ctx.conn_id;
-        msg.payload = err.dump();
-        output.messages.push_back(msg);
-        output.sent_at = std::chrono::system_clock::now();
-        return;
+    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{hub_raw});
+    auto target_id_opt = ctx.ids.to_internal(PublicUserId{user_raw});
+    if (!hub_id_opt.has_value() || !target_id_opt.has_value()) {
+        return std::unexpected(CommandError{"not_found", "Invalid hub or user identifier"});
+    }
+    const HubId hub_id = hub_id_opt.value();
+    const UserId target_id = target_id_opt.value();
+
+    auto new_role_opt = parse_role(role_raw);
+    if (!new_role_opt.has_value()) {
+        return std::unexpected(CommandError{"invalid_role", "Role must be 'admin' or 'member'"});
+    }
+    const Role new_role = *new_role_opt;
+
+    // actor must be owner
+    auto actor_role = ctx.hub_service.getMembershipRole(hub_id, actor);
+    if (!actor_role.has_value()) {
+        return std::unexpected(CommandError{"not_in_hub", "Join the hub before updating roles"});
+    }
+    if (*actor_role != Role::OWNER) {
+        return std::unexpected(
+            CommandError{"insufficient_privilege", "Only owners can update member roles"});
     }
 
-    // if (!is_owner(ctx, *internal_hub)) {
-    //     output.success = false;
-    //     output.error_code = "insufficient_privilege";
-    //     output.error_message = "Only owners can update member roles.";
-    //     json err = {{"type", "error"},
-    //                 {"code", "insufficient_privilege"},
-    //                 {"message", "Only owners can update member roles"}};
-    //     DirectMessage msg;
-    //     msg.conn_id = ctx.conn_id;
-    //     msg.payload = err.dump();
-    //     output.messages.push_back(msg);
-    //     output.sent_at = std::chrono::system_clock::now();
-    //     return;
-    // }
-
-    if (ctx.snapshot.user_id == *internal_user) {
-        output.success = false;
-        output.error_code = "invalid_target";
-        output.error_message = "Owners cannot change their own role.";
-        json err = {{"type", "error"},
-                    {"code", "invalid_target"},
-                    {"message", "Owners cannot change their own role"}};
-        DirectMessage msg;
-        msg.conn_id = ctx.conn_id;
-        msg.payload = err.dump();
-        output.messages.push_back(msg);
-        output.sent_at = std::chrono::system_clock::now();
-        return;
+    // target must be a member and not owner
+    auto target_role = ctx.hub_service.getMembershipRole(hub_id, target_id);
+    if (!target_role.has_value()) {
+        return std::unexpected(CommandError{"not_member", "Target user is not a member"});
+    }
+    if (*target_role == Role::OWNER) {
+        return std::unexpected(CommandError{"invalid_target", "Cannot modify the owner's role"});
     }
 
-    auto current_role = services_.db_.hubs().getMembershipRole(*internal_hub, *internal_user);
-    if (!current_role.has_value()) {
-        output.success = false;
-        output.error_code = "not_member";
-        output.error_message = "Target user is not a member of the hub.";
-        json err = {{"type", "error"},
-                    {"code", "not_member"},
-                    {"message", "Target user is not a member of the hub"}};
-        DirectMessage msg;
-        msg.conn_id = ctx.conn_id;
-        msg.payload = err.dump();
-        output.messages.push_back(msg);
-        output.sent_at = std::chrono::system_clock::now();
-        return;
-    }
-    if (*current_role == Role::OWNER) {
-        output.success = false;
-        output.error_code = "invalid_target";
-        output.error_message = "Cannot modify the owner's role.";
-        json err = {{"type", "error"},
-                    {"code", "invalid_target"},
-                    {"message", "Cannot modify the owner's role"}};
-        DirectMessage msg;
-        msg.conn_id = ctx.conn_id;
-        msg.payload = err.dump();
-        output.messages.push_back(msg);
-        output.sent_at = std::chrono::system_clock::now();
-        return;
+    if (actor == target_id) {
+        return std::unexpected(CommandError{"invalid_target", "Cannot change your own role"});
     }
 
-    std::string new_role_str;
-    Role new_role;
-    if (role_str == "admin") {
-        new_role_str = "admin";
-        new_role = Role::ADMIN;
-    } else if (role_str == "member") {
-        new_role_str = "member";
-        new_role = Role::USER;
-    } else {
-        output.success = false;
-        output.error_code = "invalid_role";
-        output.error_message = "Role must be 'admin' or 'member'.";
-        json err = {{"type", "error"},
-                    {"code", "invalid_role"},
-                    {"message", "Role must be 'admin' or 'member'"}};
-        DirectMessage msg;
-        msg.conn_id = ctx.conn_id;
-        msg.payload = err.dump();
-        output.messages.push_back(msg);
-        output.sent_at = std::chrono::system_clock::now();
-        return;
+    // Apply role change
+    ctx.hub_service.addMember(hub_id, target_id, new_role);
+
+    const auto public_hub_id = ctx.ids.to_public(hub_id);
+    const auto public_target = ctx.ids.to_public(target_id);
+
+    json payload = {{"type", "member_role_updated"},
+                    {"hub_id", public_hub_id.value},
+                    {"user_id", public_target.value},
+                    {"role", role_raw}};
+
+    CommandSuccess res;
+    // Notify hub subscribers
+    auto subs = ctx.subscription_manager.getSubscribers(Topic::HubTopic(hub_id));
+    if (subs.has_value() && !subs->empty()) {
+        std::vector<GlobalConnId> conns;
+        conns.reserve(subs->size());
+        for (const auto& uid : subs.value()) {
+            auto c = ctx.session_manager.getMainConnection(uid);
+            if (c.has_value()) conns.push_back(c.value());
+        }
+        if (!conns.empty()) {
+            res.intents.push_back(Fanout{.conns = std::move(conns), .payload = payload});
+        }
     }
 
-    try {
-        services_.db_.hubs().addMember(*internal_hub, *internal_user, new_role_str);
+    // Ack requester
+    res.intents.push_back(Unicast{.conn = input->conn, .payload = std::move(payload)});
 
-        services_.hub_publisher_.publish_hub(*internal_hub);
-
-        json notice = {{"type", "member_role_updated"},
-                       {"hub_id", hub_id_str},
-                       {"user_id", user_id_str},
-                       {"role", new_role_str}};
-        DirectMessage msg;
-        msg.conn_id = ctx.conn_id;
-        msg.payload = notice.dump();
-        msg.apply_psd = [hub_id = *internal_hub, user_id = *internal_user,
-                         new_role](net::PerSocketData* psd) {
-            auto snapshot = *psd->snapshot;
-            if (!snapshot.hubs.contains(hub_id)) {
-                snapshot.hubs.insert(hub_id);
-            }
-            snapshot.roles[hub_id] = new_role;
-            psd->snapshot = std::make_shared<const net::Snapshot>(std::move(snapshot));
-        };
-        output.messages.push_back(msg);
-        output.success = true;
-        output.error_code.clear();
-        output.error_message.clear();
-        output.sent_at = std::chrono::system_clock::now();
-    } catch (const std::exception& ex) {
-        output.success = false;
-        output.error_code = "update_failed";
-        output.error_message = ex.what();
-        json err = {{"type", "error"}, {"code", "update_failed"}, {"message", ex.what()}};
-        DirectMessage msg;
-        msg.conn_id = ctx.conn_id;
-        msg.payload = err.dump();
-        output.messages.push_back(msg);
-        output.sent_at = std::chrono::system_clock::now();
-    }
+    return res;
 }
 
 }  // namespace app
