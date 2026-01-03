@@ -408,8 +408,9 @@ export function wireRealtime({ ws, els }) {
     if (!hub || !hub.id) return;
     actions.addHub(hub);
     const channels = Array.isArray(msg.channels) ? msg.channels : [];
+    const members = Array.isArray(msg.members) ? msg.members : [];
     actions.updateHubChannels(hub.id, channels);
-    actions.setHubMembers(hub.id, []);
+    actions.setHubMembers(hub.id, members);
     actions.setCurrentHub(hub.id);
     document.dispatchEvent(new CustomEvent('hubs:changed', { detail: { hub } }));
   });
