@@ -400,15 +400,65 @@ export function createHubManagementController({ ws, els }) {
       }
     });
 
-    hubSettingsCopy?.addEventListener('click', (e) => {
+    let copyReset;
+    const showCopyFeedback = (ok) => {
+      if (!hubSettingsCopy) return;
+      hubSettingsCopy.textContent = ok ? 'Copied!' : 'Copy';
+      clearTimeout(copyReset);
+      copyReset = setTimeout(() => {
+        hubSettingsCopy.textContent = 'Copy';
+      }, 1200);
+    };
+
+    hubSettingsCopy?.addEventListener('click', async (e) => {
       e.preventDefault();
-      if (!hubSettingsInviteCode || !hubSettingsInviteCode.value) return;
-      try {
-        hubSettingsInviteCode.select();
-        document.execCommand('copy');
-      } catch (err) {
-        console.warn('[HubSettings] copy failed', err);
-      }
+      const val = hubSettingsInviteCode?.value || '';
+      if (!val) return;
+      const ok = await (async () => {
+        try {
+          if (navigator?.clipboard?.writeText) {
+            await navigator.clipboard.writeText(val);
+            return true;
+          }
+        } catch (_) {
+          /* ignore and fall back */
+        }
+        // Fallback 1: use the visible input
+        if (hubSettingsInviteCode) {
+          const wasReadOnly = hubSettingsInviteCode.hasAttribute('readonly');
+          if (wasReadOnly) hubSettingsInviteCode.removeAttribute('readonly');
+          hubSettingsInviteCode.focus();
+          hubSettingsInviteCode.select();
+          hubSettingsInviteCode.setSelectionRange(0, val.length);
+          const ok = document.execCommand('copy');
+          if (wasReadOnly) hubSettingsInviteCode.setAttribute('readonly', 'readonly');
+          hubSettingsInviteCode.blur();
+          if (ok) return true;
+        }
+        // Fallback 2: hidden textarea
+        let tmp;
+        try {
+          tmp = document.createElement('textarea');
+          tmp.value = val;
+          tmp.setAttribute('readonly', '');
+          tmp.style.position = 'absolute';
+          tmp.style.left = '-9999px';
+          document.body.appendChild(tmp);
+          tmp.select();
+          tmp.setSelectionRange(0, tmp.value.length);
+          const ok = document.execCommand('copy');
+          return ok;
+        } catch (err) {
+          console.warn('[HubSettings] copy failed', err);
+          return false;
+        } finally {
+          if (tmp && tmp.parentNode) tmp.parentNode.removeChild(tmp);
+          if (hubSettingsInviteCode) hubSettingsInviteCode.blur();
+        }
+      })();
+      showCopyFeedback(ok);
+      // Keep focus on modal input for convenience
+      queueMicrotask(() => hubSettingsInviteCode?.focus());
     });
 
     hubSettingsRefresh?.addEventListener('click', (e) => {
