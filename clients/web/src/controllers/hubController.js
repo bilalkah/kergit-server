@@ -79,9 +79,11 @@ export function createHubController({ els, onNoHubState } = {}) {
     const role = currentHub.role || sel.currentHubRole() || '';
     const isOwner = role === 'owner';
     const canCreate = role === 'owner' || role === 'admin';
+    const canInvite = role === 'owner' || role === 'admin';
     if (els.hubSettingsBtn) {
-      els.hubSettingsBtn.style.visibility = isOwner ? 'visible' : 'hidden';
-      els.hubSettingsBtn.disabled = !isOwner;
+      const showSettings = isOwner || canInvite;
+      els.hubSettingsBtn.style.visibility = showSettings ? 'visible' : 'hidden';
+      els.hubSettingsBtn.disabled = !showSettings;
     }
     if (els.leaveHubBtn) {
       if (isOwner) {

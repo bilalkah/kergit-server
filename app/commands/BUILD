@@ -187,6 +187,20 @@ cc_library(
         "@nlohmann_json",
     ],
 )
+
+cc_library(
+    name = "update_member_role_command",
+    srcs = ["member/UpdateMemberRoleCommand.cpp"],
+    hdrs = ["member/UpdateMemberRoleCommand.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":i_command",
+        "//app/dispatcher:command_context",
+        "//app/managers/subscription:topic",
+        "//domains:hub_domain",
+        "@nlohmann_json",
+    ],
+)
 # cc_library(
 #     name = "auth_command",
 #     srcs = ["AuthCommand.cpp"],
