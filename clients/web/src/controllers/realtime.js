@@ -380,6 +380,17 @@ export function wireRealtime({ ws, els }) {
     }
   });
 
+  ws.on('member_left', (msg = {}) => {
+    const hubId = msg.hub_id;
+    const userId = msg.user_id;
+    if (!hubId || !userId) return;
+    actions.updateHubMemberPresence(hubId, userId, false);
+    if (state.current.hubId === hubId && usersList && userCount) {
+      const roster = sel.membersInHub(hubId);
+      renderUsers(usersList, userCount, roster);
+    }
+  });
+
   // Messages from server (just pass to your existing messageController via store)
   ws.on('message', (msg) => {
     // expect: {type:'message', channel_id, sender, content, sent_at}

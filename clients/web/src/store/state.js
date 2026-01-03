@@ -317,13 +317,21 @@ actions.updateHubMemberPresence = function updateHubMemberPresence(hubId, userId
   const idx = members.findIndex((m) => m.user_id === userId);
 
   if (idx >= 0) {
-    const updated = { ...members[idx], online };
-    if (displayName) {
-      updated.display_name = displayName;
-      updated.handle = members[idx].handle || displayName;
+    if (online) {
+      const updated = { ...members[idx], online: true };
+      if (displayName) {
+        updated.display_name = displayName;
+        updated.handle = members[idx].handle || displayName;
+      }
+      members[idx] = updated;
+    } else {
+      members.splice(idx, 1);  // remove member when offline/left
     }
-    members[idx] = updated;
   } else {
+    if (!online) {
+      state.membersByHub[hubId] = members;
+      return;
+    }
     const name = displayName || 'Member';
     members.push({
       handle: displayName || userId,
