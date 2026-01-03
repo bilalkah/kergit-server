@@ -55,16 +55,6 @@ void Dispatcher::register_all() {
     register_cmd("leave_hub", std::make_unique<LeaveHubCommand>());
     register_cmd("update_member_role", std::make_unique<UpdateMemberRoleCommand>());
     register_cmd("update_profile", std::make_unique<UpdateProfileCommand>());
-    // register_cmd("delete_channel", std::make_unique<DeleteChannelCommand>());
-    // register_cmd("create_hub", std::make_unique<CreateHubCommand>());
-    // register_cmd("rename_hub", std::make_unique<RenameHubCommand>());
-    // register_cmd("delete_hub", std::make_unique<DeleteHubCommand>());
-    // register_cmd("generate_hub_invite", std::make_unique<GetHubInviteCommand>());
-    // register_cmd("join_hub_by_code", std::make_unique<JoinHubByInviteCommand>());
-    // register_cmd("leave_hub", std::make_unique<LeaveHubCommand>());
-    // register_cmd("update_member_role", std::make_unique<UpdateMemberRoleCommand>());
-    // register_cmd("update_profile", std::make_unique<UpdateProfileCommand>());
-    // register_cmd("disconnect", std::make_unique<DisconnectCommand>());
 }
 
 }  // namespace app
