@@ -85,6 +85,21 @@ cc_library(
         "@nlohmann_json",
     ],
 )
+
+cc_library(
+    name = "rename_channel_command",
+    srcs = ["channel/RenameChannelCommand.cpp"],
+    hdrs = ["channel/RenameChannelCommand.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":i_command",
+        "//app/dispatcher:command_context",
+        "//app/managers/subscription:topic",
+        "//domains:channel_domain",
+        "//domains:hub_domain",
+        "@nlohmann_json",
+    ],
+)
 # cc_library(
 #     name = "auth_command",
 #     srcs = ["AuthCommand.cpp"],
