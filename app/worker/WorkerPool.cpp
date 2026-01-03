@@ -123,6 +123,11 @@ void WorkerPool::worker_loop(std::size_t worker_index) {
                     // dispatch
                     cmd_result = dispatcher_.dispatch(message["type"], cmd_ctx_, input);
 
+                    {
+                        // remove from executing commands cache
+                        std::lock_guard<std::mutex> lock(executing_commands_mtx_);
+                        executing_commands_.erase(event.conn_id);
+                    }
                 } else if constexpr (std::is_same_v<T, app::queue::ConnectionEvent>) {
                     net::outbound::OutgoingMessage welcome_msg;
                     nlohmann::json welcome_payload = {{"type", "welcome"},
@@ -174,12 +179,6 @@ void WorkerPool::worker_loop(std::size_t worker_index) {
                     },
                     intent);
             }
-        }
-
-        {
-            // remove from executing commands cache
-            std::lock_guard<std::mutex> lock(executing_commands_mtx_);
-            executing_commands_.erase(event.conn_id);
         }
     }
 }

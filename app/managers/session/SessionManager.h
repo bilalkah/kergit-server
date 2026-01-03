@@ -44,7 +44,6 @@ class SessionManager final {
     std::expected<UserId, SessionError> sessionOfConnection(const GlobalConnId& conn) const;
     const std::expected<SessionInfo, SessionError> getSession(const UserId& session) const;
     const std::expected<GlobalConnId, SessionError> getMainConnection(const UserId& session) const;
-    const std::unordered_map<UserId, SessionInfo>& allSessions() const;
     std::vector<UserId> activeUsers() const;
 
    private:
