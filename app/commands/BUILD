@@ -172,6 +172,21 @@ cc_library(
         "@nlohmann_json",
     ],
 )
+
+cc_library(
+    name = "leave_hub_command",
+    srcs = ["hub/LeaveHubCommand.cpp"],
+    hdrs = ["hub/LeaveHubCommand.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":i_command",
+        "//app/dispatcher:command_context",
+        "//app/managers/subscription:topic",
+        "//domains:channel_domain",
+        "//domains:hub_domain",
+        "@nlohmann_json",
+    ],
+)
 # cc_library(
 #     name = "auth_command",
 #     srcs = ["AuthCommand.cpp"],

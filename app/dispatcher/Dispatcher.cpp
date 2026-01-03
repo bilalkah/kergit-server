@@ -12,6 +12,7 @@
 #include "app/commands/message/SendMessageCommand.h"
 #include "app/commands/system/DisconnectionCommand.h"
 #include "app/commands/hub/JoinHubByInviteCommand.h"
+#include "app/commands/hub/LeaveHubCommand.h"
 
 namespace app {
 
@@ -49,6 +50,7 @@ void Dispatcher::register_all() {
     register_cmd("rename_hub", std::make_unique<RenameHubCommand>());
     register_cmd("generate_hub_invite", std::make_unique<GetHubInviteCommand>());
     register_cmd("join_hub_by_code", std::make_unique<JoinHubByInviteCommand>());
+    register_cmd("leave_hub", std::make_unique<LeaveHubCommand>());
     // register_cmd("delete_channel", std::make_unique<DeleteChannelCommand>());
     // register_cmd("create_hub", std::make_unique<CreateHubCommand>());
     // register_cmd("rename_hub", std::make_unique<RenameHubCommand>());
