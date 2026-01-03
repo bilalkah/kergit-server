@@ -130,6 +130,20 @@ cc_library(
         "@nlohmann_json",
     ],
 )
+
+cc_library(
+    name = "rename_hub_command",
+    srcs = ["hub/RenameHubCommand.cpp"],
+    hdrs = ["hub/RenameHubCommand.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":i_command",
+        "//app/dispatcher:command_context",
+        "//app/managers/subscription:topic",
+        "//domains:hub_domain",
+        "@nlohmann_json",
+    ],
+)
 # cc_library(
 #     name = "auth_command",
 #     srcs = ["AuthCommand.cpp"],
