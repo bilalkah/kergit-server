@@ -152,14 +152,6 @@ CommandResult AuthCommand::execute(CommandContext& ctx, const CommandInput cmd) 
     CommandSuccess res;
     res.intents.push_back(Unicast{.conn = input->conn, .payload = std::move(auth_resp)});
 
-    // Also push hubs_list for clients already wired to consume that channel
-    json hubs_list = {{"type", "hubs_list"},
-                      {"hub_count", hubs.size()},
-                      {"hubs", std::move(hubs_meta)},
-                      {"channels_by_hub", std::move(channels_by_hub)},
-                      {"online_by_hub", std::move(members_by_hub)}};
-    res.intents.push_back(Unicast{.conn = input->conn, .payload = std::move(hubs_list)});
-
     // Notify online members in shared hubs that this user is now online
     for (const auto& hub : hubs) {
         const auto online_members = ctx.presence_manager.onlineUsersInHub(hub.id);
