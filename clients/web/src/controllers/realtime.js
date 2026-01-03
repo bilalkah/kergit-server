@@ -406,12 +406,65 @@ export function wireRealtime({ ws, els }) {
   });
 
   ws.on('profile_updated', (msg = {}) => {
-    actions.updateSelfProfile({
-      username: typeof msg.username === 'string' ? msg.username : undefined,
-      full_name: typeof msg.full_name === 'string' ? msg.full_name : undefined,
-      display_name: msg.display_name
-    });
-    document.dispatchEvent(new CustomEvent('profile:update:success', { detail: msg }));
+    // If the updated user is self, update self profile and local rosters
+    if (msg.user_id === state.self.publicId) {
+      const prev = state.self.displayName || state.self.username || state.self.fullName || '';
+      actions.updateSelfProfile({
+        username: typeof msg.username === 'string' ? msg.username : undefined,
+        full_name: typeof msg.full_name === 'string' ? msg.full_name : undefined,
+        display_name: msg.display_name
+      });
+      actions.updateUserDisplay(msg.user_id, state.self.displayName, prev);
+      document.dispatchEvent(new CustomEvent('profile:update:success', { detail: msg }));
+      if (state.current.hubId && usersList && userCount) {
+        const roster = sel.membersInHub(state.current.hubId);
+        renderUsers(usersList, userCount, roster);
+      }
+      if (state.current.channelId) {
+        document.dispatchEvent(new CustomEvent('messages:updated', { detail: { channel_id: state.current.channelId } }));
+      }
+    } else if (msg.user_id) {
+      // Update hub rosters for other users (scope to hub if provided)
+      const displayName = msg.display_name || msg.username || msg.full_name || '';
+      const findExisting = () => {
+        if (msg.hub_id) {
+          const arr = state.membersByHub[msg.hub_id] || [];
+          const m = arr.find((x) => x.user_id === msg.user_id);
+          if (m) return m.display_name || m.handle || '';
+        }
+        for (const members of Object.values(state.membersByHub || {})) {
+          const m = members.find((x) => x.user_id === msg.user_id);
+          if (m) return m.display_name || m.handle || '';
+        }
+        return '';
+      };
+      const oldDisplay = findExisting();
+      if (msg.hub_id) {
+        actions.updateHubMemberPresence(msg.hub_id, msg.user_id, true, displayName);
+      } else {
+        Object.keys(state.membersByHub || {}).forEach((hubId) => {
+          actions.updateHubMemberPresence(hubId, msg.user_id, true, displayName);
+        });
+      }
+      // Update channel rosters
+      Object.keys(state.usersByChannel || {}).forEach((channelId) => {
+        actions.upsertPresence({
+          channel_id: channelId,
+          handle: displayName,
+          display_name: displayName,
+          online: true,
+          user_id: msg.user_id
+        });
+      });
+      actions.updateUserDisplay(msg.user_id, displayName, oldDisplay);
+      if (state.current.hubId && usersList && userCount) {
+        const roster = sel.membersInHub(state.current.hubId);
+        renderUsers(usersList, userCount, roster);
+      }
+      if (state.current.channelId) {
+        document.dispatchEvent(new CustomEvent('messages:updated', { detail: { channel_id: state.current.channelId } }));
+      }
+    }
   });
 
   ws.on('hub_created', (msg = {}) => {

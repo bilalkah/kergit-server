@@ -1,11 +1,11 @@
-#include "app/commands/UpdateProfileCommand.h"
+#include "app/commands/profile/UpdateProfileCommand.h"
 
-#include "net/PerSocketData.h"
+#include "app/dispatcher/CommandContext.h"
 
+#include <nlohmann/json.hpp>
 #include <algorithm>
 #include <cctype>
 #include <chrono>
-#include <nlohmann/json.hpp>
 #include <optional>
 #include <string>
 
@@ -15,10 +15,7 @@ namespace app {
 
 namespace {
 constexpr std::size_t kMaxNameLength = 48;
-}  // namespace
-
-UpdateProfileCommand::UpdateProfileCommand(ServiceObjects& svc_objs)
-    : services_(svc_objs) {}
+}
 
 std::string UpdateProfileCommand::trim(std::string value) {
     value.erase(value.begin(), std::find_if(value.begin(), value.end(),
@@ -30,30 +27,23 @@ std::string UpdateProfileCommand::trim(std::string value) {
     return value;
 }
 
-void UpdateProfileCommand::execute(CommandContext& ctx) {
-    const auto& input = ctx.input;
-    auto& output = ctx.output;
-
-    if (!ctx.snapshot.authenticated) {
-        output.success = false;
-        output.error_code = "not_authenticated";
-        output.error_message = "Authenticate before updating profile.";
-        json err = {{"type", "error"},
-                    {"code", "not_authenticated"},
-                    {"message", "Authentication required"}};
-        DirectMessage msg;
-        msg.conn_id = ctx.conn_id;
-        msg.payload = err.dump();
-        output.messages.push_back(msg);
-        output.sent_at = std::chrono::system_clock::now();
-        return;
+CommandResult UpdateProfileCommand::execute(CommandContext& ctx, const CommandInput cmd) {
+    const auto* input = std::get_if<JsonInput>(&cmd);
+    if (!input) {
+        return std::unexpected(CommandError{"invalid_input", "update_profile expects JSON input"});
     }
+
+    auto user_exp = ctx.session_manager.sessionOfConnection(input->conn);
+    if (!user_exp.has_value()) {
+        return std::unexpected(CommandError{"not_authenticated", "Authenticate first"});
+    }
+    const UserId user_id = user_exp.value();
 
     std::optional<std::string> username_opt;
     std::optional<std::string> full_name_opt;
 
-    if (input.data.contains("username") && input.data["username"].is_string()) {
-        auto value = trim(input.data["username"].get<std::string>());
+    if (input->body.contains("username") && input->body["username"].is_string()) {
+        auto value = trim(input->body["username"].get<std::string>());
         if (!value.empty()) {
             if (value.size() > kMaxNameLength) value.resize(kMaxNameLength);
             username_opt = value;
@@ -61,8 +51,8 @@ void UpdateProfileCommand::execute(CommandContext& ctx) {
             username_opt = std::string{};
         }
     }
-    if (input.data.contains("full_name") && input.data["full_name"].is_string()) {
-        auto value = trim(input.data["full_name"].get<std::string>());
+    if (input->body.contains("full_name") && input->body["full_name"].is_string()) {
+        auto value = trim(input->body["full_name"].get<std::string>());
         if (!value.empty()) {
             if (value.size() > kMaxNameLength) value.resize(kMaxNameLength);
             full_name_opt = value;
@@ -72,26 +62,22 @@ void UpdateProfileCommand::execute(CommandContext& ctx) {
     }
 
     if (!username_opt.has_value() && !full_name_opt.has_value()) {
-        output.success = false;
-        output.error_code = "invalid_profile";
-        output.error_message = "Provide a username or full name to update.";
-        json err = {{"type", "error"},
-                    {"code", "invalid_profile"},
-                    {"message", "Provide a username or full name to update"}};
-
-        DirectMessage msg;
-        msg.conn_id = ctx.conn_id;
-        msg.payload = err.dump();
-        output.messages.push_back(msg);
-        output.sent_at = std::chrono::system_clock::now();
-        return;
+        return std::unexpected(
+            CommandError{"invalid_profile", "Provide a username or full name to update"});
     }
 
     try {
-        auto [final_username, final_full_name] =
-            services_.db_.users().updateUserProfile(ctx.snapshot.user_id, username_opt, full_name_opt);
+        ctx.user_service.updateProfile(user_id, username_opt, full_name_opt);
 
-        ctx.snapshot.username = final_username;
+        std::string final_username;
+        std::string final_full_name;
+        if (auto u = ctx.user_service.getUser(user_id)) {
+            final_username = u->username;
+            final_full_name = u->full_name;
+        } else {
+            final_username = username_opt.value_or(std::string{});
+            final_full_name = full_name_opt.value_or(std::string{});
+        }
 
         std::string chosen_display;
         if (!final_username.empty()) {
@@ -99,48 +85,43 @@ void UpdateProfileCommand::execute(CommandContext& ctx) {
         } else if (!final_full_name.empty()) {
             chosen_display = final_full_name;
         }
-
-        if (chosen_display.empty()) {
-            if (auto db_name = services_.db_.users().getUserDisplayName(ctx.snapshot.user_id)) {
-                if (!db_name->empty()) chosen_display = *db_name;
-            }
-        }
         if (chosen_display.empty()) chosen_display = "Member";
 
-        services_.ids_.remember_display(ctx.snapshot.user_id, chosen_display);
+        json payload = {{"type", "profile_updated"},
+                        {"success", true},
+                        {"username", final_username},
+                        {"full_name", final_full_name},
+                        {"display_name", chosen_display},
+                        {"user_id", ctx.ids.to_public(user_id).value}};
 
-        services_.hub_publisher_.publish_hubs(ctx.snapshot.hubs);
+        CommandSuccess res;
+        res.intents.push_back(Unicast{.conn = input->conn, .payload = payload});
 
-        output.success = true;
-        output.error_code.clear();
-        output.error_message.clear();
-        json data = json{{"type", "profile_updated"},
-                         {"success", true},
-                         {"username", final_username},
-                         {"full_name", final_full_name},
-                         {"display_name", chosen_display}};
-        DirectMessage msg;
-        msg.conn_id = ctx.conn_id;
-        msg.payload = data.dump();
-        msg.apply_psd = [final_username, final_full_name](net::PerSocketData* psd) {
-            if (psd) {
-                auto snapshot = *psd->snapshot;
-                snapshot.username = final_username;
-                psd->snapshot = std::make_shared<const net::Snapshot>(std::move(snapshot));
+        // Broadcast updated name to hub members
+        const auto hubs = ctx.hub_service.getUserHubs(user_id);
+        for (const auto& hub : hubs) {
+            const auto online_members = ctx.presence_manager.onlineUsersInHub(hub.id);
+            std::vector<GlobalConnId> conns;
+            conns.reserve(online_members.size());
+            for (const auto& member_id : online_members) {
+                if (member_id == user_id) continue;
+                auto c = ctx.session_manager.getMainConnection(member_id);
+                if (c.has_value()) conns.push_back(c.value());
             }
-        };
-        output.messages.push_back(msg);
-        output.sent_at = std::chrono::system_clock::now();
+            if (!conns.empty()) {
+                json presence = {{"type", "profile_updated"},
+                                 {"hub_id", ctx.ids.to_public(hub.id).value},
+                                 {"user_id", ctx.ids.to_public(user_id).value},
+                                 {"username", final_username},
+                                 {"full_name", final_full_name},
+                                 {"display_name", chosen_display}};
+                res.intents.push_back(Fanout{.conns = std::move(conns), .payload = std::move(presence)});
+            }
+        }
+
+        return res;
     } catch (const std::exception& ex) {
-        output.success = false;
-        output.error_code = "update_failed";
-        output.error_message = ex.what();
-        json err = {{"type", "error"}, {"code", "update_failed"}, {"message", ex.what()}};
-        DirectMessage msg;
-        msg.conn_id = ctx.conn_id;
-        msg.payload = err.dump();
-        output.messages.push_back(msg);
-        output.sent_at = std::chrono::system_clock::now();
+        return std::unexpected(CommandError{"update_failed", ex.what()});
     }
 }
 
