@@ -73,10 +73,11 @@ const normalizeMember = (raw = {}) => {
   const handle = raw.handle || raw.username || raw.display_name || '';
   const display = raw.display_name || raw.username || handle || 'Member';
   const userId = raw.user_id || raw.id || null;
+  const online = raw.online === true;
   return {
     handle: handle || display,
     display_name: display,
-    online: raw.online !== false,
+    online,
     user_id: userId
   };
 };
@@ -109,10 +110,14 @@ export const actions = {
     const next = Number.isFinite(count) ? Number(count) : defaultHubCount();
     state.hubCount = next < 0 ? 0 : next;
   },
-  setJoinedChannel({ channel_id, channel_name, members, history }) {
+  setJoinedChannel({ hub_id, channel_id, channel_name, members, history }) {
     state.current.channelId = channel_id;
     state.current.channelName = channel_name || '';
-    state.usersByChannel[channel_id] = (members || []).map(normalizeMember);
+    const fallbackMembers = hub_id ? state.membersByHub[hub_id] : null;
+    const sourceMembers = Array.isArray(members) && members.length
+      ? members
+      : (fallbackMembers || []);
+    state.usersByChannel[channel_id] = sourceMembers.map(normalizeMember);
     state.messagesByChannel[channel_id] = (history || []).map(h => ({
       sender: h.sender || 'Member', content: h.content, sent_at: h.sent_at
     }));
