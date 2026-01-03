@@ -12,7 +12,6 @@
 #include <optional>
 #include <sstream>
 #include <string>
-#include <unordered_set>
 
 using nlohmann::json;
 
@@ -26,27 +25,6 @@ std::string iso_time(const std::chrono::system_clock::time_point& tp) {
     std::ostringstream oss;
     oss << std::put_time(&tm, "%Y-%m-%dT%H:%M:%SZ");
     return oss.str();
-}
-
-json build_members(CommandContext& ctx, const HubId& hub_id, const ChannelId& channel_id) {
-    json arr = json::array();
-    const auto members = ctx.hub_service.getHubMembers(hub_id);
-    const auto online_users = ctx.presence_manager.onlineUsersInChannel(hub_id, channel_id);
-    std::unordered_set<UserId> online_set(online_users.begin(), online_users.end());
-
-    for (const auto& [member_id, stored_display] : members) {
-        const auto public_member = ctx.ids.to_public(member_id);
-        std::string name;
-        if (auto u = ctx.user_service.getUser(member_id)) {
-            name = u->username;
-        }
-        if (name.empty()) name = "Member";
-        arr.push_back(json{{"handle", name},
-                           {"display_name", name},
-                           {"online", online_set.count(member_id) > 0},
-                           {"user_id", public_member.value}});
-    }
-    return arr;
 }
 
 json build_history(CommandContext& ctx, const ChannelId& channel_id, int limit = 50) {
@@ -119,7 +97,6 @@ CommandResult JoinChannelCommand::execute(CommandContext& ctx, const CommandInpu
                         {"hub_id", ctx.ids.to_public(hub_id).value},
                         {"channel_id", channel_id_raw},
                         {"channel_name", channel.name},
-                        {"members", build_members(ctx, hub_id, channel.id)},
                         {"history", build_history(ctx, channel.id)}};
 
     CommandSuccess res;

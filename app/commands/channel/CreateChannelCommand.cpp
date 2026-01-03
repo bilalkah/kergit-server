@@ -81,6 +81,7 @@ CommandResult CreateChannelCommand::execute(CommandContext& ctx, const CommandIn
                          {"type", channel_type}};
 
     CommandSuccess res;
+    res.intents.reserve(2);  // fanout to hub + ack to creator at most
     // Notify hub subscribers
     auto subs = ctx.subscription_manager.getSubscribers(Topic::HubTopic(hub_id));
     if (subs.has_value() && !subs->empty()) {
@@ -91,20 +92,18 @@ CommandResult CreateChannelCommand::execute(CommandContext& ctx, const CommandIn
             if (conn.has_value()) conns.push_back(conn.value());
         }
         if (!conns.empty()) {
-            res.intents.push_back(Fanout{
-                .conns = std::move(conns),
-                .payload = json{{"type", "channel_created"},
-                                {"hub_id", public_hub_id.value},
-                                {"channel", channel_json}}});
+            res.intents.emplace_back(std::in_place_type<Fanout>, std::move(conns),
+                                     json{{"type", "channel_created"},
+                                          {"hub_id", public_hub_id.value},
+                                          {"channel", channel_json}});
         }
     }
 
     // Ack creator
-    res.intents.push_back(
-        Unicast{.conn = input->conn,
-                .payload = json{{"type", "channel_created"},
-                                {"hub_id", public_hub_id.value},
-                                {"channel", channel_json}}});
+    res.intents.emplace_back(std::in_place_type<Unicast>, input->conn,
+                             json{{"type", "channel_created"},
+                                  {"hub_id", public_hub_id.value},
+                                  {"channel", channel_json}});
 
     return res;
 }
