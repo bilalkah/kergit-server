@@ -144,6 +144,19 @@ cc_library(
         "@nlohmann_json",
     ],
 )
+
+cc_library(
+    name = "get_hub_invite_command",
+    srcs = ["hub/GetHubInviteCommand.cpp"],
+    hdrs = ["hub/GetHubInviteCommand.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":i_command",
+        "//app/dispatcher:command_context",
+        "//domains:hub_domain",
+        "@nlohmann_json",
+    ],
+)
 # cc_library(
 #     name = "auth_command",
 #     srcs = ["AuthCommand.cpp"],
