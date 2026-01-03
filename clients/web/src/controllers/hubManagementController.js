@@ -83,7 +83,6 @@ export function createHubManagementController({ ws, els }) {
       }
       if (createHubConfirm) createHubConfirm.disabled = true;
       createHub(ws, name);
-      hideModal();
     };
 
     createHubBtn?.addEventListener('click', (e) => {
@@ -108,6 +107,23 @@ export function createHubManagementController({ ws, els }) {
         handleCreate();
       } else if (e.key === 'Escape') {
         hideModal();
+      }
+    });
+
+    ws.on('error', (msg = {}) => {
+      const code = msg.code;
+      if (code !== 'create_hub_failed' && code !== 'hub_limit_reached' && code !== 'invalid_name') {
+        return;
+      }
+      const message =
+        msg.message || msg.error_message || (code === 'hub_limit_reached'
+          ? 'Hub ownership limit reached.'
+          : 'Unable to create hub.');
+      showError(message);
+      if (createHubConfirm) createHubConfirm.disabled = false;
+      if (createHubModal) {
+        createHubModal.classList.remove('hidden');
+        queueMicrotask(() => createHubName?.focus());
       }
     });
 
