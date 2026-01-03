@@ -136,7 +136,7 @@ export const actions = {
     const arr = state.usersByChannel[channel_id] || [];
     const key = handle || display_name;
     if (!key) return;
-    const i = arr.findIndex(u => u.handle === key);
+    const i = arr.findIndex(u => u.user_id && user_id ? u.user_id === user_id : u.handle === key);
     if (i >= 0) {
       arr[i].online = online;
       if (display_name) arr[i].display_name = display_name;
@@ -194,6 +194,7 @@ export const actions = {
   },
 
   updateSelfProfile({ username, full_name, display_name }) {
+    const prevDisplay = state.self.displayName || state.self.username || state.self.fullName || '';
     if (typeof username !== 'undefined') {
       state.self.username = username ? username : null;
     }
@@ -204,7 +205,74 @@ export const actions = {
       state.self.displayName = display_name;
     }
     if (!state.self.displayName) {
-      state.self.displayName = state.self.username || state.self.fullName;
+      state.self.displayName = state.self.username || state.self.fullName || prevDisplay;
+    }
+
+    const newDisplay = state.self.displayName;
+    const updateMemberEntry = (m = {}) => {
+      const updated = { ...m };
+      updated.display_name = newDisplay || updated.display_name || updated.handle || 'Member';
+      updated.handle = updated.handle || updated.display_name;
+      return updated;
+    };
+
+    // Refresh member display across hubs
+    Object.entries(state.membersByHub || {}).forEach(([hubId, members]) => {
+      state.membersByHub[hubId] = (members || []).map((m) =>
+        m.user_id === state.self.publicId ? updateMemberEntry(m) : m
+      );
+    });
+
+    // Refresh channel presence lists
+    Object.entries(state.usersByChannel || {}).forEach(([channelId, members]) => {
+      state.usersByChannel[channelId] = (members || []).map((m) =>
+        m.user_id === state.self.publicId ? updateMemberEntry(m) : m
+      );
+    });
+
+    // Refresh messages authored by self (best-effort: match previous display name)
+    Object.keys(state.messagesByChannel || {}).forEach((channelId) => {
+      state.messagesByChannel[channelId] = (state.messagesByChannel[channelId] || []).map((m) => {
+        if (m.sender === prevDisplay) {
+          return { ...m, sender: newDisplay };
+        }
+        return m;
+      });
+    });
+  },
+
+  updateUserDisplay(userId, newDisplay, oldDisplay = '') {
+    if (!userId || !newDisplay) return;
+    // Update hub member rosters
+    Object.entries(state.membersByHub || {}).forEach(([hubId, members]) => {
+      state.membersByHub[hubId] = (members || []).map((m) => {
+        if (m.user_id === userId) {
+          const updated = { ...m, display_name: newDisplay, handle: newDisplay };
+          return updated;
+        }
+        return m;
+      });
+    });
+    // Update channel presence lists
+    Object.entries(state.usersByChannel || {}).forEach(([channelId, members]) => {
+      state.usersByChannel[channelId] = (members || []).map((m) => {
+        if (m.user_id === userId) {
+          const updated = { ...m, display_name: newDisplay, handle: m.handle || newDisplay };
+          return updated;
+        }
+        return m;
+      });
+    });
+    // Update messages best-effort when old display is known
+    if (oldDisplay) {
+      Object.keys(state.messagesByChannel || {}).forEach((channelId) => {
+        state.messagesByChannel[channelId] = (state.messagesByChannel[channelId] || []).map((m) => {
+          if (m.sender === oldDisplay) {
+            return { ...m, sender: newDisplay };
+          }
+          return m;
+        });
+      });
     }
   },
 
