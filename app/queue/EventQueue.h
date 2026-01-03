@@ -1,47 +1,33 @@
 #ifndef APP_QUEUE_EVENT_QUEUE_H
 #define APP_QUEUE_EVENT_QUEUE_H
 
-#include "app/queue/ThreadSafeCmdQueue.h"
-#include "domains/ids/Ids.h"
+#include "app/queue/IEventSink.h"
+#include "app/queue/Msg.h"
+#include "core/base/ThreadSafeQueue.h"
 
-#include <variant>
+namespace app::queue {
 
-namespace net {
-struct Snapshot;
-}  // namespace net
+class EventQueue : public IEventSink {
+   public:
+    EventQueue() = default;
+    ~EventQueue() override = default;
 
-struct CommandRequest {
-    ConnId conn_id;
+    void push(const Event& event) noexcept { queue_.push(event); }
 
-    std::shared_ptr<const net::Snapshot> snapshot;
+    void push(Event&& event) noexcept { queue_.push(std::move(event)); }
 
-    std::string payload;
-    std::chrono::system_clock::time_point received_at;
+    [[nodiscard]] std::expected<Event, std::string_view> pop() noexcept { return queue_.pop(); }
+
+    [[nodiscard]] std::expected<Event, std::string_view> try_pop() noexcept {
+        return queue_.try_pop();
+    }
+
+    void stop() noexcept { queue_.stop(); }
+
+   private:
+    ThreadSafeQueue<Event> queue_;
 };
 
-namespace net {
-struct Snapshot;
-}  // namespace net
-
-struct DisconnectEvent {
-    ConnId conn_id;
-    std::shared_ptr<const net::Snapshot> snap;
-
-    int code{};
-    std::string reason;
-};
-
-struct ConnectEvent {
-    ConnId conn_id;
-    std::shared_ptr<const net::Snapshot> snap;
-};
-
-using EventPayload = std::variant<CommandRequest, ConnectEvent, DisconnectEvent>;
-
-struct Event {
-    EventPayload payload;
-};
-
-using EventQueue = ThreadSafeQueue<Event>;
+}  // namespace app::queue
 
 #endif  // APP_QUEUE_EVENT_QUEUE_H

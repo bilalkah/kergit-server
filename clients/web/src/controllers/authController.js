@@ -150,6 +150,14 @@ export function wireAuth({ ws, els, config }) {
         fullName: userMeta.full_name || null,
         displayName: finalName
       });
+      actions.setHubCount(typeof res?.hub_count === 'number' ? res.hub_count : 0);
+      if (Array.isArray(res?.hubs)) {
+        actions.setList({
+          hubs: res.hubs,
+          channels_by_hub: res.channels_by_hub || {}
+        });
+        actions.setHubPresenceMap(res.members_by_hub || {});
+      }
       actions.setSession({ url, token, username: finalName });
     } catch (err) {
       ws.disconnect?.(4001, 'auth failed');

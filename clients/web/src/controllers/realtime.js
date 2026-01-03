@@ -151,6 +151,14 @@ export function wireRealtime({ ws, els }) {
           hideConnectionLost();
           actions.setConnection('connected');
           actions.setAuth(true, state.self);
+          actions.setHubCount(typeof authRes?.hub_count === 'number' ? authRes.hub_count : 0);
+          if (Array.isArray(authRes?.hubs)) {
+            actions.setList({
+              hubs: authRes.hubs,
+              channels_by_hub: authRes.channels_by_hub || {}
+            });
+            actions.setHubPresenceMap(authRes.members_by_hub || {});
+          }
           actions.setHeartbeat({});
           updatePingDisplay(null);
           resetReconnectState();
@@ -235,6 +243,9 @@ export function wireRealtime({ ws, els }) {
     const channels_by_hub = msg?.channels_by_hub || {};
     const online_by_hub = msg?.online_by_hub || {};
 
+    actions.setHubCount(
+      typeof msg?.hub_count === 'number' ? msg.hub_count : (Array.isArray(hubs) ? hubs.length : 0)
+    );
     actions.setHubPresenceMap(online_by_hub);
     actions.setList({ hubs, channels_by_hub });
 
@@ -344,6 +355,42 @@ export function wireRealtime({ ws, els }) {
     document.dispatchEvent(new CustomEvent('presence:updated', { detail: { channel_id } }));
   });
 
+  ws.on('member_online', (msg = {}) => {
+    const hubId = msg.hub_id;
+    const userId = msg.user_id;
+    const displayName = msg.display_name || msg.handle;
+    if (!hubId || !userId) return;
+    actions.updateHubMemberPresence(hubId, userId, true, displayName);
+    if (state.current.hubId === hubId && !state.current.channelId && usersList && userCount) {
+      const roster = sel.membersInHub(hubId);
+      renderUsers(usersList, userCount, roster);
+      membersSidebar?.classList.remove('hidden');
+    }
+  });
+
+  ws.on('member_offline', (msg = {}) => {
+    const hubId = msg.hub_id;
+    const userId = msg.user_id;
+    const displayName = msg.display_name || msg.handle;
+    if (!hubId || !userId) return;
+    actions.updateHubMemberPresence(hubId, userId, false, displayName);
+    if (state.current.hubId === hubId && !state.current.channelId && usersList && userCount) {
+      const roster = sel.membersInHub(hubId);
+      renderUsers(usersList, userCount, roster);
+    }
+  });
+
+  ws.on('member_left', (msg = {}) => {
+    const hubId = msg.hub_id;
+    const userId = msg.user_id;
+    if (!hubId || !userId) return;
+    actions.updateHubMemberPresence(hubId, userId, false);
+    if (state.current.hubId === hubId && usersList && userCount) {
+      const roster = sel.membersInHub(hubId);
+      renderUsers(usersList, userCount, roster);
+    }
+  });
+
   // Messages from server (just pass to your existing messageController via store)
   ws.on('message', (msg) => {
     // expect: {type:'message', channel_id, sender, content, sent_at}
@@ -359,12 +406,65 @@ export function wireRealtime({ ws, els }) {
   });
 
   ws.on('profile_updated', (msg = {}) => {
-    actions.updateSelfProfile({
-      username: typeof msg.username === 'string' ? msg.username : undefined,
-      full_name: typeof msg.full_name === 'string' ? msg.full_name : undefined,
-      display_name: msg.display_name
-    });
-    document.dispatchEvent(new CustomEvent('profile:update:success', { detail: msg }));
+    // If the updated user is self, update self profile and local rosters
+    if (msg.user_id === state.self.publicId) {
+      const prev = state.self.displayName || state.self.username || state.self.fullName || '';
+      actions.updateSelfProfile({
+        username: typeof msg.username === 'string' ? msg.username : undefined,
+        full_name: typeof msg.full_name === 'string' ? msg.full_name : undefined,
+        display_name: msg.display_name
+      });
+      actions.updateUserDisplay(msg.user_id, state.self.displayName, prev);
+      document.dispatchEvent(new CustomEvent('profile:update:success', { detail: msg }));
+      if (state.current.hubId && usersList && userCount) {
+        const roster = sel.membersInHub(state.current.hubId);
+        renderUsers(usersList, userCount, roster);
+      }
+      if (state.current.channelId) {
+        document.dispatchEvent(new CustomEvent('messages:updated', { detail: { channel_id: state.current.channelId } }));
+      }
+    } else if (msg.user_id) {
+      // Update hub rosters for other users (scope to hub if provided)
+      const displayName = msg.display_name || msg.username || msg.full_name || '';
+      const findExisting = () => {
+        if (msg.hub_id) {
+          const arr = state.membersByHub[msg.hub_id] || [];
+          const m = arr.find((x) => x.user_id === msg.user_id);
+          if (m) return m.display_name || m.handle || '';
+        }
+        for (const members of Object.values(state.membersByHub || {})) {
+          const m = members.find((x) => x.user_id === msg.user_id);
+          if (m) return m.display_name || m.handle || '';
+        }
+        return '';
+      };
+      const oldDisplay = findExisting();
+      if (msg.hub_id) {
+        actions.updateHubMemberPresence(msg.hub_id, msg.user_id, true, displayName);
+      } else {
+        Object.keys(state.membersByHub || {}).forEach((hubId) => {
+          actions.updateHubMemberPresence(hubId, msg.user_id, true, displayName);
+        });
+      }
+      // Update channel rosters
+      Object.keys(state.usersByChannel || {}).forEach((channelId) => {
+        actions.upsertPresence({
+          channel_id: channelId,
+          handle: displayName,
+          display_name: displayName,
+          online: true,
+          user_id: msg.user_id
+        });
+      });
+      actions.updateUserDisplay(msg.user_id, displayName, oldDisplay);
+      if (state.current.hubId && usersList && userCount) {
+        const roster = sel.membersInHub(state.current.hubId);
+        renderUsers(usersList, userCount, roster);
+      }
+      if (state.current.channelId) {
+        document.dispatchEvent(new CustomEvent('messages:updated', { detail: { channel_id: state.current.channelId } }));
+      }
+    }
   });
 
   ws.on('hub_created', (msg = {}) => {
@@ -372,8 +472,9 @@ export function wireRealtime({ ws, els }) {
     if (!hub || !hub.id) return;
     actions.addHub(hub);
     const channels = Array.isArray(msg.channels) ? msg.channels : [];
+    const members = Array.isArray(msg.members) ? msg.members : [];
     actions.updateHubChannels(hub.id, channels);
-    actions.setHubMembers(hub.id, []);
+    actions.setHubMembers(hub.id, members);
     actions.setCurrentHub(hub.id);
     document.dispatchEvent(new CustomEvent('hubs:changed', { detail: { hub } }));
   });
@@ -471,26 +572,26 @@ export function wireRealtime({ ws, els }) {
     const hubId = msg.hub_id;
     if (!hubId) return;
     const nextHubId = actions.removeHub(hubId);
-    document.dispatchEvent(new CustomEvent('hub:deleted', { detail: { hubId } }));
-    document.dispatchEvent(new CustomEvent('hubs:changed', { detail: { hubId: nextHubId } }));
     if (nextHubId) {
       actions.setCurrentHub(nextHubId);
     } else {
       actions.setCurrentHub(null);
     }
+    document.dispatchEvent(new CustomEvent('hub:deleted', { detail: { hubId } }));
+    document.dispatchEvent(new CustomEvent('hubs:changed', { detail: { hubId: nextHubId } }));
   });
 
   ws.on('hub_left', (msg = {}) => {
     const hubId = msg.hub_id;
     if (!hubId) return;
     const nextHubId = actions.removeHub(hubId);
-    document.dispatchEvent(new CustomEvent('hub:left:success', { detail: { hubId } }));
-    document.dispatchEvent(new CustomEvent('hubs:changed', { detail: { hubId: nextHubId } }));
     if (nextHubId) {
       actions.setCurrentHub(nextHubId);
     } else {
       actions.setCurrentHub(null);
     }
+    document.dispatchEvent(new CustomEvent('hub:left:success', { detail: { hubId } }));
+    document.dispatchEvent(new CustomEvent('hubs:changed', { detail: { hubId: nextHubId } }));
   });
 
   ws.on('error', (msg = {}) => {

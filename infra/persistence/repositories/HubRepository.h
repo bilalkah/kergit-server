@@ -24,6 +24,7 @@ class HubRepository {
     bool renameHub(const HubId& hubId, const std::string& name);
     bool deleteHub(const HubId& hubId, const UserId& ownerUuid);
     HubId ensurePersonalHubWithGeneral(const UserId& ownerUuid, const std::string& hubName);
+    std::vector<ChannelId> getHubChannelIds(const HubId& hubId);
 
    private:
     RepositoryMux& mux_;

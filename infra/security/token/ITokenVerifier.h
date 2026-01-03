@@ -3,6 +3,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <expected>
 #include <iomanip>
 #include <iostream>
 #include <ostream>
@@ -49,11 +50,24 @@ struct UserClaims {
     }
 };
 
+enum class JwtVerifyError {
+    EmptyToken,
+    InvalidFormat,
+    UnsupportedAlgorithm,
+    InvalidSignature,
+    TokenExpired,
+    MissingClaims,
+    KeyNotFound,
+    JwkParseError,
+};
+
+using JwtVerifyResult = std::expected<UserClaims, JwtVerifyError>;
+
 class ITokenVerifier {
    public:
     virtual ~ITokenVerifier() = default;
 
-    virtual UserClaims verify(const std::string& token) const = 0;
+    virtual JwtVerifyResult verify_token(const std::string& token) const = 0;
 };
 
 }  // namespace infra::security::token

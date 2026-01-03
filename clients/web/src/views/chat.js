@@ -9,6 +9,7 @@ export function renderUsers(root, countEl, arr) {
   countEl.textContent = String(members.length);
 
   const appendHeader = (label, amount, sectionClass) => {
+    if (amount <= 0) return;
     const header = document.createElement('div');
     header.className = `users-section ${sectionClass}`.trim();
     header.textContent = `${label} — ${amount}`;

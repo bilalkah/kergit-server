@@ -5,6 +5,7 @@
 #include <iomanip>
 #include <iostream>
 #include <string>
+#include <fmt/format.h>
 
 namespace utils {
 enum class LogLevel { INFO, WARN, ERROR };
@@ -51,9 +52,8 @@ inline const char* level_to_color(LogLevel lvl) {
 }
 
 inline void log_line(LogLevel lvl, const std::string& msg) {
-    const char* color = level_to_color(lvl);
-    std::cout << color << "[" << timestamp() << "] " << "[" << level_to_string(lvl) << "] " << msg
-              << Color::RESET << std::endl;
+    std::cout << fmt::format("{}[{}] [{}] {}{}\n", level_to_color(lvl), timestamp(),
+                             level_to_string(lvl), msg, Color::RESET);
 }
 
 };  // namespace utils

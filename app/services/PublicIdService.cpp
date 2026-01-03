@@ -99,31 +99,6 @@ std::optional<MessageId> PublicIdService::to_internal(const PublicMessageId& ext
     return MessageId{*raw};
 }
 
-void PublicIdService::remember_display(const UserId& internal,
-                                       std::string_view display_name) const {
-    if (internal.value.empty()) return;
-    std::unique_lock lock(mutex_);
-    user_display_[internal.value] = std::string(display_name);
-}
-
-std::string PublicIdService::display_for(const UserId& internal) const {
-    if (internal.value.empty()) return {};
-    std::shared_lock lock(mutex_);
-    auto it = user_display_.find(internal.value);
-    if (it == user_display_.end()) return {};
-    return it->second;
-}
-
-std::string PublicIdService::display_for(const PublicUserId& external) const {
-    if (external.value.empty()) return {};
-    std::shared_lock lock(mutex_);
-    auto internal_it = user_reverse_.find(external.value);
-    if (internal_it == user_reverse_.end()) return {};
-    auto it = user_display_.find(internal_it->second);
-    if (it == user_display_.end()) return {};
-    return it->second;
-}
-
 std::string PublicIdService::ensure_mapping(ForwardMap& forward, ReverseMap& reverse,
                                             const std::string& key) {
     auto it = forward.find(key);

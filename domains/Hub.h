@@ -1,7 +1,6 @@
 #ifndef DOMAINS_HUB_H
 #define DOMAINS_HUB_H
 
-#pragma once
 #include "domains/ids/Ids.h"
 
 #include <string>
