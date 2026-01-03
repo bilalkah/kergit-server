@@ -1,0 +1,4 @@
+[submodule "clients/web"]
+	path = clients/web
+	url = https://github.com/bilalkah/sercom-web-client.git
+	branch = master
