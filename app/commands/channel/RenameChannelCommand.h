@@ -1,5 +1,5 @@
-#ifndef APP_COMMANDS_RENAMECHANNELCOMMAND_H
-#define APP_COMMANDS_RENAMECHANNELCOMMAND_H
+#ifndef APP_COMMANDS_CHANNEL_RENAMECHANNELCOMMAND_H
+#define APP_COMMANDS_CHANNEL_RENAMECHANNELCOMMAND_H
 
 #include "app/commands/ICommand.h"
 
@@ -7,16 +7,12 @@ namespace app {
 
 class RenameChannelCommand : public ICommand {
    public:
-    RenameChannelCommand(ServiceObjects& svc_objs);
-    void execute(CommandContext&) override;
+    CommandResult execute(CommandContext& ctx, const CommandInput cmd) override;
 
    private:
     static std::string sanitize(std::string name);
-    bool has_privilege(const CommandContext& ctx, const HubId& hub_id);
-
-    ServiceObjects& services_;
 };
 
 }  // namespace app
 
-#endif  // APP_COMMANDS_RENAMECHANNELCOMMAND_H
+#endif  // APP_COMMANDS_CHANNEL_RENAMECHANNELCOMMAND_H
