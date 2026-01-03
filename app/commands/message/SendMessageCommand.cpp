@@ -110,6 +110,7 @@ CommandResult SendMessageCommand::execute(CommandContext& ctx, const CommandInpu
         std::vector<GlobalConnId> conns;
         conns.reserve(subs->size());
         for (const auto& uid : subs.value()) {
+            if (uid == user_id) continue;  // sender already receives the ack above
             auto conn = ctx.session_manager.getMainConnection(uid);
             if (conn.has_value()) conns.push_back(conn.value());
         }
