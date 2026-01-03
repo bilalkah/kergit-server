@@ -73,8 +73,22 @@ CommandResult CreateHubCommand::execute(CommandContext& ctx, const CommandInput 
                                 {"type", channel_type_to_string(ChannelType::CHAT)}});
         }
 
+        std::string owner_display = "Member";
+        if (auto u = ctx.user_service.getUser(user_id)) {
+            if (!u->username.empty()) owner_display = u->username;
+            else if (!u->full_name.empty()) owner_display = u->full_name;
+        }
+
         json hub_json = {{"id", public_hub_id.value}, {"name", name}, {"role", "owner"}};
-        json payload = {{"type", "hub_created"}, {"hub", hub_json}, {"channels", channels}};
+        json members = json::array(
+            {{ {"handle", owner_display},
+               {"display_name", owner_display},
+               {"online", true},
+               {"user_id", ctx.ids.to_public(user_id).value} }});
+        json payload = {{"type", "hub_created"},
+                        {"hub", hub_json},
+                        {"channels", channels},
+                        {"members", std::move(members)}};
 
         CommandSuccess res;
         res.intents.push_back(Unicast{.conn = input->conn, .payload = payload});

@@ -157,6 +157,21 @@ cc_library(
         "@nlohmann_json",
     ],
 )
+
+cc_library(
+    name = "join_hub_by_invite_command",
+    srcs = ["hub/JoinHubByInviteCommand.cpp"],
+    hdrs = ["hub/JoinHubByInviteCommand.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":i_command",
+        "//app/dispatcher:command_context",
+        "//app/managers/subscription:topic",
+        "//domains:channel_domain",
+        "//domains:hub_domain",
+        "@nlohmann_json",
+    ],
+)
 # cc_library(
 #     name = "auth_command",
 #     srcs = ["AuthCommand.cpp"],
