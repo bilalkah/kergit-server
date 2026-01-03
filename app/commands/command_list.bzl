@@ -9,6 +9,7 @@ COMMAND_LIST = [
     "//app/commands:delete_channel_command",
     "//app/commands:rename_channel_command",
     "//app/commands:delete_hub_command",
+    "//app/commands:create_hub_command",
     # "//app/commands:create_hub_command",
     # "//app/commands:rename_hub_command",
     # "//app/commands:get_hub_invite_command",
