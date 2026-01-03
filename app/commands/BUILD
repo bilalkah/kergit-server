@@ -1,14 +1,5 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
-SERVICE_DEPS = [
-    "//app/memory:on_memory_cache",
-    "//app/services:hub_publisher",
-    "//app/services:public_id_service",
-    "//infra/persistence:persistence_gateway_lib",
-    "//net:client_gateway",
-    "//net:connection_manager",
-]
-
 cc_library(
     name = "i_command",
     hdrs = [
@@ -16,160 +7,360 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "//app/queue:outgoing_queue",
         "//domains/ids:domain_ids",
-        "//net:persocketdata",
         "@nlohmann_json",
-    ] + SERVICE_DEPS,
-)
-
-cc_library(
-    name = "auth_command",
-    srcs = ["AuthCommand.cpp"],
-    hdrs = [
-        "AuthCommand.h",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":i_command",
-        "//app/queue:outgoing_queue",
-        "//app/services:auth_service",
-        "//domains:channel_domain",
-        "//domains:hub_domain",
     ],
 )
 
 cc_library(
     name = "join_channel_command",
-    srcs = ["JoinChannelCommand.cpp"],
-    hdrs = ["JoinChannelCommand.h"],
+    srcs = ["channel/JoinChannelCommand.cpp"],
+    hdrs = ["channel/JoinChannelCommand.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":i_command",
+        "//app/dispatcher:command_context",
         "//domains:channel_domain",
+        "//domains:hub_domain",
         "//domains:message_domain",
+        "@nlohmann_json",
     ],
 )
 
 cc_library(
     name = "send_message_command",
-    srcs = ["SendMessageCommand.cpp"],
-    hdrs = ["SendMessageCommand.h"],
+    srcs = ["message/SendMessageCommand.cpp"],
+    hdrs = ["message/SendMessageCommand.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":i_command",
+        "//app/dispatcher:command_context",
+        "//app/managers/session:session_manager",
+        "//app/managers/subscription:topic",
+        "//app/managers/subscription:subscription_manager",
+        "//app/services/channel:channel_service",
+        "//app/services/hub:hub_service",
+        "//domains:hub_domain",
+        "//app/services/user:user_service",
+        "//domains:channel_domain",
         "//domains:message_domain",
+        "@nlohmann_json",
     ],
 )
 
 cc_library(
     name = "create_channel_command",
-    srcs = ["CreateChannelCommand.cpp"],
-    hdrs = ["CreateChannelCommand.h"],
+    srcs = ["channel/CreateChannelCommand.cpp"],
+    hdrs = ["channel/CreateChannelCommand.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":i_command",
-        "//domains:hub_domain",
-    ],
-)
-
-cc_library(
-    name = "create_hub_command",
-    srcs = ["CreateHubCommand.cpp"],
-    hdrs = ["CreateHubCommand.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":i_command",
+        "//app/dispatcher:command_context",
+        "//app/managers/session:session_manager",
+        "//app/managers/subscription:topic",
+        "//app/managers/subscription:subscription_manager",
+        "//app/services/channel:channel_service",
+        "//app/services/hub:hub_service",
         "//domains:channel_domain",
-    ],
-)
-
-cc_library(
-    name = "update_profile_command",
-    srcs = ["UpdateProfileCommand.cpp"],
-    hdrs = ["UpdateProfileCommand.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":i_command",
+        "//domains:hub_domain",
+        "@nlohmann_json",
     ],
 )
 
 cc_library(
     name = "delete_channel_command",
-    srcs = ["DeleteChannelCommand.cpp"],
-    hdrs = ["DeleteChannelCommand.h"],
+    srcs = ["channel/DeleteChannelCommand.cpp"],
+    hdrs = ["channel/DeleteChannelCommand.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":i_command",
+        "//app/dispatcher:command_context",
+        "//app/managers/session:session_manager",
+        "//app/managers/subscription:topic",
+        "//app/managers/subscription:subscription_manager",
+        "//app/services/channel:channel_service",
+        "//app/services/hub:hub_service",
+        "//domains:channel_domain",
+        "//domains:hub_domain",
+        "@nlohmann_json",
     ],
 )
 
 cc_library(
     name = "rename_channel_command",
-    srcs = ["RenameChannelCommand.cpp"],
-    hdrs = ["RenameChannelCommand.h"],
+    srcs = ["channel/RenameChannelCommand.cpp"],
+    hdrs = ["channel/RenameChannelCommand.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":i_command",
-    ],
-)
-
-cc_library(
-    name = "rename_hub_command",
-    srcs = ["RenameHubCommand.cpp"],
-    hdrs = ["RenameHubCommand.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":i_command",
+        "//app/dispatcher:command_context",
+        "//app/managers/subscription:topic",
+        "//domains:channel_domain",
+        "//domains:hub_domain",
+        "@nlohmann_json",
     ],
 )
 
 cc_library(
     name = "delete_hub_command",
-    srcs = ["DeleteHubCommand.cpp"],
-    hdrs = ["DeleteHubCommand.h"],
+    srcs = ["hub/DeleteHubCommand.cpp"],
+    hdrs = ["hub/DeleteHubCommand.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":i_command",
+        "//app/dispatcher:command_context",
+        "//app/managers/subscription:topic",
+        "//domains:channel_domain",
+        "//domains:hub_domain",
+        "@nlohmann_json",
     ],
 )
 
 cc_library(
-    name = "leave_hub_command",
-    srcs = ["LeaveHubCommand.cpp"],
-    hdrs = ["LeaveHubCommand.h"],
+    name = "create_hub_command",
+    srcs = ["hub/CreateHubCommand.cpp"],
+    hdrs = ["hub/CreateHubCommand.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":i_command",
+        "//app/dispatcher:command_context",
+        "//app/managers/subscription:topic",
+        "//domains:channel_domain",
+        "//domains:hub_domain",
+        "@nlohmann_json",
+    ],
+)
+
+cc_library(
+    name = "rename_hub_command",
+    srcs = ["hub/RenameHubCommand.cpp"],
+    hdrs = ["hub/RenameHubCommand.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":i_command",
+        "//app/dispatcher:command_context",
+        "//app/managers/subscription:topic",
+        "//domains:hub_domain",
+        "@nlohmann_json",
     ],
 )
 
 cc_library(
     name = "get_hub_invite_command",
-    srcs = ["GetHubInviteCommand.cpp"],
-    hdrs = ["GetHubInviteCommand.h"],
+    srcs = ["hub/GetHubInviteCommand.cpp"],
+    hdrs = ["hub/GetHubInviteCommand.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":i_command",
+        "//app/dispatcher:command_context",
+        "//domains:hub_domain",
+        "@nlohmann_json",
     ],
 )
 
 cc_library(
     name = "join_hub_by_invite_command",
-    srcs = ["JoinHubByInviteCommand.cpp"],
-    hdrs = ["JoinHubByInviteCommand.h"],
+    srcs = ["hub/JoinHubByInviteCommand.cpp"],
+    hdrs = ["hub/JoinHubByInviteCommand.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":i_command",
+        "//app/dispatcher:command_context",
+        "//app/managers/subscription:topic",
+        "//domains:channel_domain",
+        "//domains:hub_domain",
+        "@nlohmann_json",
+    ],
+)
+
+cc_library(
+    name = "leave_hub_command",
+    srcs = ["hub/LeaveHubCommand.cpp"],
+    hdrs = ["hub/LeaveHubCommand.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":i_command",
+        "//app/dispatcher:command_context",
+        "//app/managers/subscription:topic",
+        "//domains:channel_domain",
+        "//domains:hub_domain",
+        "@nlohmann_json",
     ],
 )
 
 cc_library(
     name = "update_member_role_command",
-    srcs = ["UpdateMemberRoleCommand.cpp"],
-    hdrs = ["UpdateMemberRoleCommand.h"],
+    srcs = ["member/UpdateMemberRoleCommand.cpp"],
+    hdrs = ["member/UpdateMemberRoleCommand.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":i_command",
+        "//app/dispatcher:command_context",
+        "//app/managers/subscription:topic",
+        "//domains:hub_domain",
+        "@nlohmann_json",
     ],
 )
+
+cc_library(
+    name = "update_profile_command",
+    srcs = ["profile/UpdateProfileCommand.cpp"],
+    hdrs = ["profile/UpdateProfileCommand.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":i_command",
+        "//app/dispatcher:command_context",
+        "//domains:hub_domain",
+        "@nlohmann_json",
+    ],
+)
+# cc_library(
+#     name = "auth_command",
+#     srcs = ["AuthCommand.cpp"],
+#     hdrs = [
+#         "AuthCommand.h",
+#     ],
+#     visibility = ["//visibility:public"],
+#     deps = [
+#         ":i_command",
+#         "//app/queue:outgoing_queue",
+#         "//app/services:auth_service",
+#         "//domains:channel_domain",
+#         "//domains:hub_domain",
+#     ],
+# )
+
+# cc_library(
+#     name = "join_channel_command",
+#     srcs = ["JoinChannelCommand.cpp"],
+#     hdrs = ["JoinChannelCommand.h"],
+#     visibility = ["//visibility:public"],
+#     deps = [
+#         ":i_command",
+#         "//domains:channel_domain",
+#         "//domains:message_domain",
+#     ],
+# )
+
+# cc_library(
+#     name = "send_message_command",
+#     srcs = ["SendMessageCommand.cpp"],
+#     hdrs = ["SendMessageCommand.h"],
+#     visibility = ["//visibility:public"],
+#     deps = [
+#         ":i_command",
+#         "//domains:message_domain",
+#     ],
+# )
+
+# cc_library(
+#     name = "create_channel_command",
+#     srcs = ["CreateChannelCommand.cpp"],
+#     hdrs = ["CreateChannelCommand.h"],
+#     visibility = ["//visibility:public"],
+#     deps = [
+#         ":i_command",
+#         "//domains:hub_domain",
+#     ],
+# )
+
+# cc_library(
+#     name = "create_hub_command",
+#     srcs = ["CreateHubCommand.cpp"],
+#     hdrs = ["CreateHubCommand.h"],
+#     visibility = ["//visibility:public"],
+#     deps = [
+#         ":i_command",
+#         "//domains:channel_domain",
+#     ],
+# )
+
+# cc_library(
+#     name = "update_profile_command",
+#     srcs = ["UpdateProfileCommand.cpp"],
+#     hdrs = ["UpdateProfileCommand.h"],
+#     visibility = ["//visibility:public"],
+#     deps = [
+#         ":i_command",
+#     ],
+# )
+
+# cc_library(
+#     name = "delete_channel_command",
+#     srcs = ["DeleteChannelCommand.cpp"],
+#     hdrs = ["DeleteChannelCommand.h"],
+#     visibility = ["//visibility:public"],
+#     deps = [
+#         ":i_command",
+#     ],
+# )
+
+# cc_library(
+#     name = "rename_channel_command",
+#     srcs = ["RenameChannelCommand.cpp"],
+#     hdrs = ["RenameChannelCommand.h"],
+#     visibility = ["//visibility:public"],
+#     deps = [
+#         ":i_command",
+#     ],
+# )
+
+# cc_library(
+#     name = "rename_hub_command",
+#     srcs = ["RenameHubCommand.cpp"],
+#     hdrs = ["RenameHubCommand.h"],
+#     visibility = ["//visibility:public"],
+#     deps = [
+#         ":i_command",
+#     ],
+# )
+
+# cc_library(
+#     name = "delete_hub_command",
+#     srcs = ["DeleteHubCommand.cpp"],
+#     hdrs = ["DeleteHubCommand.h"],
+#     visibility = ["//visibility:public"],
+#     deps = [
+#         ":i_command",
+#     ],
+# )
+
+# cc_library(
+#     name = "leave_hub_command",
+#     srcs = ["LeaveHubCommand.cpp"],
+#     hdrs = ["LeaveHubCommand.h"],
+#     visibility = ["//visibility:public"],
+#     deps = [
+#         ":i_command",
+#     ],
+# )
+
+# cc_library(
+#     name = "get_hub_invite_command",
+#     srcs = ["GetHubInviteCommand.cpp"],
+#     hdrs = ["GetHubInviteCommand.h"],
+#     visibility = ["//visibility:public"],
+#     deps = [
+#         ":i_command",
+#     ],
+# )
+
+# cc_library(
+#     name = "join_hub_by_invite_command",
+#     srcs = ["JoinHubByInviteCommand.cpp"],
+#     hdrs = ["JoinHubByInviteCommand.h"],
+#     visibility = ["//visibility:public"],
+#     deps = [
+#         ":i_command",
+#     ],
+# )
+
+# cc_library(
+#     name = "update_member_role_command",
+#     srcs = ["UpdateMemberRoleCommand.cpp"],
+#     hdrs = ["UpdateMemberRoleCommand.h"],
+#     visibility = ["//visibility:public"],
+#     deps = [
+#         ":i_command",
+#     ],
+# )

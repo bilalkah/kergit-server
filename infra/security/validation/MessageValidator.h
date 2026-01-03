@@ -1,8 +1,7 @@
 #ifndef INFRA_SECURITY_VALIDATION_MESSAGEVALIDATOR_H
 #define INFRA_SECURITY_VALIDATION_MESSAGEVALIDATOR_H
 
-#include "app/Dispatcher.h"
-
+#include <expected>
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <string>
@@ -18,16 +17,17 @@ using json = nlohmann::json;
 
 enum class MessageType { CMD, PING, SYSTEM, UNKNOWN };
 
-struct MessageValidationResult {
-    bool is_valid = false;
-    std::string error_message;
+struct ValidatedMessage {
     json message;
-    MessageType message_type = MessageType::UNKNOWN;
+    MessageType type;
 };
+
+using ValidationError = std::string;
+using MessageValidationResult = std::expected<ValidatedMessage, ValidationError>;
 
 class MessageValidator {
    public:
-    explicit MessageValidator(const app::Dispatcher& dispatcher);
+    explicit MessageValidator(const std::unordered_set<std::string>& cmds_set);
     ~MessageValidator();
 
     // Message validation

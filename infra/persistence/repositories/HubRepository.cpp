@@ -165,3 +165,18 @@ HubId HubRepository::ensurePersonalHubWithGeneral(const UserId& ownerUuid,
         return HubId{hubId};
     });
 }
+
+std::vector<ChannelId> HubRepository::getHubChannelIds(const HubId& hubId)
+{
+    return mux_.run(Repository::Hub, [&](pqxx::work& txn) {
+        auto res = txn.exec(
+            "SELECT id::text FROM public.channels WHERE hub_id = $1::uuid ORDER BY created_at ASC",
+            pqxx::params{hubId.value});
+        std::vector<ChannelId> channelIds;
+        channelIds.reserve(res.size());
+        for (const auto& row : res) {
+            channelIds.emplace_back(ChannelId{row[0].as<std::string>()});
+        }
+        return channelIds;
+    });
+}

@@ -20,32 +20,40 @@ struct SupabaseJWK {
     std::string e;    // exponent (for RSA keys)
 };
 
-class SupabaseJWTVerifier : public utils::Loggable {
+struct ParsedJwt {
+    std::string header_b64;
+    std::string payload_b64;
+    std::string signature_b64;
+
+    std::string alg;
+    std::string kid;
+
+    std::string signing_input;  // header_b64 + "." + payload_b64
+
+    UserClaims claims;
+};
+
+class SupabaseJWTVerifier : public utils::Loggable, public ITokenVerifier {
    public:
-    SupabaseJWTVerifier();
-    ~SupabaseJWTVerifier();
+    static std::expected<SupabaseJWTVerifier, JwtVerifyError> create();
 
-    // Verify JWT token and extract user information
-    std::optional<UserClaims> verify_token(const std::string& token);
+    ~SupabaseJWTVerifier() = default;
 
-    // Check if token is valid (not expired, properly signed)
-    bool is_token_valid(const std::string& token);
-
-    // Check if token is expired
-    bool is_token_expired(const std::string& token);
+    JwtVerifyResult verify_token(const std::string& token) const override;
 
    private:
     SupabaseJWK current_key_;
     SupabaseJWK standby_key_;
+    static std::optional<SupabaseJWK> parse_jwk(const std::string& jwk_json);
+    SupabaseJWTVerifier(SupabaseJWK current, SupabaseJWK standby);
 
     // Helper methods
-    std::optional<UserClaims> decode_and_verify(const std::string& token, const SupabaseJWK& key);
-    std::string base64_decode(const std::string& input);
+    std::expected<ParsedJwt, JwtVerifyError> parse_token(const std::string& token) const;
+    std::vector<std::string> split_token(const std::string& token) const;
+    bool verify_with_key(const ParsedJwt& jwt, const SupabaseJWK& key) const;
     bool verify_es256_signature(const std::string& header_payload, const std::string& signature_b64,
-                                const SupabaseJWK& key);
-    std::vector<std::string> split_token(const std::string& token);
-    int64_t get_current_timestamp();
-    SupabaseJWK parse_jwk(const std::string& jwk_json);
+                                const SupabaseJWK& key) const;
+    std::string base64_decode(const std::string& input) const;
 };
 }  // namespace infra::security::token
 

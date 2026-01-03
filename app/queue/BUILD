@@ -1,33 +1,40 @@
-load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:defs.bzl", "cc_library")
 
 cc_library(
-    name = "ts_cmd_queue",
-    hdrs = [
-        "ThreadSafeCmdQueue.h",
-    ],
+    name = "event_msg",
+    hdrs = ["Msg.h"],
     copts = ["-std=gnu++23"],
-    visibility = ["//visibility:public"],
+    visibility = ["//app:__subpackages__"],
+    deps = [
+        "//domains/ids:domain_ids",
+    ],
+)
+
+cc_library(
+    name = "i_event_sink",
+    hdrs = ["IEventSink.h"],
+    copts = ["-std=gnu++23"],
+    visibility = [
+        "//app:__subpackages__",
+        "//net:__subpackages__",
+    ],
+    deps = [
+        ":event_msg",
+    ],
 )
 
 cc_library(
     name = "event_queue",
-    hdrs = ["EventQueue.h"],
-    copts = ["-std=gnu++23"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":ts_cmd_queue",
-        "//domains/ids:domain_ids",
+    hdrs = [
+        "EventQueue.h",
     ],
-)
-
-cc_library(
-    name = "outgoing_queue",
-    hdrs = ["OutgoingQueue.h"],
     copts = ["-std=gnu++23"],
-    visibility = ["//visibility:public"],
+    visibility = [
+        "//app:__subpackages__",
+    ],
     deps = [
-        ":ts_cmd_queue",
-        "//domains/ids:domain_ids",
-        "@nlohmann_json",
+        ":event_msg",
+        ":i_event_sink",
+        "//core/base:ts_queue",
     ],
 )

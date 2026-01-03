@@ -5,9 +5,8 @@
 
 namespace infra::security::validation {
 
-MessageValidator::MessageValidator(const app::Dispatcher& dispatcher) {
-    // Load command operations from dispatcher
-    registered_commands_ = dispatcher.registered_commands();
+MessageValidator::MessageValidator(const std::unordered_set<std::string>& cmds_set)
+    : registered_commands_(cmds_set) {
     load_profanity_filter();
     load_security_patterns();
 }
@@ -15,36 +14,28 @@ MessageValidator::MessageValidator(const app::Dispatcher& dispatcher) {
 MessageValidator::~MessageValidator() = default;
 
 MessageValidationResult MessageValidator::validate_message(const std::string_view& raw_message) {
-    MessageValidationResult result;
-
     auto message_opt = is_message_format_valid(raw_message);
-    if (!message_opt.has_value()) {
-        result.error_message = "Invalid message format.";
-        return result;
+    if (!message_opt) {
+        return std::unexpected("Invalid message format.");
     }
 
-    json message = message_opt.value();
+    json message = std::move(*message_opt);
 
     if (!is_message_size_valid(message)) {
-        result.is_valid = false;
-        result.error_message = "Message size exceeds limit.";
-        return result;
+        return std::unexpected("Message size exceeds limit.");
     }
 
     if (!is_message_content_safe(message)) {
-        result.is_valid = false;
-        result.error_message = "Message contains unsafe content.";
-        return result;
+        return std::unexpected("Message contains unsafe content.");
     }
 
-    result.message_type = get_message_type(message);
+    MessageType type = get_message_type(message);
 
     // Type-specific validation
-    switch (result.message_type) {
+    switch (type) {
         case MessageType::CMD:
             if (!validate_cmd_message(message)) {
-                result.error_message = "Invalid request operation";
-                return result;
+                return std::unexpected("Invalid request operation");
             }
             break;
         default:
@@ -52,10 +43,7 @@ MessageValidationResult MessageValidator::validate_message(const std::string_vie
             break;
     }
 
-    result.is_valid = true;
-    result.message = message;
-
-    return result;
+    return ValidatedMessage{.message = std::move(message), .type = type};
 }
 
 std::optional<json> MessageValidator::is_message_format_valid(const std::string_view& raw_message) {

@@ -1,4 +1,3 @@
-load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("@rules_cc//cc:defs.bzl", "cc_library")
 
 cc_library(
@@ -21,10 +20,10 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "//app/services:public_id_service",
         "//domains:channel_domain",
         "//domains:hub_domain",
         "//domains:message_domain",
+        "//domains:user_domain",
         "//domains/ids:domain_ids",
         "@libpqxx",
         "@nlohmann_json",

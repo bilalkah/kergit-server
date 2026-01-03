@@ -31,6 +31,20 @@ struct ConnId {
     ConnId(std::string v) : value(std::move(v)) {}
 };
 
+struct NetStackId {
+    std::string value;
+    NetStackId() = default;
+    NetStackId(std::string v) : value(std::move(v)) {}
+};
+
+struct GlobalConnId {
+    NetStackId netstack_id;
+    ConnId conn_id;
+    GlobalConnId() = default;
+    GlobalConnId(NetStackId nsid, ConnId cid)
+        : netstack_id(std::move(nsid)), conn_id(std::move(cid)) {}
+};
+
 struct PublicHubId {
     std::string value;
     PublicHubId() = default;
@@ -65,6 +79,10 @@ inline bool operator==(const PublicUserId& a, const PublicUserId& b) { return a.
 inline bool operator==(const PublicMessageId& a, const PublicMessageId& b) {
     return a.value == b.value;
 }
+inline bool operator==(const NetStackId& a, const NetStackId& b) { return a.value == b.value; }
+inline bool operator==(const GlobalConnId& a, const GlobalConnId& b) {
+    return a.netstack_id.value == b.netstack_id.value && a.conn_id.value == b.conn_id.value;
+}
 
 namespace std {
 template <>
@@ -84,6 +102,20 @@ struct hash<UserId> {
 template <>
 struct hash<ConnId> {
     size_t operator()(const ConnId& x) const noexcept { return std::hash<std::string>{}(x.value); }
+};
+template <>
+struct hash<NetStackId> {
+    size_t operator()(const NetStackId& x) const noexcept {
+        return std::hash<std::string>{}(x.value);
+    }
+};
+template <>
+struct hash<GlobalConnId> {
+    size_t operator()(const GlobalConnId& x) const noexcept {
+        size_t h1 = std::hash<std::string>{}(x.netstack_id.value);
+        size_t h2 = std::hash<std::string>{}(x.conn_id.value);
+        return h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2));
+    }
 };
 template <>
 struct hash<PublicHubId> {

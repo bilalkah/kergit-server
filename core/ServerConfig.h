@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <thread>
 
 namespace core {
 
@@ -34,25 +35,35 @@ struct DataBaseConfig {
     }
 };
 
-struct ServerConfig {
+struct NetworkStackConfig {
     std::string host{"0.0.0.0"};
     uint16_t port{9001};
     std::string ws_path{"/*"};
     utils::TlsConfig tls{};
-    DataBaseConfig database{};
+    std::string net_stack_name{"default_netstack"};
 
+    size_t socket_threads{2};
+};
+
+struct AppStackConfig {
+    std::string app_stack_name{"default_appstack"};
     std::string environment{"development"};
     std::string log_level{"info"};
-    bool debug_gateway{true};
-    size_t worker_threads{std::thread::hardware_concurrency()};
+    size_t worker_threads{3};
+};
+
+struct ServerConfig {
+    NetworkStackConfig network{};
+    DataBaseConfig database{};
+    AppStackConfig app_stack{};
 };
 
 class ServerConfigFiller {
    public:
     static void fill_from_env(ServerConfig& cfg) {
-        cfg.host = utils::EnvLoader::get_env("SERVER_HOST", cfg.host);
-        cfg.port = std::stoi(utils::EnvLoader::get_env("SERVER_PORT", "9001"));
-        cfg.ws_path = utils::EnvLoader::get_env("SOCKET_PATTERN", cfg.ws_path);
+        cfg.network.host = utils::EnvLoader::get_env("SERVER_HOST", cfg.network.host);
+        cfg.network.port = std::stoi(utils::EnvLoader::get_env("SERVER_PORT", "9001"));
+        cfg.network.ws_path = utils::EnvLoader::get_env("SOCKET_PATTERN", cfg.network.ws_path);
         cfg.database.engine = utils::EnvLoader::get_env("DB_ENGINE", "postgresql");
         cfg.database.user = utils::EnvLoader::get_env("DB_USER", "postgres");
         cfg.database.password = utils::EnvLoader::get_env("DB_PASSWORD", "password");
