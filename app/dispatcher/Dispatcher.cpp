@@ -1,9 +1,10 @@
 #include "app/dispatcher/Dispatcher.h"
 
 #include "app/commands/auth/AuthCommand.h"
+#include "app/commands/channel/CreateChannelCommand.h"
+#include "app/commands/channel/DeleteChannelCommand.h"
 #include "app/commands/channel/JoinChannelCommand.h"
 #include "app/commands/message/SendMessageCommand.h"
-#include "app/commands/channel/CreateChannelCommand.h"
 #include "app/commands/system/DisconnectionCommand.h"
 
 namespace app {
@@ -35,6 +36,7 @@ void Dispatcher::register_all() {
     register_cmd("join_channel", std::make_unique<JoinChannelCommand>());
     register_cmd("send_message", std::make_unique<SendMessageCommand>());
     register_cmd("create_channel", std::make_unique<CreateChannelCommand>());
+    register_cmd("delete_channel", std::make_unique<DeleteChannelCommand>());
     // register_cmd("delete_channel", std::make_unique<DeleteChannelCommand>());
     // register_cmd("rename_channel", std::make_unique<RenameChannelCommand>());
     // register_cmd("create_hub", std::make_unique<CreateHubCommand>());
