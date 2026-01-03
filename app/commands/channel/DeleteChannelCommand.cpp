@@ -1,176 +1,80 @@
-#include "app/commands/DeleteChannelCommand.h"
+#include "app/commands/channel/DeleteChannelCommand.h"
 
-#include "net/PerSocketData.h"
+#include "app/dispatcher/CommandContext.h"
+#include "app/managers/subscription/Topic.h"
+#include "domains/Channel.h"
+#include "domains/Hub.h"
 
 #include <nlohmann/json.hpp>
-#include <unordered_set>
+#include <string>
 #include <vector>
 
 using nlohmann::json;
 
 namespace app {
 
-DeleteChannelCommand::DeleteChannelCommand(ServiceObjects& svc_objs)
-    : services_(svc_objs) {}
-
-std::string DeleteChannelCommand::channel_topic(const ChannelId& channel_id) {
-    return "channel:" + channel_id.value;
-}
-
-bool DeleteChannelCommand::has_privilege(const CommandContext& ctx, const HubId& hub_id) {
-    auto it = ctx.snapshot.roles.find(hub_id);
-    if (it == ctx.snapshot.roles.end()) return false;
-
-    Role role = it->second;
-    return role == Role::OWNER || role == Role::ADMIN;
-}
-
-void DeleteChannelCommand::execute(CommandContext& ctx) {
-    const auto& input = ctx.input;
-    auto output = ctx.output;
-
-    if (!ctx.snapshot.authenticated) {
-        output.success = false;
-        output.error_code = "not_authenticated";
-        output.error_message = "Authenticate before deleting channels.";
-        json err = {{"type", "error"},
-                    {"code", "not_authenticated"},
-                    {"message", "Authentication required"}};
-        DirectMessage msg;
-        msg.conn_id = ctx.conn_id;
-        msg.payload = err.dump();
-        ctx.output.messages.push_back(std::move(msg));
-        output.sent_at = std::chrono::system_clock::now();
-        return;
+CommandResult DeleteChannelCommand::execute(CommandContext& ctx, const CommandInput cmd) {
+    const auto* input = std::get_if<JsonInput>(&cmd);
+    if (!input) {
+        return std::unexpected(CommandError{"invalid_input", "delete_channel expects JSON input"});
     }
 
-    const std::string channel_id_str = input.data.value("channel_id", "");
-    if (channel_id_str.empty()) {
-        output.success = false;
-        output.error_code = "missing_channel_id";
-        output.error_message = "Channel id is required.";
-        json err = {{"type", "error"},
-                    {"code", "missing_channel_id"},
-                    {"message", "channel_id is required"}};
-        DirectMessage msg;
-        msg.conn_id = ctx.conn_id;
-        msg.payload = err.dump();
-        ctx.output.messages.push_back(std::move(msg));
-        output.sent_at = std::chrono::system_clock::now();
-        return;
+    auto user_exp = ctx.session_manager.sessionOfConnection(input->conn);
+    if (!user_exp.has_value()) {
+        return std::unexpected(CommandError{"not_authenticated", "Authenticate first"});
+    }
+    const UserId user_id = user_exp.value();
+
+    const std::string channel_id_raw = input->body.value("channel_id", "");
+    if (channel_id_raw.empty()) {
+        return std::unexpected(CommandError{"missing_channel_id", "channel_id is required"});
     }
 
-    auto internal_channel = services_.ids_.to_internal(PublicChannelId{channel_id_str});
-    if (!internal_channel.has_value()) {
-        output.success = false;
-        output.error_code = "channel_not_found";
-        output.error_message = "Channel not found.";
-        json err = {{"type", "error"},
-                    {"code", "channel_not_found"},
-                    {"message", "Channel does not exist"}};
-        DirectMessage msg;
-        msg.conn_id = ctx.conn_id;
-        msg.payload = err.dump();
-        ctx.output.messages.push_back(std::move(msg));
-        output.sent_at = std::chrono::system_clock::now();
-        return;
+    auto channel_id_opt = ctx.ids.to_internal(PublicChannelId{channel_id_raw});
+    if (!channel_id_opt.has_value()) {
+        return std::unexpected(CommandError{"channel_not_found", "Channel not found"});
     }
 
-    auto channel = services_.db_.channels().getChannel(*internal_channel);
-    if (!channel.has_value()) {
-        output.success = false;
-        output.error_code = "channel_not_found";
-        output.error_message = "Channel not found.";
-        json err = {{"type", "error"},
-                    {"code", "channel_not_found"},
-                    {"message", "Channel does not exist"}};
-        DirectMessage msg;
-        msg.conn_id = ctx.conn_id;
-        msg.payload = err.dump();
-        ctx.output.messages.push_back(std::move(msg));
-        output.sent_at = std::chrono::system_clock::now();
-        return;
+    auto channel_opt = ctx.channel_service.getChannel(*channel_id_opt);
+    if (!channel_opt.has_value()) {
+        return std::unexpected(CommandError{"channel_not_found", "Channel not found"});
+    }
+    const Channel channel = channel_opt.value();
+
+    auto role = ctx.hub_service.getMembershipRole(channel.hub_id, user_id);
+    if (!role.has_value() || (*role != Role::OWNER && *role != Role::ADMIN)) {
+        return std::unexpected(
+            CommandError{"insufficient_privilege", "Only admins/owners can delete channels"});
     }
 
-    const HubId hub_id = channel->hub_id;
-    if (!has_privilege(ctx, hub_id)) {
-        output.success = false;
-        output.error_code = "insufficient_privilege";
-        output.error_message = "Only owners or admins can delete channels.";
-        json err = {{"type", "error"},
-                    {"code", "insufficient_privilege"},
-                    {"message", "Only owners or admins can delete channels"}};
-        DirectMessage msg;
-        msg.conn_id = ctx.conn_id;
-        msg.payload = err.dump();
-        ctx.output.messages.push_back(std::move(msg));
-        output.sent_at = std::chrono::system_clock::now();
-        return;
-    }
+    const auto public_hub_id = ctx.ids.to_public(channel.hub_id);
+    const auto public_channel_id = ctx.ids.to_public(channel.id);
 
-    try {
-        if (!services_.db_.channels().deleteChannel(channel->id, hub_id)) {
-            output.success = false;
-            output.error_code = "channel_not_found";
-            output.error_message = "Channel not found.";
-            json err = {{"type", "error"},
-                        {"code", "channel_not_found"},
-                        {"message", "Channel does not exist"}};
-            DirectMessage msg;
-            msg.conn_id = ctx.conn_id;
-            msg.payload = err.dump();
-            ctx.output.messages.push_back(std::move(msg));
-            output.sent_at = std::chrono::system_clock::now();
-            return;
+    // Fan out before deleting to capture subscribers
+    CommandSuccess res;
+    json payload = {{"type", "channel_deleted"},
+                    {"hub_id", public_hub_id.value},
+                    {"channel_id", public_channel_id.value}};
+
+    auto subs = ctx.subscription_manager.getSubscribers(Topic::HubTopic(channel.hub_id));
+    if (subs.has_value() && !subs->empty()) {
+        std::vector<GlobalConnId> conns;
+        conns.reserve(subs->size());
+        for (const auto& uid : subs.value()) {
+            auto conn = ctx.session_manager.getMainConnection(uid);
+            if (conn.has_value()) conns.push_back(conn.value());
         }
-
-        const auto public_hub_id = services_.ids_.to_public(hub_id);
-        const auto public_channel_id = services_.ids_.to_public(channel->id);
-        json channel_deleted_msg = {{"type", "channel_deleted"},
-                                    {"hub_id", public_hub_id.value},
-                                    {"channel_id", public_channel_id.value}};
-        json channel_closed_msg = {{"type", "channel_closed"},
-                                   {"channel_id", public_channel_id.value}};
-
-        const auto subs = services_.gateway_.subscribers(channel_topic(channel->id));
-
-        for (const auto& cid : subs) {
-            DirectMessage ch_deleted, ch_closed;
-            ch_deleted.conn_id = cid;
-            ch_deleted.payload = channel_deleted_msg.dump();
-            ctx.output.messages.push_back(std::move(ch_deleted));
-
-            ch_closed.conn_id = cid;
-            ch_closed.payload = channel_closed_msg.dump();
-            ctx.output.messages.push_back(std::move(ch_closed));
+        if (!conns.empty()) {
+            res.intents.push_back(Fanout{.conns = std::move(conns), .payload = payload});
         }
-
-        services_.gateway_.drop_topic(channel_topic(channel->id));
-
-        services_.hub_publisher_.publish_hub(hub_id);
-
-        output.success = true;
-        output.error_code.clear();
-        output.error_message.clear();
-        json data = {{"type", "channel_deleted"},
-                     {"hub_id", public_hub_id.value},
-                     {"channel_id", public_channel_id.value}};
-        DirectMessage msg;
-        msg.conn_id = ctx.conn_id;
-        msg.payload = data.dump();
-        ctx.output.messages.push_back(std::move(msg));
-        output.sent_at = std::chrono::system_clock::now();
-    } catch (const std::exception& ex) {
-        output.success = false;
-        output.error_code = "delete_failed";
-        output.error_message = ex.what();
-        json err = {{"type", "error"}, {"code", "delete_failed"}, {"message", ex.what()}};
-        DirectMessage msg;
-        msg.conn_id = ctx.conn_id;
-        msg.payload = err.dump();
-        ctx.output.messages.push_back(std::move(msg));
-        output.sent_at = std::chrono::system_clock::now();
     }
+
+    // Ack requester
+    res.intents.push_back(Unicast{.conn = input->conn, .payload = payload});
+
+    ctx.channel_service.deleteChannel(channel.id, channel.hub_id);
+    ctx.subscription_manager.unsubscribe(user_id, Topic::ChannelTopic(channel.hub_id, channel.id));
+    return res;
 }
 
 }  // namespace app
