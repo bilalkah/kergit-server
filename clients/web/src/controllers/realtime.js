@@ -507,26 +507,26 @@ export function wireRealtime({ ws, els }) {
     const hubId = msg.hub_id;
     if (!hubId) return;
     const nextHubId = actions.removeHub(hubId);
-    document.dispatchEvent(new CustomEvent('hub:deleted', { detail: { hubId } }));
-    document.dispatchEvent(new CustomEvent('hubs:changed', { detail: { hubId: nextHubId } }));
     if (nextHubId) {
       actions.setCurrentHub(nextHubId);
     } else {
       actions.setCurrentHub(null);
     }
+    document.dispatchEvent(new CustomEvent('hub:deleted', { detail: { hubId } }));
+    document.dispatchEvent(new CustomEvent('hubs:changed', { detail: { hubId: nextHubId } }));
   });
 
   ws.on('hub_left', (msg = {}) => {
     const hubId = msg.hub_id;
     if (!hubId) return;
     const nextHubId = actions.removeHub(hubId);
-    document.dispatchEvent(new CustomEvent('hub:left:success', { detail: { hubId } }));
-    document.dispatchEvent(new CustomEvent('hubs:changed', { detail: { hubId: nextHubId } }));
     if (nextHubId) {
       actions.setCurrentHub(nextHubId);
     } else {
       actions.setCurrentHub(null);
     }
+    document.dispatchEvent(new CustomEvent('hub:left:success', { detail: { hubId } }));
+    document.dispatchEvent(new CustomEvent('hubs:changed', { detail: { hubId: nextHubId } }));
   });
 
   ws.on('error', (msg = {}) => {
