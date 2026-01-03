@@ -7,7 +7,7 @@ COMMAND_LIST = [
     "//app/commands:send_message_command",
     "//app/commands:create_channel_command",
     "//app/commands:delete_channel_command",
-    # "//app/commands:rename_channel_command",
+    "//app/commands:rename_channel_command",
     # "//app/commands:create_hub_command",
     # "//app/commands:rename_hub_command",
     # "//app/commands:delete_hub_command",
