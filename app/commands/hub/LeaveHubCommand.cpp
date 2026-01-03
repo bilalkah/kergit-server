@@ -1,175 +1,95 @@
-#include "app/commands/LeaveHubCommand.h"
+#include "app/commands/hub/LeaveHubCommand.h"
 
-#include "net/PerSocketData.h"
+#include "app/dispatcher/CommandContext.h"
+#include "app/managers/subscription/Topic.h"
+#include "domains/Hub.h"
 
 #include <nlohmann/json.hpp>
 #include <string>
-#include <unordered_set>
 #include <vector>
 
 using nlohmann::json;
 
 namespace app {
 
-LeaveHubCommand::LeaveHubCommand(ServiceObjects& svc_objs)
-    : services_(svc_objs) {}
-
-bool LeaveHubCommand::is_owner(const CommandContext& ctx, const HubId& hub_id) {
-    auto it = ctx.snapshot.roles.find(hub_id);
-    if (it == ctx.snapshot.roles.end()) return false;
-
-    Role role = it->second;
-    return role == Role::OWNER;
-}
-
-std::string LeaveHubCommand::channel_topic(const ChannelId& channel_id) {
-    return "channel:" + channel_id.value;
-}
-
-void LeaveHubCommand::publish_presence_update(const ChannelId& channel_id, CommandContext& ctx,
-                                              bool online) {
-    if (channel_id.value.empty()) return;
-    const auto name = ctx.snapshot.username;
-    if (!name.empty()) services_.ids_.remember_display(ctx.snapshot.user_id, name);
-    const auto public_channel_id = services_.ids_.to_public(channel_id);
-    const auto public_user_id = services_.ids_.to_public(ctx.snapshot.user_id);
-    json payload = {{"type", "presence_update"},
-                    {"channel_id", public_channel_id.value},
-                    {"handle", name},
-                    {"display_name", name},
-                    {"online", online},
-                    {"user_id", public_user_id.value}};
-    PublishMessage msg;
-    msg.topic = channel_topic(channel_id);
-    msg.payload = payload.dump();
-    ctx.output.messages.push_back(std::move(msg));
-}
-
-void LeaveHubCommand::execute(CommandContext& ctx) {
-    const auto& input = ctx.input;
-    auto& output = ctx.output;
-
-    if (!ctx.snapshot.authenticated) {
-        output.success = false;
-        output.error_code = "not_authenticated";
-        output.error_message = "Authentication required.";
-        json err = {{"type", "error"},
-                    {"code", "not_authenticated"},
-                    {"message", "Authentication required"}};
-        DirectMessage msg;
-        msg.conn_id = ctx.conn_id;
-        msg.payload = err.dump();
-        ctx.output.messages.push_back(std::move(msg));
-        output.sent_at = std::chrono::system_clock::now();
-        return;
+CommandResult LeaveHubCommand::execute(CommandContext& ctx, const CommandInput cmd) {
+    const auto* input = std::get_if<JsonInput>(&cmd);
+    if (!input) {
+        return std::unexpected(CommandError{"invalid_input", "leave_hub expects JSON input"});
     }
 
-    const std::string hub_id_str = input.data.value("hub_id", "");
-    if (hub_id_str.empty()) {
-        output.success = false;
-        output.error_code = "missing_hub_id";
-        output.error_message = "hub_id is required.";
-        json err = {
-            {"type", "error"}, {"code", "missing_hub_id"}, {"message", "hub_id is required"}};
-        DirectMessage msg;
-        msg.conn_id = ctx.conn_id;
-        msg.payload = err.dump();
-        ctx.output.messages.push_back(std::move(msg));
-        output.sent_at = std::chrono::system_clock::now();
-        return;
+    auto user_exp = ctx.session_manager.sessionOfConnection(input->conn);
+    if (!user_exp.has_value()) {
+        return std::unexpected(CommandError{"not_authenticated", "Authenticate first"});
+    }
+    const UserId user_id = user_exp.value();
+
+    const std::string hub_raw = input->body.value("hub_id", "");
+    if (hub_raw.empty()) {
+        return std::unexpected(CommandError{"missing_hub_id", "hub_id is required"});
     }
 
-    auto internal_hub = services_.ids_.to_internal(PublicHubId{hub_id_str});
-    if (!internal_hub.has_value()) {
-        output.success = false;
-        output.error_code = "hub_not_found";
-        output.error_message = "Hub not found.";
-        json err = {
-            {"type", "error"}, {"code", "hub_not_found"}, {"message", "Hub does not exist"}};
-        DirectMessage msg;
-        msg.conn_id = ctx.conn_id;
-        msg.payload = err.dump();
-        ctx.output.messages.push_back(std::move(msg));
-        output.sent_at = std::chrono::system_clock::now();
-        return;
+    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{hub_raw});
+    if (!hub_id_opt.has_value()) {
+        return std::unexpected(CommandError{"hub_not_found", "Hub not found"});
+    }
+    const HubId hub_id = hub_id_opt.value();
+
+    auto role = ctx.hub_service.getMembershipRole(hub_id, user_id);
+    if (!role.has_value()) {
+        return std::unexpected(CommandError{"not_in_hub", "Join the hub before leaving it"});
+    }
+    if (*role == Role::OWNER) {
+        return std::unexpected(CommandError{"hub_owner_must_transfer",
+                                            "Owners must transfer ownership before leaving"});
     }
 
-    if (!ctx.snapshot.hubs.count(*internal_hub) &&
-        !services_.db_.hubs().isHubMember(*internal_hub, ctx.snapshot.user_id)) {
-        output.success = false;
-        output.error_code = "not_in_hub";
-        output.error_message = "Join the hub before leaving it.";
-        json err = {{"type", "error"},
-                    {"code", "not_in_hub"},
-                    {"message", "Join the hub before leaving it"}};
-        DirectMessage msg;
-        msg.conn_id = ctx.conn_id;
-        msg.payload = err.dump();
-        ctx.output.messages.push_back(std::move(msg));
-        output.sent_at = std::chrono::system_clock::now();
-        return;
+    // Remove membership
+    if (!ctx.hub_service.isHubMember(hub_id, user_id)) {
+        return std::unexpected(CommandError{"not_in_hub", "Join the hub before leaving it"});
+    }
+    ctx.hub_service.removeMember(hub_id, user_id);
+
+    // Unsubscribe from hub + channels
+    ctx.subscription_manager.unsubscribe(user_id, Topic::HubTopic(hub_id));
+    const auto channels = ctx.channel_service.getHubChannels(hub_id);
+    for (const auto& ch : channels) {
+        ctx.subscription_manager.unsubscribe(user_id, Topic::ChannelTopic(hub_id, ch.id));
     }
 
-    if (is_owner(ctx, *internal_hub)) {
-        output.success = false;
-        output.error_code = "hub_owner_must_transfer";
-        output.error_message = "Owners must transfer ownership before leaving.";
-        json err = {{"type", "error"},
-                    {"code", "hub_owner_must_transfer"},
-                    {"message", "Transfer ownership or delete the hub before leaving"}};
-        DirectMessage msg;
-        msg.conn_id = ctx.conn_id;
-        msg.payload = err.dump();
-        ctx.output.messages.push_back(std::move(msg));
-        output.sent_at = std::chrono::system_clock::now();
-        return;
-    }
+    const auto public_hub_id = ctx.ids.to_public(hub_id);
+    const auto public_user_id = ctx.ids.to_public(user_id);
+    json payload = {{"type", "hub_left"}, {"hub_id", public_hub_id.value}};
 
-    try {
-        const auto public_hub_id = services_.ids_.to_public(*internal_hub);
-        const auto channels = services_.db_.channels().getHubChannels(*internal_hub);
-        services_.db_.hubs().removeMember(*internal_hub, ctx.snapshot.user_id);
+    CommandSuccess res;
+    // Ack requester
+    res.intents.push_back(Unicast{.conn = input->conn, .payload = payload});
 
-        const auto hub_list =
-            services_.gateway_.subscribers(app::services::HubPublisher::topic_for(*internal_hub));
-        services_.gateway_.unsubscribe(ctx.conn_id, app::services::HubPublisher::topic_for(*internal_hub));
-        for (const auto& channel : channels) {
-            services_.gateway_.unsubscribe(ctx.conn_id, channel_topic(channel.id));
-            publish_presence_update(channel.id, ctx, false);
+    // Notify hub members that this user left (remove from roster)
+    auto hub_subs = ctx.subscription_manager.getSubscribers(Topic::HubTopic(hub_id));
+    if (hub_subs.has_value() && !hub_subs->empty()) {
+        std::vector<GlobalConnId> conns;
+        conns.reserve(hub_subs->size());
+        for (const auto& uid : hub_subs.value()) {
+            if (uid == user_id) continue;
+            auto c = ctx.session_manager.getMainConnection(uid);
+            if (c.has_value()) conns.push_back(c.value());
         }
+        if (!conns.empty()) {
+            json offline = {{"type", "member_left"},
+                            {"hub_id", public_hub_id.value},
+                            {"user_id", public_user_id.value}};
+            res.intents.push_back(Fanout{.conns = conns, .payload = offline});
 
-        services_.hub_publisher_.publish_hub(*internal_hub);
-
-        output.success = true;
-        output.error_code.clear();
-        output.error_message.clear();
-        json data = {{"type", "hub_left"}, {"hub_id", public_hub_id.value}};
-        DirectMessage msg;
-        msg.conn_id = ctx.conn_id;
-        msg.payload = data.dump();
-        msg.apply_psd = [internal_hub = *internal_hub,
-                         &connections = services_.connections_](net::PerSocketData* psd) {
-            auto snapshot = *psd->snapshot;
-            snapshot.current_voice_channel_id = ChannelId{""};
-            snapshot.current_text_channel_id = ChannelId{""};
-            snapshot.current_hub_id = HubId{""};
-            snapshot.hubs.erase(internal_hub);
-            snapshot.roles.erase(internal_hub);
-            psd->snapshot = std::make_shared<const net::Snapshot>(std::move(snapshot));
-        };
-        ctx.output.messages.push_back(std::move(msg));
-        output.sent_at = std::chrono::system_clock::now();
-    } catch (const std::exception& ex) {
-        output.success = false;
-        output.error_code = "leave_hub_failed";
-        output.error_message = ex.what();
-        json err = {{"type", "error"}, {"code", "leave_hub_failed"}, {"message", ex.what()}};
-        DirectMessage msg;
-        msg.conn_id = ctx.conn_id;
-        msg.payload = err.dump();
-        ctx.output.messages.push_back(std::move(msg));
-        output.sent_at = std::chrono::system_clock::now();
+            // Backward/compat: also emit member_offline so clients that only handle presence still update
+            json offline_presence = {{"type", "member_offline"},
+                                     {"hub_id", public_hub_id.value},
+                                     {"user_id", public_user_id.value}};
+            res.intents.push_back(Fanout{.conns = std::move(conns), .payload = std::move(offline_presence)});
+        }
     }
+
+    return res;
 }
 
 }  // namespace app
