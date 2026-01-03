@@ -7,6 +7,7 @@ cc_library(
         "token/ITokenVerifier.h",
         "token/SupabaseJwtVerifier.h",
     ],
+    copts = ["-std=gnu++23"],
     linkopts = ["-lcrypto"],  # OpenSSL crypto library
     visibility = ["//visibility:public"],
     deps = [
@@ -20,9 +21,9 @@ cc_library(
     name = "message_validator",
     srcs = ["validation/MessageValidator.cpp"],
     hdrs = ["validation/MessageValidator.h"],
+    copts = ["-std=gnu++23"],
     visibility = ["//visibility:public"],
     deps = [
-        "//app:dispatcher",
         "@nlohmann_json",
     ],
 )

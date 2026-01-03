@@ -1,0 +1,136 @@
+#include "net/NetworkStack.h"
+
+namespace net {
+namespace {
+constexpr auto timeout = std::chrono::seconds(5);
+}
+
+NetworkStack::NetworkStack(core::NetworkStackConfig cfg)
+    : id_(IdGenerator::next(cfg.net_stack_name)), cfg_(std::move(cfg)) {}
+
+NetworkStack::~NetworkStack() {}
+
+LoopId NetworkStack::loop_id() const {
+    if (transport_layer_) {
+        auto* loop = transport_layer_->loop_id();
+        if (loop) {
+            return reinterpret_cast<LoopId>(loop);
+        }
+    }
+    return 0;
+}
+
+net::outbound::IOutboundSink& NetworkStack::outbound_sink() { return *outgoing_queue_; }
+
+void NetworkStack::attach_event_sink(app::queue::IEventSink& sink) { event_sink_ = &sink; }
+
+NetStackId NetworkStack::id() const { return id_; }
+
+bool NetworkStack::start() {
+    if (event_sink_ == nullptr) {
+        log(utils::LogLevel::ERROR, "Cannot start NetworkStack without an event sink attached.");
+        return false;
+    }
+
+    if (started_.exchange(true)) return true;  // already started
+
+    log(utils::LogLevel::WARN, "Starting server thread for " + id_.value + " ...");
+    server_thread_ = std::jthread(&NetworkStack::run_server, this);
+
+    // Wait for server to start
+    auto start_time = std::chrono::system_clock::now();
+    while (!started_.load()) {
+        if (std::chrono::system_clock::now() - start_time > timeout) {
+            started_.store(false);
+            return false;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    return true;
+}
+
+bool NetworkStack::stop() {
+    log(utils::LogLevel::WARN, "Stop NetworkStack is requested for " + id_.value);
+
+    // Guarantee we only stop once
+    if (stopped_.load()) {
+        log(utils::LogLevel::INFO, "NetworkStack is already stopped.");
+        return true;
+    }
+
+    if (transport_layer_) {
+        transport_layer_->stop();
+    }
+
+    server_thread_.request_stop();
+
+    // Wait for thread to stop
+    auto start_time = std::chrono::system_clock::now();
+    while (!stopped_.load(std::memory_order_acquire)) {
+        if (std::chrono::system_clock::now() - start_time > timeout) {
+            log(utils::LogLevel::ERROR, "Timeout waiting for server thread to stop.");
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    if (server_thread_.joinable()) {
+        log(utils::LogLevel::INFO, "Joining server thread...");
+        server_thread_.join();
+    }
+    started_.store(false, std::memory_order_release);
+    log(utils::LogLevel::INFO, "Stop NetworkStack is completed.");
+    return stopped_.load(std::memory_order_acquire);
+}
+
+void NetworkStack::run_server() {
+    log(utils::LogLevel::WARN, "Starting run_server");
+
+    wire_components();
+
+    if (!transport_layer_) {
+        log(utils::LogLevel::ERROR, "No transport server configured.");
+        started_.store(false);
+        return;
+    }
+    started_.store(true);
+    transport_layer_->start();  // Program will block here until stop is called
+
+    log(utils::LogLevel::WARN, "Exiting run_server");
+    started_.store(false);
+    stopped_.store(true);
+}
+
+void NetworkStack::wire_components() {
+    // Connection registry
+    connection_registry_ = std::make_unique<connection::ConnectionRegistery>();
+
+    // Outgoing message queue
+    outgoing_queue_ = std::make_unique<outbound::OutgoingQueue>();
+
+    // Transport later
+    transport_layer_ = std::make_unique<transport::websocket::TextWSServer>(
+        cfg_, *connection_registry_, *outgoing_queue_);
+
+    transport_layer_->set_hooks(
+        {.on_open =
+             [this](const ConnId& connid) {
+                 event_sink_->push(app::queue::Event{.conn_id = GlobalConnId{id_, connid},
+                                                     .body = app::queue::ConnectionEvent{}});
+             },
+         .on_message =
+             [this](const ConnId& connid, std::string_view raw) {
+                 event_sink_->push(app::queue::Event{
+                     .conn_id = GlobalConnId{id_, connid},
+                     .body = app::queue::MessageEvent{
+                         .payload = app::queue::Payload{.data = std::string(raw)}}});
+             },
+         .on_close =
+             [this](const ConnId& connid, int code, std::string_view reason) {
+                 event_sink_->push(
+                     app::queue::Event{.conn_id = GlobalConnId{id_, connid},
+                                       .body = app::queue::DisconnectionEvent{
+                                           .code = code, .reason = std::string(reason)}});
+             }});
+}
+}  // namespace net
