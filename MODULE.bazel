@@ -6,6 +6,7 @@ bazel_dep(name = "websocketpp", version = "0.8.2")
 bazel_dep(name = "googletest", version = "1.17.0")
 bazel_dep(name = "jwt-cpp", version = "0.7.0.bcr.1")
 bazel_dep(name = "fmt", version = "12.1.0")
+bazel_dep(name = "protobuf", version = "33.2")
 
 libpqxx_ext = use_extension("//third_party/libpqxx:extension.bzl", "libpqxx")
 use_repo(libpqxx_ext, "libpqxx")

@@ -3,8 +3,10 @@
 
 #include "domains/ids/Ids.h"
 
+#include <chrono>
 #include <string>
 #include <variant>
+#include <vector>
 
 namespace net::outbound {
 
@@ -24,12 +26,17 @@ struct SendPayload {
     Payload payload;
 };
 
+struct UpdateAuthState {
+    bool is_authenticated{false};
+    std::chrono::system_clock::time_point expires_at{};
+};
+
 struct DropConnection {
     int code;
     std::string reason;
 };
 
-using Action = std::variant<SendPayload, DropConnection>;
+using Action = std::variant<SendPayload, UpdateAuthState, DropConnection>;
 
 struct OutgoingMessage {
     Target target;

@@ -93,31 +93,34 @@ std::expected<ParsedJwt, JwtVerifyError> SupabaseJWTVerifier::parse_token(
     json payload = json::parse(base64_decode(parts[1]));
 
     UserClaims claims;
+
+    // REQUIRED
     claims.id = payload.value("sub", "");
-    claims.email = payload.value("email", "");
-    claims.aud = payload.value("aud", "");
-    claims.iss = payload.value("iss", "");
     claims.exp = payload.value("exp", 0);
-    claims.iat = payload.value("iat", 0);
+    claims.iss = payload.value("iss", "");
+    claims.role = payload.value("role", "");
 
-    // REQUIRED claims
-    if (claims.id.empty() || claims.email.empty())
-        return std::unexpected(JwtVerifyError::MissingClaims);
+    // aud: string OR array
+    if (payload.contains("aud")) {
+        if (payload["aud"].is_string())
+            claims.aud = payload["aud"].get<std::string>();
+        else if (payload["aud"].is_array() && !payload["aud"].empty())
+            claims.aud = payload["aud"][0].get<std::string>();
+    }
 
-    // ---------- OPTIONAL USER METADATA ----------
+    // OPTIONAL
+    claims.email = payload.value("email", "");
+
+    // user_metadata (optional, cosmetic)
     if (payload.contains("user_metadata") && payload["user_metadata"].is_object()) {
         const auto& meta = payload["user_metadata"];
         claims.username = meta.value("username", "");
         claims.full_name = meta.value("full_name", "");
     }
 
-    // ---------- OPTIONAL APP METADATA ----------
-    if (payload.contains("app_metadata") && payload["app_metadata"].is_object()) {
-        const auto& app_meta = payload["app_metadata"];
-        if (app_meta.contains("provider")) {
-            claims.role = "authenticated";
-        }
-    }
+    // REQUIRED validation
+    if (claims.id.empty() || claims.exp == 0 || claims.aud.empty() || claims.iss.empty())
+        return std::unexpected(JwtVerifyError::MissingClaims);
 
     // expiration check belongs HERE
     auto now = std::chrono::system_clock::now();

@@ -3,6 +3,7 @@
 
 #include "domains/ids/Ids.h"
 
+#include <cstdint>
 #include <string>
 #include <variant>
 
@@ -12,7 +13,9 @@ struct Payload {
     std::string data;
 };
 
-struct ConnectionEvent {};
+struct ConnectionEvent {
+    UserId user_id;
+};
 
 struct DisconnectionEvent {
     int code{};

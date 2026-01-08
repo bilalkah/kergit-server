@@ -97,6 +97,19 @@ void OutgoingWorker::tick() {
                                 " Payload size: ", action.payload.data.size());
                         },
                         conn_ctx.handle);
+                } else if constexpr (std::is_same_v<T, UpdateAuthState>) {
+                    auto result = conns_.mutate(conn_ctx.conn_id, [&](auto& ctx) {
+                        ctx.auth.is_authenticated = action.is_authenticated;
+                        ctx.auth.expires_at = action.expires_at;
+                    });
+                    if (!result.has_value()) {
+                        log(utils::LogLevel::ERROR,
+                            "Failed to update auth state for connection: ",
+                            conn_ctx.conn_id.value);
+                    } else {
+                        log(utils::LogLevel::INFO, "Updated auth state for connection: ",
+                            conn_ctx.conn_id.value);
+                    }
                 } else if constexpr (std::is_same_v<T, DropConnection>) {
                     std::visit(
                         [&](auto& handle) {

@@ -1,12 +1,16 @@
 #ifndef NET_TRANSPORT_ITRANSPORTSERVER_H
 #define NET_TRANSPORT_ITRANSPORTSERVER_H
 
+#include "domains/ids/Ids.h"
+
+#include <cstdint>
 #include <functional>
+#include <string_view>
 
 namespace net::transport {
 
 struct Hooks {
-    std::function<void(const ConnId& conn_id)> on_open;
+    std::function<void(const ConnId& conn_id, const UserId& user_id)> on_open;
     std::function<void(const ConnId& conn_id, std::string_view raw)> on_message;
     std::function<void(const ConnId& conn_id, int code, std::string_view reason)> on_close;
 };

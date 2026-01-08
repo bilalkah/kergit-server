@@ -114,9 +114,10 @@ void NetworkStack::wire_components() {
 
     transport_layer_->set_hooks(
         {.on_open =
-             [this](const ConnId& connid) {
-                 event_sink_->push(app::queue::Event{.conn_id = GlobalConnId{id_, connid},
-                                                     .body = app::queue::ConnectionEvent{}});
+             [this](const ConnId& connid, const UserId& user_id) {
+                 event_sink_->push(
+                     app::queue::Event{.conn_id = GlobalConnId{id_, connid},
+                                       .body = app::queue::ConnectionEvent{.user_id = user_id}});
              },
          .on_message =
              [this](const ConnId& connid, std::string_view raw) {
