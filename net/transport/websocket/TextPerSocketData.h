@@ -3,10 +3,16 @@
 
 #include "domains/ids/Ids.h"
 
+#include <cstdint>
+#include <string>
+
 namespace net::transport::websocket {
 
 struct TextPerSocketData {
     ConnId conn_id{""};
+    UserId user_id{""};
+    std::string role{};
+    int64_t exp{0};
 };
 
 }  // namespace net::transport::websocket

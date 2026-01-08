@@ -75,7 +75,7 @@ std::expected<std::string, connection::ConnectionError> HeartbeatService::on_pon
     auto conn = conns_.get(conn_id);
     if (conn.has_value()) {
         auto context = conn.value();
-        return make_conn_status_msg(true, static_cast<int>(context.heartbeat.rtt_ms.count()));
+        return "ok";
     }
     return std::unexpected(connection::ConnectionError{"Connection not found"});
 }
@@ -103,6 +103,14 @@ void HeartbeatService::tick() {
         auto id = ctx.conn_id;
         bool valid = std::visit([](auto& h) { return h.valid(); }, ctx.handle);
         if (!valid) continue;
+
+        const bool has_auth_deadline = ctx.auth.expires_at.time_since_epoch().count() > 0;
+        if (has_auth_deadline && now >= ctx.auth.expires_at) {
+            const bool authed = ctx.auth.is_authenticated;
+            const char* reason = authed ? "auth_token_expired" : "auth_timeout";
+            std::visit([&](auto& h) { h.end(4401, reason); }, ctx.handle);
+            continue;
+        }
 
         if (ctx.heartbeat.rtt_ms > cfg_.timeout) {
             std::visit([&](auto& h) { h.end(cfg_.close_code, cfg_.close_reason); }, ctx.handle);

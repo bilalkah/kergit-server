@@ -1,10 +1,67 @@
 #include "net/transport/websocket/TextWebSocketTransport.h"
 
 #include "net/transport/websocket/WsAppFactory.h"
+#include "proto/envelope.pb.h"
+#include "proto/heartbeat.pb.h"
 
+#include <cctype>
 #include <chrono>
 
 namespace net::transport::websocket {
+namespace {
+std::string trim_ws(std::string_view value) {
+    size_t start = 0;
+    while (start < value.size() && std::isspace(static_cast<unsigned char>(value[start]))) {
+        ++start;
+    }
+    size_t end = value.size();
+    while (end > start && std::isspace(static_cast<unsigned char>(value[end - 1]))) {
+        --end;
+    }
+    return std::string(value.substr(start, end - start));
+}
+
+std::string extract_token(std::string_view protocols) {
+    auto comma = protocols.find(',');
+    if (comma == std::string_view::npos) return "";
+    auto protocol = trim_ws(protocols.substr(0, comma));
+    if (protocol != "supabase") return "";
+    return trim_ws(protocols.substr(comma + 1));
+}
+
+using namespace sercom::protocol;
+std::expected<std::string, std::string> make_app_pong_response(
+    const sercom::protocol::Envelope& env) {
+    if (env.type() != sercom::protocol::Envelope::PING) {
+        return std::unexpected("Not a PING envelope");
+    }
+
+    sercom::protocol::system::Ping ping;
+    if (!ping.ParseFromArray(env.payload().data(), env.payload().size())) {
+        return std::unexpected("Invalid ping payload");
+    }
+
+    sercom::protocol::system::Pong pong;
+    pong.set_client_ts_ms(ping.client_ts_ms());
+    pong.set_server_ts_ms(std::chrono::duration_cast<std::chrono::milliseconds>(
+                              std::chrono::system_clock::now().time_since_epoch())
+                              .count());
+
+    sercom::protocol::Envelope out;
+    out.set_version(1);
+    out.set_type(sercom::protocol::Envelope::PONG);
+
+    std::string pong_payload;
+    pong.SerializeToString(&pong_payload);
+    out.set_payload(std::move(pong_payload));
+
+    std::string out_bytes;
+    out.SerializeToString(&out_bytes);
+
+    return out_bytes;
+}
+
+}  // namespace
 
 TextWSServer::TextWSServer(core::NetworkStackConfig cfg, connection::ConnectionRegistery& conns,
                            outbound::OutgoingQueue& outgoing_queue, OriginAllowlist origins,
@@ -15,7 +72,15 @@ TextWSServer::TextWSServer(core::NetworkStackConfig cfg, connection::ConnectionR
       conns_(conns),
       app_(AppFactory::create(cfg_)),
       heartbeat_service_(*app_, conns_),
-      out_worker_(*app_, conns_, outgoing_queue) {}
+      out_worker_(*app_, conns_, outgoing_queue) {
+    auto verifier = infra::security::token::SupabaseJWTVerifier::create();
+    if (!verifier.has_value()) {
+        log(utils::LogLevel::ERROR, "Failed to initialize SupabaseJWTVerifier. Error: ",
+            static_cast<int>(verifier.error()));
+        return;
+    }
+    auth_.emplace(std::move(verifier.value()));
+}
 
 TextWSServer::~TextWSServer() {}
 
@@ -73,28 +138,87 @@ void TextWSServer::wire() {
                         res->writeStatus("403 Forbidden")->end("Origin not allowed");
                         return;
                     }
+                    if (!auth_.has_value()) {
+                        res->writeStatus("500")->end();
+                        return;
+                    }
+                    if (active_connections_.load(std::memory_order_relaxed) >=
+                        limits_.max_connections) {
+                        res->writeStatus("503")->end("Max connections reached");
+                        return;
+                    }
+                    auto protocols = req->getHeader("sec-websocket-protocol");
+                    auto ws_key = req->getHeader("sec-websocket-key");
+                    auto token = extract_token(protocols);
+                    if (token.empty()) {
+                        res->writeStatus("401")->end();
+                        return;
+                    }
+                    auto auth_result = auth_->verify_token(std::string(token));
+                    if (!auth_result.has_value()) {
+                        res->writeStatus("401")->end();
+                        return;
+                    }
+                    const auto& claims = auth_result.value();
+
+                    TextPerSocketData psd{};
+                    psd.conn_id = conn_id_gen_.allocate();
+                    psd.user_id = UserId{claims.id};
+                    psd.role = claims.role;
+                    psd.exp = claims.exp;
                     res->template upgrade<TextPerSocketData>(
-                        {}, req->getHeader("sec-websocket-key"),
-                        req->getHeader("sec-websocket-protocol"),
+                        std::move(psd), ws_key, "supabase",
                         req->getHeader("sec-websocket-extensions"), ctx);
+
+                    active_connections_.fetch_add(1, std::memory_order_relaxed);
                 },
 
             .open =
                 [this](UwsSocket* ws) {
                     auto* psd = ws->getUserData();
-                    psd->conn_id = make_conn_id(ws);
-                    conns_.attach(psd->conn_id,
-                                  connection::ConnectionContext(
-                                      psd->conn_id, transport::ConnHandle{TextWsHandle{ws}},
-                                      TransportKind::TextWebSocket));
+                    connection::ConnectionContext ctx(psd->conn_id,
+                                                      transport::ConnHandle{TextWsHandle{ws}},
+                                                      TransportKind::TextWebSocket);
+                    ctx.auth.is_authenticated = true;
+                    if (psd->exp > 0) {
+                        ctx.auth.expires_at =
+                            std::chrono::system_clock::time_point{std::chrono::seconds{psd->exp}};
+                    } else {
+                        ws->end(4403, "Invalid token expiration");
+                        return;
+                    }
 
-                    hooks_.on_open(psd->conn_id);
+                    conns_.attach(psd->conn_id, std::move(ctx));
                     heartbeat_service_.on_open(psd->conn_id);
+                    hooks_.on_open(psd->conn_id, psd->user_id);
                 },
             .message =
                 [this](UwsSocket* ws, std::string_view data, uWS::OpCode op) {
-                    if (op != uWS::OpCode::TEXT) return;
+                    if (op != uWS::OpCode::BINARY) return;
                     auto* psd = ws->getUserData();
+                    if (!psd) return;
+
+                    sercom::protocol::Envelope env;
+                    if (!env.ParseFromArray(data.data(), data.size())) {
+                        ws->end(1002, "Invalid envelope");
+                        return;
+                    }
+
+                    if (env.version() != 1) {
+                        ws->end(1002, "Protocol version mismatch");
+                        return;
+                    }
+
+                    // FAST-PATH: application-level PING
+                    if (env.type() == sercom::protocol::Envelope::PING) {
+                        auto res = make_app_pong_response(env);
+                        if (!res.has_value()) {
+                            ws->end(1002, res.error());
+                            return;
+                        }
+                        ws->send(res.value(), uWS::OpCode::BINARY);
+                        return;
+                    }
 
                     hooks_.on_message(psd->conn_id, data);
                 },
@@ -109,8 +233,6 @@ void TextWSServer::wire() {
                     const auto& status = heartbeat_service_.on_pong(psd->conn_id);
 
                     if (!status.has_value()) return;
-
-                    ws->send(status.value(), uWS::OpCode::TEXT);
                 },
             .close =
                 [this](UwsSocket* ws, int code, std::string_view reason) {
@@ -124,17 +246,12 @@ void TextWSServer::wire() {
                     conns_.detach(conn_id);
 
                     hooks_.on_close(conn_id, code, std::string(reason));
+                    active_connections_.fetch_sub(1, std::memory_order_relaxed);
                 },
         });
 
     heartbeat_service_.start();
     out_worker_.start();
-}
-
-std::string TextWSServer::make_conn_id(void* p) {
-    char buf[32];
-    std::snprintf(buf, sizeof buf, "%p", p);
-    return std::string(buf);
 }
 
 }  // namespace net::transport::websocket

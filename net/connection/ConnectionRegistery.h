@@ -25,6 +25,14 @@ struct HeartbeatState {
 };
 
 /**
+ * State associated with authentication.
+ */
+struct AuthState {
+    bool is_authenticated{false};
+    std::chrono::system_clock::time_point expires_at{};
+};
+
+/**
  * Context associated with a connection.
  */
 struct ConnectionContext {
@@ -44,6 +52,9 @@ struct ConnectionContext {
 
     // Heartbeat state
     HeartbeatState heartbeat{};
+
+    // Authentication state
+    AuthState auth{};
 };
 
 /**

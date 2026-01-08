@@ -1,12 +1,10 @@
-#include "app/commands/auth/AuthCommand.h"
+#include "app/commands/system/ConnectionCommand.h"
 
 #include "app/managers/subscription/Topic.h"
 #include "domains/Channel.h"
+#include "domains/Hub.h"
 
-#include <chrono>
 #include <nlohmann/json.hpp>
-#include <string>
-#include <unordered_map>
 #include <unordered_set>
 #include <variant>
 #include <vector>
@@ -15,64 +13,27 @@ using nlohmann::json;
 
 namespace app {
 
-namespace {
-CommandResult make_failure(const JsonInput& input, std::string code, std::string message) {
-    CommandSuccess res;
-    json payload = {{"type", "auth_response"},
-                    {"success", false},
-                    {"code", std::move(code)},
-                    {"error", std::move(message)}};
-    res.intents.push_back(Unicast{.conn = input.conn, .payload = std::move(payload)});
-    return res;
-}
-}  // namespace
-
-CommandResult AuthCommand::execute(CommandContext& ctx, const CommandInput cmd) {
-    const auto* input = std::get_if<JsonInput>(&cmd);
+CommandResult ConnectionCommand::execute(CommandContext& ctx, const CommandInput cmd) {
+    const auto* input = std::get_if<ConnectEvent>(&cmd);
     if (!input) {
         return std::unexpected(
-            CommandError{"invalid_input", "Auth command expects a JSON payload"});
+            CommandError{"invalid_input", "Connection command expects a connect event"});
     }
 
-    const std::string token = input->body.value("token", "");
-
-    if (token.empty()) {
-        return make_failure(*input, "missing_token", "Authentication token is required");
+    const UserId user_id = input->user_id;
+    if (user_id.value.empty()) {
+        return std::unexpected(CommandError{"invalid_input", "User id is required"});
     }
-
-    auto auth_result = ctx.auth_service.authenticate(token);
-    if (!auth_result.has_value()) {
-        std::string message;
-        switch (auth_result.error()) {
-            case services::AuthError::InvalidToken:
-                message = "Invalid authentication token";
-                break;
-            case services::AuthError::ExpiredToken:
-                message = "Authentication token has expired";
-                break;
-            case services::AuthError::Other:
-            default:
-                message = "Authentication error";
-                break;
-        }
-        return make_failure(*input, "auth_error", message);
-    }
-
-    const auto& claims = auth_result.value();
-    UserId user_id{claims.id};
-    const auto expires_at =
-        std::chrono::system_clock::time_point{std::chrono::seconds{claims.exp}};
 
     auto db_user = ctx.user_service.getUser(user_id);
     if (!db_user) {
-        return make_failure(*input, "user_not_found", "User not found in database");
+        return std::unexpected(CommandError{"user_not_found", "User not found in database"});
     }
-    const std::string display_name = !db_user->username.empty()
-                                         ? db_user->username
-                                         : (!db_user->full_name.empty()
-                                                ? db_user->full_name
-                                                : (!claims.username.empty() ? claims.username
-                                                                            : claims.full_name));
+
+    const std::string display_name =
+        !db_user->username.empty()
+            ? db_user->username
+            : (!db_user->full_name.empty() ? db_user->full_name : "Member");
 
     // Track session + subscribe to hubs for presence
     ctx.session_manager.createSession(input->conn, user_id);
@@ -113,8 +74,7 @@ CommandResult AuthCommand::execute(CommandContext& ctx, const CommandInput cmd) 
         json channels_json = json::array();
         for (const auto& channel : hub_channels) {
             const auto public_channel = ctx.ids.to_public(channel.id);
-            const std::string type_str =
-                channel.type == ChannelType::VOICE ? "voice" : "text";
+            const std::string type_str = channel.type == ChannelType::VOICE ? "voice" : "text";
             channels_json.push_back(
                 {{"id", public_channel.value}, {"name", channel.name}, {"type", type_str}});
         }
@@ -135,7 +95,7 @@ CommandResult AuthCommand::execute(CommandContext& ctx, const CommandInput cmd) 
                     else if (!member_user->full_name.empty()) name = member_user->full_name;
                 }
             }
-            if (name.empty() && member_id == user_id && !display_name.empty()) name = display_name;
+            if (name.empty() && member_id == user_id) name = display_name;
             if (name.empty()) name = "Member";
 
             members_json.push_back(
@@ -151,13 +111,10 @@ CommandResult AuthCommand::execute(CommandContext& ctx, const CommandInput cmd) 
                       {"hub_count", hubs.size()},
                       {"hubs", hubs_meta},
                       {"channels_by_hub", channels_by_hub},
-                      {"members_by_hub", members_by_hub},
-                      {"expires_at", claims.exp}};
+                      {"members_by_hub", members_by_hub}};
 
     CommandSuccess res;
     res.intents.push_back(Unicast{.conn = input->conn, .payload = std::move(auth_resp)});
-    res.intents.push_back(AuthStateIntent{
-        .conn = input->conn, .expires_at = expires_at, .authenticated = true});
 
     // Notify online members in shared hubs that this user is now online
     for (const auto& hub : hubs) {

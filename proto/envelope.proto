@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package sercom.protocol;
+
+message Envelope {
+    uint32 version = 1;
+
+    enum Type {
+        UNKNOWN = 0;
+        PING = 1;
+        PONG = 2;
+        CHAT = 3;
+    }
+
+    Type type = 3;
+    bytes payload = 4;
+}
