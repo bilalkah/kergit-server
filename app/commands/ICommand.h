@@ -3,6 +3,8 @@
 
 #include "domains/ids/Ids.h"
 
+#include <chrono>
+#include <cstdint>
 #include <expected>
 #include <nlohmann/json.hpp>
 #include <string>
@@ -20,6 +22,7 @@ struct JsonInput {
 
 struct ConnectEvent {
     GlobalConnId conn;
+    UserId user_id;
 };
 
 struct DisconnectEvent {
@@ -42,7 +45,13 @@ struct Fanout {
     nlohmann::json payload;
 };
 
-using OutboundIntent = std::variant<Unicast, Fanout>;
+struct AuthStateIntent {
+    GlobalConnId conn;
+    std::chrono::system_clock::time_point expires_at{};
+    bool authenticated{false};
+};
+
+using OutboundIntent = std::variant<Unicast, Fanout, AuthStateIntent>;
 
 // ---------------- command result ----------------
 

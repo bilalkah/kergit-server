@@ -3,11 +3,9 @@ load("@rules_cc//cc:cc_library.bzl", "cc_library")
 cc_library(
     name = "worker_pool",
     srcs = [
-        "AuthGuard.cpp",
         "WorkerPool.cpp",
     ],
     hdrs = [
-        "AuthGuard.h",
         "WorkerPool.h",
     ],
     copts = ["-std=gnu++23"],

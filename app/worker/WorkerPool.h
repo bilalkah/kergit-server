@@ -4,8 +4,7 @@
 #include "app/dispatcher/Dispatcher.h"
 #include "app/queue/EventQueue.h"
 #include "core/ServerConfig.h"
-#include "infra/security/validation/MessageValidator.h"
-#include "app/worker/AuthGuard.h"
+#include "infra/security/validation/JsonValidator.h"
 #include "net/outbound/IOutBoundSink.h"
 #include "utils/Loggable.h"
 
@@ -42,7 +41,6 @@ class WorkerPool : public utils::Loggable {
     net::outbound::IOutboundSink& out_queue_;
     Dispatcher& dispatcher_;
     CommandContext& cmd_ctx_;
-    AuthGuard auth_guard_;
 
     infra::security::validation::MessageValidator message_validator_;
 

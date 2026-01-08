@@ -2,6 +2,7 @@
 #define NET_TRANSPORT_WEBSOCKET_TEXTWEBSOCKETTRANSPORT_H
 
 #include "core/ServerConfig.h"
+#include "infra/security/token/SupabaseJwtVerifier.h"
 #include "net/connection/ConnectionRegistery.h"
 #include "net/outbound/OutgoingQueue.h"
 #include "net/outbound/OutgoingWorker.h"
@@ -13,8 +14,10 @@
 #include "utils/Loggable.h"
 
 #include <atomic>
+#include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 
 namespace net::transport::websocket {
@@ -49,9 +52,17 @@ class TextWSServer : public ITransportServer, public utils::Loggable {
     void set_hooks(Hooks hooks) override;
 
    private:
-    void wire();
-    static std::string make_conn_id(void* p);
+    class ConnIdGenerator {
+       public:
+        ConnId allocate() {
+            uint64_t id = next_.fetch_add(1, std::memory_order_relaxed);
+            return ConnId{std::to_string(id)};
+        }
 
+       private:
+        std::atomic<uint64_t> next_{1};
+    };
+    void wire();
     /**
      * Configuration
      */
@@ -73,6 +84,8 @@ class TextWSServer : public ITransportServer, public utils::Loggable {
     runtime::HeartbeatService heartbeat_service_;
     outbound::OutgoingWorker out_worker_;
     Hooks hooks_{};
+    std::optional<infra::security::token::SupabaseJWTVerifier> auth_{};
+    ConnIdGenerator conn_id_gen_{};
 
     /**
      * State
@@ -80,6 +93,11 @@ class TextWSServer : public ITransportServer, public utils::Loggable {
     std::atomic<bool> started_{false};
     std::atomic<bool> stopped_{false};
     std::atomic<bool> stop_requested_{false};
+    
+    /**
+     * Number of active connections
+     */
+    std::atomic<uint8_t> active_connections_{0};
 };
 
 }  // namespace net::transport::websocket

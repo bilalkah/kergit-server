@@ -1,4 +1,4 @@
-#include "infra/security/validation/MessageValidator.h"
+#include "infra/security/validation/JsonValidator.h"
 
 #include <algorithm>
 #include <regex>

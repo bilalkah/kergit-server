@@ -14,7 +14,6 @@ WorkerPool::WorkerPool(queue::EventQueue& in_queue, net::outbound::IOutboundSink
       out_queue_(out_queue),
       dispatcher_(dispatcher),
       cmd_ctx_(cmd_ctx),
-      auth_guard_(cmd_ctx.session_manager, out_queue),
       message_validator_(dispatcher.registered_commands()),
       config_(appstack_config) {}
 
@@ -24,7 +23,6 @@ void WorkerPool::start() {
     if (running_) return;
     running_ = true;
     paused_ = false;
-    auth_guard_.start();
 
     workers_.reserve(config_.worker_threads);
     for (std::size_t i = 0; i < config_.worker_threads; ++i) {
@@ -37,7 +35,6 @@ void WorkerPool::stop() {
 
     running_ = false;
     paused_ = false;
-    auth_guard_.stop();
 
     // wake blocked workers on queue + pause gate
     in_queue_.stop();
@@ -129,19 +126,11 @@ void WorkerPool::worker_loop(std::size_t worker_index) {
                         executing_commands_.erase(event.conn_id);
                     }
                 } else if constexpr (std::is_same_v<T, app::queue::ConnectionEvent>) {
-                    net::outbound::OutgoingMessage welcome_msg;
-                    nlohmann::json welcome_payload = {{"type", "welcome"},
-                                                      {"message", "Connection established"}};
-                    welcome_msg.target = net::outbound::Target::one(event.conn_id);
-                    welcome_msg.action = net::outbound::SendPayload{
-                        .payload = net::outbound::Payload{welcome_payload.dump()}};
-
-                    cmd_result = CommandSuccess{};
-                    cmd_result->intents.push_back(
-                        Unicast{.conn = event.conn_id, .payload = welcome_payload});
-
-                    auth_guard_.schedule(event.conn_id, std::chrono::seconds(10));
-
+                    const ConnectEvent cmd{
+                        .conn = event.conn_id,
+                        .user_id = arg.user_id,
+                    };
+                    cmd_result = dispatcher_.dispatch("connection", cmd_ctx_, cmd);
                 } else if constexpr (std::is_same_v<T, app::queue::DisconnectionEvent>) {
                     // handle disconnect
                     const app::queue::DisconnectionEvent& devt = arg;
@@ -174,6 +163,10 @@ void WorkerPool::worker_loop(std::size_t worker_index) {
                             out_msg.target = net::outbound::Target::many(arg.conns);
                             out_msg.action = net::outbound::SendPayload{
                                 .payload = net::outbound::Payload{arg.payload.dump()}};
+                        } else if constexpr (std::is_same_v<T, AuthStateIntent>) {
+                            out_msg.target = net::outbound::Target::one(arg.conn);
+                            out_msg.action = net::outbound::UpdateAuthState{
+                                .is_authenticated = arg.authenticated, .expires_at = arg.expires_at};
                         }
                         out_queue_.push(std::move(out_msg));
                     },

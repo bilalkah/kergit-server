@@ -51,9 +51,12 @@ cc_library(
     deps = [
         ":ws_app_factory",
         "//core:server_config",
+        "//infra/security:supabase_jwt_verifier",
         "//net/outbound:outgoing_worker",
         "//net/runtime:heartbeat_service",
         "//net/transport:i_transport",
+        "//proto:envelope_cc_proto",
+        "//proto:heartbeat_cc_proto",
         "@uwebsockets",
     ],
 )
