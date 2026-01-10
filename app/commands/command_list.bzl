@@ -1,6 +1,7 @@
 "Command list for app/BUILD"
 
 COMMAND_LIST = [
+    "//app/commands/bootstrap:bootstrap_command",
     "//app/commands/system:connection_command",
     "//app/commands/system:disconnection_command",
     "//app/commands:join_channel_command",

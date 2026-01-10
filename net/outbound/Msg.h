@@ -12,6 +12,7 @@ namespace net::outbound {
 
 struct Payload {
     std::string data;
+    bool is_binary{false};
 };
 
 struct Target {
