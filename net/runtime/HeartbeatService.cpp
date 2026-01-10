@@ -101,19 +101,18 @@ void HeartbeatService::tick() {
         if (!conn.has_value()) continue;
         auto ctx = conn.value();
         auto id = ctx.conn_id;
-        bool valid = std::visit([](auto& h) { return h.valid(); }, ctx.handle);
-        if (!valid) continue;
+        if (!ctx.handle.valid()) continue;
 
         const bool has_auth_deadline = ctx.auth.expires_at.time_since_epoch().count() > 0;
         if (has_auth_deadline && now >= ctx.auth.expires_at) {
             const bool authed = ctx.auth.is_authenticated;
             const char* reason = authed ? "auth_token_expired" : "auth_timeout";
-            std::visit([&](auto& h) { h.end(4401, reason); }, ctx.handle);
+            ctx.handle.end(4401, reason);
             continue;
         }
 
         if (ctx.heartbeat.rtt_ms > cfg_.timeout) {
-            std::visit([&](auto& h) { h.end(cfg_.close_code, cfg_.close_reason); }, ctx.handle);
+            ctx.handle.end(cfg_.close_code, cfg_.close_reason);
             continue;
         }
 
@@ -122,7 +121,7 @@ void HeartbeatService::tick() {
             real.heartbeat.last_ping_at = now;
         });
 
-        std::visit([&](auto& h) { h.ping(); }, ctx.handle);
+        ctx.handle.ping();
     }
 }
 

@@ -88,15 +88,10 @@ void OutgoingWorker::tick() {
             [&](const auto& action) {
                 using T = std::decay_t<decltype(action)>;
                 if constexpr (std::is_same_v<T, SendPayload>) {
-                    std::visit(
-                        [&](auto& handle) {
-                            if (!handle.valid()) return;
-                            handle.send(action.payload.data);
-                            log(utils::LogLevel::INFO,
-                                "Sent payload to connection: ", conn_ctx.conn_id.value,
-                                " Payload size: ", action.payload.data.size());
-                        },
-                        conn_ctx.handle);
+                    if (!conn_ctx.handle.valid()) return;
+                    conn_ctx.handle.send(action.payload.data, action.payload.is_binary);
+                    log(utils::LogLevel::INFO, "Sent payload to connection: ",
+                        conn_ctx.conn_id.value, " Payload size: ", action.payload.data.size());
                 } else if constexpr (std::is_same_v<T, UpdateAuthState>) {
                     auto result = conns_.mutate(conn_ctx.conn_id, [&](auto& ctx) {
                         ctx.auth.is_authenticated = action.is_authenticated;
@@ -111,15 +106,10 @@ void OutgoingWorker::tick() {
                             conn_ctx.conn_id.value);
                     }
                 } else if constexpr (std::is_same_v<T, DropConnection>) {
-                    std::visit(
-                        [&](auto& handle) {
-                            if (!handle.valid()) return;
-                            handle.end(action.code, action.reason);
-                            log(utils::LogLevel::INFO,
-                                "Dropped connection: ", conn_ctx.conn_id.value,
-                                " Reason: ", action.reason);
-                        },
-                        conn_ctx.handle);
+                    if (!conn_ctx.handle.valid()) return;
+                    conn_ctx.handle.end(action.code, action.reason);
+                    log(utils::LogLevel::INFO, "Dropped connection: ", conn_ctx.conn_id.value,
+                        " Reason: ", action.reason);
                 }
             },
             msg.action);

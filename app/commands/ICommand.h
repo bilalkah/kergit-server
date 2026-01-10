@@ -45,13 +45,23 @@ struct Fanout {
     nlohmann::json payload;
 };
 
+struct BinaryUnicast {
+    GlobalConnId conn;
+    std::string payload;
+};
+
+struct BinaryFanout {
+    std::vector<GlobalConnId> conns;
+    std::string payload;
+};
+
 struct AuthStateIntent {
     GlobalConnId conn;
     std::chrono::system_clock::time_point expires_at{};
     bool authenticated{false};
 };
 
-using OutboundIntent = std::variant<Unicast, Fanout, AuthStateIntent>;
+using OutboundIntent = std::variant<Unicast, Fanout, BinaryUnicast, BinaryFanout, AuthStateIntent>;
 
 // ---------------- command result ----------------
 

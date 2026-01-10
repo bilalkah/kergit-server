@@ -37,7 +37,7 @@ struct AuthState {
  */
 struct ConnectionContext {
     ConnectionContext() = default;
-    explicit ConnectionContext(const ConnId conn, const transport::ConnHandle h,
+    explicit ConnectionContext(const ConnId conn, const transport::WsHandle h,
                                const TransportKind k)
         : conn_id(conn), handle(h), kind(k) {}
 
@@ -45,7 +45,7 @@ struct ConnectionContext {
     ConnId conn_id{""};
 
     // Underlying transport handle
-    transport::ConnHandle handle{};
+    transport::WsHandle handle{};
 
     // Transport type
     TransportKind kind{TransportKind::TextWebSocket};

@@ -158,11 +158,21 @@ void WorkerPool::worker_loop(std::size_t worker_index) {
                         if constexpr (std::is_same_v<T, Unicast>) {
                             out_msg.target = net::outbound::Target::one(arg.conn);
                             out_msg.action = net::outbound::SendPayload{
-                                .payload = net::outbound::Payload{arg.payload.dump()}};
+                                .payload = net::outbound::Payload{.data = arg.payload.dump()}};
                         } else if constexpr (std::is_same_v<T, Fanout>) {
                             out_msg.target = net::outbound::Target::many(arg.conns);
                             out_msg.action = net::outbound::SendPayload{
-                                .payload = net::outbound::Payload{arg.payload.dump()}};
+                                .payload = net::outbound::Payload{.data = arg.payload.dump()}};
+                        } else if constexpr (std::is_same_v<T, BinaryUnicast>) {
+                            out_msg.target = net::outbound::Target::one(arg.conn);
+                            out_msg.action = net::outbound::SendPayload{
+                                .payload = net::outbound::Payload{.data = arg.payload,
+                                                                  .is_binary = true}};
+                        } else if constexpr (std::is_same_v<T, BinaryFanout>) {
+                            out_msg.target = net::outbound::Target::many(arg.conns);
+                            out_msg.action = net::outbound::SendPayload{
+                                .payload = net::outbound::Payload{.data = arg.payload,
+                                                                  .is_binary = true}};
                         } else if constexpr (std::is_same_v<T, AuthStateIntent>) {
                             out_msg.target = net::outbound::Target::one(arg.conn);
                             out_msg.action = net::outbound::UpdateAuthState{
@@ -182,7 +192,8 @@ void WorkerPool::send_error(const GlobalConnId& req, std::string_view code,
 
     net::outbound::OutgoingMessage out_msg;
     out_msg.target = net::outbound::Target::one(req);
-    out_msg.action = net::outbound::SendPayload{.payload = net::outbound::Payload{err.dump()}};
+    out_msg.action =
+        net::outbound::SendPayload{.payload = net::outbound::Payload{.data = err.dump()}};
     out_queue_.push(std::move(out_msg));
 }
 

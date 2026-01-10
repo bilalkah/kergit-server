@@ -43,20 +43,31 @@ cc_library(
 )
 
 cc_library(
+    name = "text_websocket_utils",
+    srcs = ["utils.cpp"],
+    hdrs = ["utils.h"],
+    copts = ["-std=gnu++23"],
+    visibility = ["//net:__subpackages__"],
+    deps = [
+        "//proto:envelope_cc_proto",
+        "//proto/system:heartbeat_cc_proto",
+    ],
+)
+
+cc_library(
     name = "text_websocket_transport",
     srcs = ["TextWebSocketTransport.cpp"],
     hdrs = ["TextWebSocketTransport.h"],
     copts = ["-std=gnu++23"],
     visibility = ["//net:__subpackages__"],
     deps = [
+        ":text_websocket_utils",
         ":ws_app_factory",
         "//core:server_config",
         "//infra/security:supabase_jwt_verifier",
         "//net/outbound:outgoing_worker",
         "//net/runtime:heartbeat_service",
         "//net/transport:i_transport",
-        "//proto:envelope_cc_proto",
-        "//proto:heartbeat_cc_proto",
         "@uwebsockets",
     ],
 )
