@@ -1,5 +1,6 @@
 #include "app/dispatcher/Dispatcher.h"
 
+#include "app/commands/bootstrap/BootstrapCommand.h"
 #include "app/commands/channel/CreateChannelCommand.h"
 #include "app/commands/channel/DeleteChannelCommand.h"
 #include "app/commands/channel/JoinChannelCommand.h"
@@ -9,7 +10,6 @@
 #include "app/commands/hub/RenameHubCommand.h"
 #include "app/commands/hub/GetHubInviteCommand.h"
 #include "app/commands/message/SendMessageCommand.h"
-#include "app/commands/system/ConnectionCommand.h"
 #include "app/commands/system/DisconnectionCommand.h"
 #include "app/commands/hub/JoinHubByInviteCommand.h"
 #include "app/commands/hub/LeaveHubCommand.h"
@@ -40,7 +40,7 @@ std::unordered_set<std::string> Dispatcher::registered_commands() const {
 }
 
 void Dispatcher::register_all() {
-    register_cmd("connection", std::make_unique<ConnectionCommand>());
+    register_cmd("connection", std::make_unique<BootstrapCommand>());
     register_cmd("disconnection", std::make_unique<DisconnectionCommand>());
     register_cmd("join_channel", std::make_unique<JoinChannelCommand>());
     register_cmd("send_message", std::make_unique<SendMessageCommand>());
