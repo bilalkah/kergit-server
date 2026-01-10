@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package sercom.protocol.domain;
+
+enum ChannelType {
+    CHANNEL_TYPE_UNSPECIFIED = 0;
+    CHANNEL_TYPE_TEXT = 1;
+    CHANNEL_TYPE_VOICE = 2;
+}
+
+message Channel {
+    string id = 1;
+    string name = 2;
+    ChannelType type = 3;
+}
