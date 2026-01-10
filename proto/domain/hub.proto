@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package sercom.protocol.domain;
+
+enum HubRole {
+    HUB_ROLE_UNSPECIFIED = 0;
+    HUB_ROLE_MEMBER = 1;
+    HUB_ROLE_OWNER = 2;
+    HUB_ROLE_ADMIN = 3;
+}
+
+message Hub {
+    string id = 1;
+    string name = 2;
+}
+
+message HubMember {
+    string hub_id = 1;
+    string user_id = 2;
+    HubRole role = 3;
+}
+
+message HubMemberPresence {
+    string hub_id = 1;
+    string user_id = 2;
+    bool is_online = 3;
+}

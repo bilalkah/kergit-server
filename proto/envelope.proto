@@ -9,7 +9,7 @@ message Envelope {
         UNKNOWN = 0;
         PING = 1;
         PONG = 2;
-        CHAT = 3;
+        SESSION_BOOTSTRAP = 3;
     }
 
     Type type = 3;

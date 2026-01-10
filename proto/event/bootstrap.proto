@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package sercom.protocol.event;
+
+import "proto/domain/channel.proto";
+import "proto/domain/user.proto";
+import "proto/domain/hub.proto";
+
+
+message HubState {
+    sercom.protocol.domain.Hub hub = 1;
+    repeated sercom.protocol.domain.Channel channels = 2;
+    repeated sercom.protocol.domain.HubMember members = 3;
+    repeated sercom.protocol.domain.HubMemberPresence presences = 4;
+}
+
+message SessionBootstrap {
+    sercom.protocol.domain.User self = 1;
+    repeated HubState hubs = 2;
+    repeated sercom.protocol.domain.User users = 3;
+}
