@@ -16,3 +16,17 @@ cc_proto_library(
     deps = [":bootstrap_proto"],
     visibility = ["//visibility:public"],
 )
+
+proto_library(
+    name = "fetch_messages_proto",
+    srcs = ["fetch_messages.proto"],
+    deps = [
+        "//proto/domain:message_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "fetch_messages_cc_proto",
+    deps = [":fetch_messages_proto"],
+    visibility = ["//visibility:public"],
+)

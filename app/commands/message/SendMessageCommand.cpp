@@ -1,5 +1,6 @@
 #include "app/commands/message/SendMessageCommand.h"
 
+#include "app/commands/CommandJson.h"
 #include "app/dispatcher/CommandContext.h"
 #include "app/managers/subscription/Topic.h"
 #include "domains/Message.h"
@@ -42,8 +43,8 @@ CommandResult SendMessageCommand::execute(CommandContext& ctx, const CommandInpu
     }
     const UserId user_id = user_exp.value();
 
-    const std::string channel_id_raw = input->body.value("channel_id", "");
-    if (channel_id_raw.empty()) {
+    auto channel_id_raw = commands::read_uint64(input->body, "channel_id");
+    if (!channel_id_raw.has_value()) {
         return std::unexpected(CommandError{"missing_channel_id", "channel_id is required"});
     }
 
@@ -55,7 +56,7 @@ CommandResult SendMessageCommand::execute(CommandContext& ctx, const CommandInpu
         return std::unexpected(CommandError{"message_too_long", "Message exceeds maximum length"});
     }
 
-    auto channel_id_opt = ctx.ids.to_internal(PublicChannelId{channel_id_raw});
+    auto channel_id_opt = ctx.ids.to_internal(PublicChannelId{channel_id_raw.value()});
     if (!channel_id_opt.has_value()) {
         return std::unexpected(CommandError{"channel_not_found", "Channel not found"});
     }

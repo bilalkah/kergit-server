@@ -1,5 +1,6 @@
 #include "app/commands/hub/JoinHubByInviteCommand.h"
 
+#include "app/commands/CommandJson.h"
 #include "app/dispatcher/CommandContext.h"
 #include "domains/Hub.h"
 
@@ -65,12 +66,12 @@ CommandResult JoinHubByInviteCommand::execute(CommandContext& ctx, const Command
     }
     const UserId user_id = user_exp.value();
 
-    const std::string invite_code = input->body.value("invite_code", "");
-    if (invite_code.empty()) {
+    auto invite_code = commands::read_uint64(input->body, "invite_code");
+    if (!invite_code.has_value()) {
         return std::unexpected(CommandError{"invalid_invite", "Invite code is required"});
     }
 
-    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{invite_code});
+    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{invite_code.value()});
     if (!hub_id_opt.has_value()) {
         return std::unexpected(CommandError{"invite_not_found", "Invite code is invalid"});
     }

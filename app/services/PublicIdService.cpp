@@ -1,21 +1,11 @@
 #include "app/services/PublicIdService.h"
 
-#include <array>
 #include <chrono>
+#include <limits>
 #include <mutex>
 #include <utility>
 
 namespace app::services {
-
-namespace {
-constexpr std::array<char, 62> kAlphabet = {
-    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F',
-    'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V',
-    'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l',
-    'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'};
-constexpr std::size_t kAlphabetSize = kAlphabet.size();
-constexpr std::size_t kTokenLength = 22;
-}  // namespace
 
 PublicIdService::PublicIdService() {
     std::random_device rd;
@@ -68,7 +58,7 @@ PublicMessageId PublicIdService::to_public(const MessageId& internal) {
 }
 
 std::optional<HubId> PublicIdService::to_internal(const PublicHubId& external) const {
-    if (external.value.empty()) return std::nullopt;
+    if (external.value == 0) return std::nullopt;
     std::shared_lock lock(mutex_);
     auto raw = lookup_internal(hub_reverse_, external.value);
     if (!raw) return std::nullopt;
@@ -76,7 +66,7 @@ std::optional<HubId> PublicIdService::to_internal(const PublicHubId& external) c
 }
 
 std::optional<ChannelId> PublicIdService::to_internal(const PublicChannelId& external) const {
-    if (external.value.empty()) return std::nullopt;
+    if (external.value == 0) return std::nullopt;
     std::shared_lock lock(mutex_);
     auto raw = lookup_internal(channel_reverse_, external.value);
     if (!raw) return std::nullopt;
@@ -84,7 +74,7 @@ std::optional<ChannelId> PublicIdService::to_internal(const PublicChannelId& ext
 }
 
 std::optional<UserId> PublicIdService::to_internal(const PublicUserId& external) const {
-    if (external.value.empty()) return std::nullopt;
+    if (external.value == 0) return std::nullopt;
     std::shared_lock lock(mutex_);
     auto raw = lookup_internal(user_reverse_, external.value);
     if (!raw) return std::nullopt;
@@ -92,19 +82,19 @@ std::optional<UserId> PublicIdService::to_internal(const PublicUserId& external)
 }
 
 std::optional<MessageId> PublicIdService::to_internal(const PublicMessageId& external) const {
-    if (external.value.empty()) return std::nullopt;
+    if (external.value == 0) return std::nullopt;
     std::shared_lock lock(mutex_);
     auto raw = lookup_internal(message_reverse_, external.value);
     if (!raw) return std::nullopt;
     return MessageId{*raw};
 }
 
-std::string PublicIdService::ensure_mapping(ForwardMap& forward, ReverseMap& reverse,
-                                            const std::string& key) {
+uint64_t PublicIdService::ensure_mapping(ForwardMap& forward, ReverseMap& reverse,
+                                         const std::string& key) {
     auto it = forward.find(key);
     if (it != forward.end()) return it->second;
 
-    std::string token;
+    uint64_t token = 0;
     do {
         token = generate_token();
     } while (issued_tokens_.count(token) != 0U || reverse.find(token) != reverse.end());
@@ -116,20 +106,15 @@ std::string PublicIdService::ensure_mapping(ForwardMap& forward, ReverseMap& rev
 }
 
 std::optional<std::string> PublicIdService::lookup_internal(const ReverseMap& reverse,
-                                                            const std::string& external) const {
+                                                            uint64_t external) const {
     auto it = reverse.find(external);
     if (it == reverse.end()) return std::nullopt;
     return it->second;
 }
 
-std::string PublicIdService::generate_token() {
-    std::uniform_int_distribution<std::size_t> dist(0, kAlphabetSize - 1);
-    std::string token;
-    token.reserve(kTokenLength);
-    for (std::size_t i = 0; i < kTokenLength; ++i) {
-        token.push_back(kAlphabet[dist(rng_)]);
-    }
-    return token;
+uint64_t PublicIdService::generate_token() {
+    std::uniform_int_distribution<uint64_t> dist(1, std::numeric_limits<uint64_t>::max());
+    return dist(rng_);
 }
 
 }  // namespace app::services

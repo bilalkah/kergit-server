@@ -5,6 +5,7 @@
 #include "domains/Hub.h"
 
 #include <nlohmann/json.hpp>
+#include <string>
 #include <unordered_set>
 #include <variant>
 #include <vector>
@@ -78,7 +79,8 @@ CommandResult ConnectionCommand::execute(CommandContext& ctx, const CommandInput
             channels_json.push_back(
                 {{"id", public_channel.value}, {"name", channel.name}, {"type", type_str}});
         }
-        channels_by_hub[public_hub_id.value] = std::move(channels_json);
+        const auto hub_key = std::to_string(public_hub_id.value);
+        channels_by_hub[hub_key] = std::move(channels_json);
 
         json members_json = json::array();
         const auto online_users = ctx.presence_manager.onlineUsersInHub(hub.id);
@@ -101,7 +103,7 @@ CommandResult ConnectionCommand::execute(CommandContext& ctx, const CommandInput
             members_json.push_back(
                 {{"user_id", public_member.value}, {"display_name", name}, {"online", is_online}});
         }
-        members_by_hub[public_hub_id.value] = std::move(members_json);
+        members_by_hub[hub_key] = std::move(members_json);
     }
 
     json auth_resp = {{"type", "auth_response"},

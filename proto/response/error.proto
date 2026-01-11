@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package sercom.protocol.response;
+
+message ErrorResponse {
+    // present if this error is related to a request
+    string request_id = 1;
+
+    // stable machine-readable code
+    ErrorCode code = 2;
+
+    // optional human-readable message (for logs / UI)
+    string message = 3;
+}
+
+enum ErrorCode {
+    ERROR_CODE_UNSPECIFIED = 0;
+
+    // auth / permission
+    UNAUTHENTICATED = 1;
+    TOKEN_EXPIRED = 2;
+    PERMISSION_DENIED = 3;
+}

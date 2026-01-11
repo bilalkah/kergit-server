@@ -10,6 +10,7 @@ message Envelope {
         PING = 1;
         PONG = 2;
         SESSION_BOOTSTRAP = 3;
+        FETCH_MESSAGES = 4;
     }
 
     Type type = 3;

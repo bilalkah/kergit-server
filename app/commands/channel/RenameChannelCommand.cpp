@@ -1,5 +1,6 @@
 #include "app/commands/channel/RenameChannelCommand.h"
 
+#include "app/commands/CommandJson.h"
 #include "app/dispatcher/CommandContext.h"
 #include "app/managers/subscription/Topic.h"
 #include "domains/Channel.h"
@@ -47,17 +48,17 @@ CommandResult RenameChannelCommand::execute(CommandContext& ctx, const CommandIn
     }
     const UserId user_id = user_exp.value();
 
-    const std::string channel_id_raw = input->body.value("channel_id", "");
+    auto channel_id_raw = commands::read_uint64(input->body, "channel_id");
     std::string requested_name = sanitize(input->body.value("name", ""));
 
-    if (channel_id_raw.empty()) {
+    if (!channel_id_raw.has_value()) {
         return std::unexpected(CommandError{"missing_channel_id", "channel_id is required"});
     }
     if (requested_name.empty()) {
         return std::unexpected(CommandError{"invalid_channel_name", "Channel name is required"});
     }
 
-    auto channel_id_opt = ctx.ids.to_internal(PublicChannelId{channel_id_raw});
+    auto channel_id_opt = ctx.ids.to_internal(PublicChannelId{channel_id_raw.value()});
     if (!channel_id_opt.has_value()) {
         return std::unexpected(CommandError{"channel_not_found", "Channel not found"});
     }

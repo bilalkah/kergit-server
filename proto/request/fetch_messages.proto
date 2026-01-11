@@ -1,0 +1,17 @@
+// proto/response/fetch_messages.proto
+syntax = "proto3";
+
+package sercom.protocol.response;
+
+import "proto/domain/message.proto";
+
+message FetchMessagesResponse {
+    string request_id = 1;
+
+    // messages ordered newest → oldest OR oldest → newest
+    // (pick one and document it; usually oldest → newest)
+    repeated sercom.protocol.domain.Message messages = 2;
+
+    // pagination signal
+    bool has_more = 3;
+}

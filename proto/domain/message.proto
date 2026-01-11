@@ -4,9 +4,9 @@ package sercom.protocol.domain;
 
 
 message Message {
-    string id = 1;
-    string channel_id = 2;
-    string author_id = 3;
+    uint64 id = 1;
+    uint64 channel_id = 2;
+    uint64 author_id = 3;
     string content = 4;
     uint64 created_at_ms = 5;
 }
