@@ -14,6 +14,11 @@ cc_library(
     name = "uws_types",
     hdrs = ["UwsTypes.h"],
     copts = ["-std=gnu++23"],
+    defines = select({
+        "//server:ssl_on": ["USE_SSL"],
+        "//server:ssl_off": [],
+        "//conditions:default": [],
+    }),
     visibility = ["//net:__subpackages__"],
     deps = [
         ":text_per_socket_data",

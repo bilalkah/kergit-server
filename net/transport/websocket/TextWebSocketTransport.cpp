@@ -79,6 +79,7 @@ void TextWSServer::wire() {
     app_->uws().ws<TextPerSocketData>(
         cfg_.ws_path,
         {
+            .compression = uWS::SHARED_COMPRESSOR,
             .sendPingsAutomatically = false,
             .upgrade =
                 [this](auto* res, auto* req, auto* ctx) {
