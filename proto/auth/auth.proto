@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package sercom.protocol.auth;
+
+import "proto/domain/user.proto";
+
+enum AuthType {
+  AUTH_TYPE_UNSPECIFIED = 0;
+  AUTH_TYPE_AUTH = 1;
+  AUTH_TYPE_REAUTH = 2;
+}
+
+enum AuthProvider {
+  AUTH_PROVIDER_UNSPECIFIED = 0;
+  AUTH_PROVIDER_SUPABASE = 1;
+}
+
+enum AuthStatus {
+  AUTH_STATUS_UNSPECIFIED = 0;
+  AUTH_STATUS_SUCCESS = 1;
+  AUTH_STATUS_FAILED = 2;
+}
+
+message AuthRequest {
+  AuthType type = 1;
+  AuthProvider provider = 2;
+  string token = 3;
+}
+
+message AuthSuccess {
+  sercom.protocol.domain.User user = 1;
+}
+
+message AuthFailure {
+  string code = 1;        // e.g. "TOKEN_EXPIRED", "INVALID_TOKEN"
+  string message = 2;     // human-readable
+}
+
+message AuthResponse {
+  AuthStatus status = 1;
+
+  oneof result {
+    AuthSuccess success = 2;
+    AuthFailure failure = 3;
+  }
+}

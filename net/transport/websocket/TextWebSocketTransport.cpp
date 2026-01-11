@@ -2,12 +2,89 @@
 
 #include "net/transport/websocket/WsAppFactory.h"
 #include "net/transport/websocket/utils.h"
+#include "proto/auth/auth.pb.h"
 
 #include <cctype>
 #include <chrono>
+#include <string_view>
 
 namespace net::transport::websocket {
 namespace {
+
+std::string_view jwt_error_code(infra::security::token::JwtVerifyError err) {
+    using infra::security::token::JwtVerifyError;
+    switch (err) {
+        case JwtVerifyError::EmptyToken:
+            return "EMPTY_TOKEN";
+        case JwtVerifyError::InvalidFormat:
+            return "INVALID_FORMAT";
+        case JwtVerifyError::UnsupportedAlgorithm:
+            return "UNSUPPORTED_ALG";
+        case JwtVerifyError::InvalidSignature:
+            return "INVALID_SIGNATURE";
+        case JwtVerifyError::TokenExpired:
+            return "TOKEN_EXPIRED";
+        case JwtVerifyError::MissingClaims:
+            return "MISSING_CLAIMS";
+        case JwtVerifyError::KeyNotFound:
+            return "KEY_NOT_FOUND";
+        case JwtVerifyError::JwkParseError:
+            return "JWK_PARSE_ERROR";
+    }
+    return "UNKNOWN_ERROR";
+}
+
+std::string_view jwt_error_message(infra::security::token::JwtVerifyError err) {
+    using infra::security::token::JwtVerifyError;
+    switch (err) {
+        case JwtVerifyError::EmptyToken:
+            return "Token is empty";
+        case JwtVerifyError::InvalidFormat:
+            return "Token format is invalid";
+        case JwtVerifyError::UnsupportedAlgorithm:
+            return "Token algorithm is unsupported";
+        case JwtVerifyError::InvalidSignature:
+            return "Token signature is invalid";
+        case JwtVerifyError::TokenExpired:
+            return "Token has expired";
+        case JwtVerifyError::MissingClaims:
+            return "Token claims are missing";
+        case JwtVerifyError::KeyNotFound:
+            return "Signing key not found";
+        case JwtVerifyError::JwkParseError:
+            return "Failed to parse JWK";
+    }
+    return "Unknown token error";
+}
+
+std::string build_auth_envelope(sercom::protocol::auth::AuthStatus status,
+                                std::string_view code, std::string_view message) {
+    sercom::protocol::auth::AuthResponse resp;
+    resp.set_status(status);
+    if (status == sercom::protocol::auth::AUTH_STATUS_SUCCESS) {
+        resp.mutable_success();
+    } else {
+        auto* failure = resp.mutable_failure();
+        failure->set_code(std::string(code));
+        failure->set_message(std::string(message));
+    }
+
+    std::string payload;
+    if (!resp.SerializeToString(&payload)) {
+        return {};
+    }
+
+    sercom::protocol::Envelope env;
+    env.set_version(1);
+    env.set_type(sercom::protocol::Envelope::AUTH);
+    env.set_payload(std::move(payload));
+
+    std::string out_bytes;
+    if (!env.SerializeToString(&out_bytes)) {
+        return {};
+    }
+    return out_bytes;
+}
 
 
 }  // namespace
@@ -167,6 +244,91 @@ void TextWSServer::wire() {
                             return;
                         }
                         ws->send(res.value(), uWS::OpCode::BINARY);
+                        return;
+                    }
+
+                    if (env.type() == sercom::protocol::Envelope::AUTH) {
+                        auto send_auth_response =
+                            [&](sercom::protocol::auth::AuthStatus status,
+                                std::string_view code, std::string_view message) {
+                                auto out = build_auth_envelope(status, code, message);
+                                if (!out.empty()) {
+                                    ws->send(out, uWS::OpCode::BINARY);
+                                }
+                            };
+
+                        sercom::protocol::auth::AuthRequest req;
+                        if (!req.ParseFromArray(env.payload().data(), env.payload().size())) {
+                            send_auth_response(sercom::protocol::auth::AUTH_STATUS_FAILED,
+                                               "INVALID_REQUEST", "Invalid auth payload");
+                            return;
+                        }
+
+                        if (req.type() != sercom::protocol::auth::AUTH_TYPE_REAUTH) {
+                            send_auth_response(sercom::protocol::auth::AUTH_STATUS_FAILED,
+                                               "UNSUPPORTED_AUTH_TYPE", "Only REAUTH is supported");
+                            return;
+                        }
+
+                        if (req.provider() != sercom::protocol::auth::AUTH_PROVIDER_SUPABASE) {
+                            send_auth_response(sercom::protocol::auth::AUTH_STATUS_FAILED,
+                                               "UNSUPPORTED_PROVIDER",
+                                               "Unsupported auth provider");
+                            return;
+                        }
+
+                        if (req.token().empty()) {
+                            send_auth_response(sercom::protocol::auth::AUTH_STATUS_FAILED,
+                                               "EMPTY_TOKEN", "Token is required");
+                            return;
+                        }
+
+                        if (!auth_.has_value()) {
+                            send_auth_response(sercom::protocol::auth::AUTH_STATUS_FAILED,
+                                               "AUTH_UNAVAILABLE",
+                                               "Auth verifier is not initialized");
+                            return;
+                        }
+
+                        auto auth_result = auth_->verify_token(req.token());
+                        if (!auth_result.has_value()) {
+                            send_auth_response(sercom::protocol::auth::AUTH_STATUS_FAILED,
+                                               jwt_error_code(auth_result.error()),
+                                               jwt_error_message(auth_result.error()));
+                            return;
+                        }
+
+                        const auto& claims = auth_result.value();
+                        if (claims.id != psd->user_id.value) {
+                            send_auth_response(sercom::protocol::auth::AUTH_STATUS_FAILED,
+                                               "USER_MISMATCH",
+                                               "Token user does not match connection");
+                            ws->end(4401, "reauth_user_mismatch");
+                            return;
+                        }
+
+                        if (claims.exp <= 0) {
+                            send_auth_response(sercom::protocol::auth::AUTH_STATUS_FAILED,
+                                               "MISSING_EXP", "Token expiration missing");
+                            return;
+                        }
+
+                        auto update_result = conns_.mutate(
+                            psd->conn_id, [&](connection::ConnectionContext& ctx) {
+                                ctx.auth.is_authenticated = true;
+                                ctx.auth.expires_at =
+                                    std::chrono::system_clock::time_point{
+                                        std::chrono::seconds{claims.exp}};
+                            });
+                        if (!update_result.has_value()) {
+                            send_auth_response(sercom::protocol::auth::AUTH_STATUS_FAILED,
+                                               "CONNECTION_NOT_FOUND",
+                                               update_result.error().message);
+                            return;
+                        }
+
+                        psd->exp = claims.exp;
+                        send_auth_response(sercom::protocol::auth::AUTH_STATUS_SUCCESS, "", "");
                         return;
                     }
 

@@ -11,6 +11,7 @@ message Envelope {
         PONG = 2;
         SESSION_BOOTSTRAP = 3;
         FETCH_MESSAGES = 4;
+        AUTH = 5;
     }
 
     Type type = 3;
