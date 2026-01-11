@@ -14,10 +14,7 @@ refresh_compile_commands(
     # Specify the targets of interest.
     # For example, specify a dict of targets and any flags required to build.
     targets = {
-        "//net/...": "--config=vanilla",
-        "//utils/...": "--config=vanilla",
-        "//core/...": "--config=vanilla",
-        # "//...": "--config=vanilla"
+        "//...": "--config=vanilla_dbg",
     },
     # No need to add flags already in .bazelrc. They're automatically picked up.
     # If you don't need flags, a list of targets is also okay, as is a single target string.
