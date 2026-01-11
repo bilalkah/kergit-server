@@ -1,5 +1,6 @@
 #include "app/commands/member/UpdateMemberRoleCommand.h"
 
+#include "app/commands/CommandJson.h"
 #include "app/dispatcher/CommandContext.h"
 #include "domains/Hub.h"
 
@@ -30,17 +31,17 @@ CommandResult UpdateMemberRoleCommand::execute(CommandContext& ctx, const Comman
     }
     const UserId actor = actor_exp.value();
 
-    const std::string hub_raw = input->body.value("hub_id", "");
-    const std::string user_raw = input->body.value("user_id", "");
+    auto hub_raw = commands::read_uint64(input->body, "hub_id");
+    auto user_raw = commands::read_uint64(input->body, "user_id");
     const std::string role_raw = input->body.value("role", "");
 
-    if (hub_raw.empty() || user_raw.empty() || role_raw.empty()) {
+    if (!hub_raw.has_value() || !user_raw.has_value() || role_raw.empty()) {
         return std::unexpected(
             CommandError{"invalid_request", "hub_id, user_id and role are required"});
     }
 
-    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{hub_raw});
-    auto target_id_opt = ctx.ids.to_internal(PublicUserId{user_raw});
+    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{hub_raw.value()});
+    auto target_id_opt = ctx.ids.to_internal(PublicUserId{user_raw.value()});
     if (!hub_id_opt.has_value() || !target_id_opt.has_value()) {
         return std::unexpected(CommandError{"not_found", "Invalid hub or user identifier"});
     }

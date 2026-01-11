@@ -3,6 +3,7 @@ load("@rules_cc//cc:cc_library.bzl", "cc_library")
 cc_library(
     name = "i_command",
     hdrs = [
+        "CommandJson.h",
         "ICommand.h",
     ],
     visibility = ["//visibility:public"],

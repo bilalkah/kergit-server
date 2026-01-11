@@ -1,5 +1,6 @@
 #include "app/commands/hub/RenameHubCommand.h"
 
+#include "app/commands/CommandJson.h"
 #include "app/dispatcher/CommandContext.h"
 #include "app/managers/subscription/Topic.h"
 #include "domains/Hub.h"
@@ -39,17 +40,17 @@ CommandResult RenameHubCommand::execute(CommandContext& ctx, const CommandInput 
     }
     const UserId user_id = user_exp.value();
 
-    const std::string hub_raw = input->body.value("hub_id", "");
+    auto hub_raw = commands::read_uint64(input->body, "hub_id");
     std::string requested_name = sanitize(input->body.value("name", std::string{}));
 
-    if (hub_raw.empty()) {
+    if (!hub_raw.has_value()) {
         return std::unexpected(CommandError{"missing_hub_id", "hub_id is required"});
     }
     if (requested_name.empty()) {
         return std::unexpected(CommandError{"invalid_hub_name", "Hub name is required"});
     }
 
-    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{hub_raw});
+    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{hub_raw.value()});
     if (!hub_id_opt.has_value()) {
         return std::unexpected(CommandError{"hub_not_found", "Hub not found"});
     }
