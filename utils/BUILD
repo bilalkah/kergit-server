@@ -19,6 +19,11 @@ cc_library(
 cc_library(
     name = "tls_config",
     hdrs = ["TlsConfig.h"],
+    defines = select({
+        "//server:ssl_on": ["USE_SSL"],
+        "//server:ssl_off": [],
+        "//conditions:default": [],
+    }),
     visibility = ["//visibility:public"],
     deps = [
         ":loggable",

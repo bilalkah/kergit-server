@@ -3,11 +3,13 @@ load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 config_setting(
     name = "ssl_on",
     values = {"define": "USE_SSL=true"},
+    visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "ssl_off",
     values = {"define": "USE_SSL=false"},
+    visibility = ["//visibility:public"],
 )
 
 cc_binary(
