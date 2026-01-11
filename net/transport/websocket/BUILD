@@ -73,6 +73,7 @@ cc_library(
         "//net/outbound:outgoing_worker",
         "//net/runtime:heartbeat_service",
         "//net/transport:i_transport",
+        "//proto/auth:auth_cc_proto",
         "@uwebsockets",
     ],
 )
