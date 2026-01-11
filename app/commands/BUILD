@@ -194,6 +194,7 @@ cc_library(
     srcs = ["member/UpdateMemberRoleCommand.cpp"],
     hdrs = ["member/UpdateMemberRoleCommand.h"],
     visibility = ["//visibility:public"],
+    copts = ["-std=gnu++23"],
     deps = [
         ":i_command",
         "//app/dispatcher:command_context",
