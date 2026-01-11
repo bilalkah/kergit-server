@@ -33,13 +33,12 @@ class PublicIdService {
     std::optional<MessageId> to_internal(const PublicMessageId& external) const;
 
    private:
-    using ForwardMap = std::unordered_map<std::string, std::string>;
-    using ReverseMap = std::unordered_map<std::string, std::string>;
+    using ForwardMap = std::unordered_map<std::string, uint64_t>;
+    using ReverseMap = std::unordered_map<uint64_t, std::string>;
 
-    std::string ensure_mapping(ForwardMap& forward, ReverseMap& reverse, const std::string& key);
-    std::optional<std::string> lookup_internal(const ReverseMap& reverse,
-                                               const std::string& external) const;
-    std::string generate_token();
+    uint64_t ensure_mapping(ForwardMap& forward, ReverseMap& reverse, const std::string& key);
+    std::optional<std::string> lookup_internal(const ReverseMap& reverse, uint64_t external) const;
+    uint64_t generate_token();
 
     mutable std::shared_mutex mutex_;
     ForwardMap hub_forward_;
@@ -50,7 +49,7 @@ class PublicIdService {
     ReverseMap user_reverse_;
     ForwardMap message_forward_;
     ReverseMap message_reverse_;
-    std::unordered_set<std::string> issued_tokens_;
+    std::unordered_set<uint64_t> issued_tokens_;
     std::mt19937_64 rng_;
 };
 

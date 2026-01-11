@@ -52,6 +52,7 @@ CommandResult BootstrapCommand::execute(CommandContext& ctx, const CommandInput 
     auto* self = bootstrap.mutable_self();
     self->set_id(public_user_id.value);
     self->set_username(display_name);
+    bootstrap.set_num_hub(static_cast<uint64_t>(hubs.size()));
 
     std::unordered_map<UserId, std::string> user_display;
     user_display.emplace(user_id, display_name);
@@ -108,11 +109,7 @@ CommandResult BootstrapCommand::execute(CommandContext& ctx, const CommandInput 
                 role = role_it->second;
             }
             member_msg->set_role(converters::to_proto_hub_role(role));
-
-            auto* presence_msg = hub_state->add_presences();
-            presence_msg->set_hub_id(public_hub_id.value);
-            presence_msg->set_user_id(public_member.value);
-            presence_msg->set_is_online(online_set.find(member_id) != online_set.end());
+            member_msg->set_is_online(online_set.find(member_id) != online_set.end());
         }
 
         if (!online_members.empty()) {

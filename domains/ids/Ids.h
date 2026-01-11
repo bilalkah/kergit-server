@@ -1,6 +1,7 @@
 #ifndef DOMAINS_IDS_IDS_H_
 #define DOMAINS_IDS_IDS_H_
 
+#include <cstdint>
 #include <functional>
 #include <string>
 
@@ -46,24 +47,24 @@ struct GlobalConnId {
 };
 
 struct PublicHubId {
-    std::string value;
+    uint64_t value{};
     PublicHubId() = default;
-    PublicHubId(std::string v) : value(std::move(v)) {}
+    PublicHubId(uint64_t v) : value(v) {}
 };
 struct PublicChannelId {
-    std::string value;
+    uint64_t value{};
     PublicChannelId() = default;
-    PublicChannelId(std::string v) : value(std::move(v)) {}
+    PublicChannelId(uint64_t v) : value(v) {}
 };
 struct PublicUserId {
-    std::string value;
+    uint64_t value{};
     PublicUserId() = default;
-    PublicUserId(std::string v) : value(std::move(v)) {}
+    PublicUserId(uint64_t v) : value(v) {}
 };
 struct PublicMessageId {
-    std::string value;
+    uint64_t value{};
     PublicMessageId() = default;
-    PublicMessageId(std::string v) : value(std::move(v)) {}
+    PublicMessageId(uint64_t v) : value(v) {}
 };
 
 inline bool operator==(const HubId& a, const HubId& b) { return a.value == b.value; }
@@ -120,25 +121,25 @@ struct hash<GlobalConnId> {
 template <>
 struct hash<PublicHubId> {
     size_t operator()(const PublicHubId& x) const noexcept {
-        return std::hash<std::string>{}(x.value);
+        return std::hash<uint64_t>{}(x.value);
     }
 };
 template <>
 struct hash<PublicChannelId> {
     size_t operator()(const PublicChannelId& x) const noexcept {
-        return std::hash<std::string>{}(x.value);
+        return std::hash<uint64_t>{}(x.value);
     }
 };
 template <>
 struct hash<PublicUserId> {
     size_t operator()(const PublicUserId& x) const noexcept {
-        return std::hash<std::string>{}(x.value);
+        return std::hash<uint64_t>{}(x.value);
     }
 };
 template <>
 struct hash<PublicMessageId> {
     size_t operator()(const PublicMessageId& x) const noexcept {
-        return std::hash<std::string>{}(x.value);
+        return std::hash<uint64_t>{}(x.value);
     }
 };
 }  // namespace std
