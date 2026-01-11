@@ -35,7 +35,6 @@ cc_library(
     includes = ["."],
     visibility = ["//visibility:public"],
     deps = [
-        "//proto:chat_cc_proto",
         "//proto:envelope_cc_proto",
     ],
 )
