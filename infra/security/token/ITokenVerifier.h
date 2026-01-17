@@ -8,6 +8,7 @@
 #include <iostream>
 #include <ostream>
 #include <string>
+#include <string_view>
 
 namespace infra::security::token {
 
@@ -67,7 +68,7 @@ class ITokenVerifier {
    public:
     virtual ~ITokenVerifier() = default;
 
-    virtual JwtVerifyResult verify_token(const std::string& token) const = 0;
+    virtual JwtVerifyResult verify_token(std::string_view token) const = 0;
 };
 
 }  // namespace infra::security::token

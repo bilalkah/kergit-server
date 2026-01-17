@@ -39,50 +39,54 @@ std::string RenameChannelCommand::sanitize(std::string name) {
 CommandResult RenameChannelCommand::execute(CommandContext& ctx, const CommandInput cmd) {
     const auto* input = std::get_if<JsonInput>(&cmd);
     if (!input) {
-        return std::unexpected(CommandError{"invalid_input", "rename_channel expects JSON input"});
+        return std::unexpected(CommandError{1, "rename_channel expects JSON input"});
     }
 
     auto user_exp = ctx.session_manager.sessionOfConnection(input->conn);
     if (!user_exp.has_value()) {
-        return std::unexpected(CommandError{"not_authenticated", "Authenticate first"});
+        return std::unexpected(CommandError{2, "Authenticate first"});
     }
     const UserId user_id = user_exp.value();
 
     auto channel_id_raw = commands::read_uint64(input->body, "channel_id");
-    std::string requested_name = sanitize(input->body.value("name", ""));
+    const auto j = json::parse(input->body, nullptr, false);
+    if (j.is_discarded()) {
+        return std::unexpected(CommandError{3, "Invalid JSON"});
+    }
+    std::string requested_name = sanitize(j.value("name", ""));
 
     if (!channel_id_raw.has_value()) {
-        return std::unexpected(CommandError{"missing_channel_id", "channel_id is required"});
+        return std::unexpected(CommandError{3, "channel_id is required"});
     }
     if (requested_name.empty()) {
-        return std::unexpected(CommandError{"invalid_channel_name", "Channel name is required"});
+        return std::unexpected(CommandError{4, "Channel name is required"});
     }
 
     auto channel_id_opt = ctx.ids.to_internal(PublicChannelId{channel_id_raw.value()});
     if (!channel_id_opt.has_value()) {
-        return std::unexpected(CommandError{"channel_not_found", "Channel not found"});
+        return std::unexpected(CommandError{5, "Channel not found"});
     }
 
     auto channel_opt = ctx.channel_service.getChannel(*channel_id_opt);
     if (!channel_opt.has_value()) {
-        return std::unexpected(CommandError{"channel_not_found", "Channel not found"});
+        return std::unexpected(CommandError{6, "Channel not found"});
     }
     const Channel channel = channel_opt.value();
     const HubId hub_id = channel.hub_id;
 
     if (!ctx.hub_service.isHubMember(hub_id, user_id)) {
-        return std::unexpected(CommandError{"not_in_hub", "Join the hub before renaming channels"});
+        return std::unexpected(CommandError{7, "Join the hub before renaming channels"});
     }
 
     auto role = ctx.hub_service.getMembershipRole(hub_id, user_id);
     if (!role.has_value() || (*role != Role::OWNER && *role != Role::ADMIN)) {
         return std::unexpected(
-            CommandError{"insufficient_privilege", "Only admins/owners can rename channels"});
+            CommandError{8, "Only admins/owners can rename channels"});
     }
 
     if (!ctx.channel_service.renameChannel(channel.id, requested_name)) {
         return std::unexpected(
-            CommandError{"rename_channel_failed", "Unable to rename channel at this time"});
+            CommandError{9, "Unable to rename channel at this time"});
     }
 
     const auto public_hub_id = ctx.ids.to_public(hub_id);

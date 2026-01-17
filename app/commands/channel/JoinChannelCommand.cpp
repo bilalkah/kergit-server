@@ -53,34 +53,34 @@ json build_history(CommandContext& ctx, const ChannelId& channel_id, int limit =
 CommandResult JoinChannelCommand::execute(CommandContext& ctx, const CommandInput cmd) {
     const auto* input = std::get_if<JsonInput>(&cmd);
     if (!input) {
-        return std::unexpected(CommandError{"invalid_input", "join_channel expects JSON input"});
+        return std::unexpected(CommandError{1, "join_channel expects JSON input"});
     }
 
     auto user_exp = ctx.session_manager.sessionOfConnection(input->conn);
     if (!user_exp.has_value()) {
-        return std::unexpected(CommandError{"not_authenticated", "Authenticate first"});
+        return std::unexpected(CommandError{2, "Authenticate first"});
     }
     const UserId user_id = user_exp.value();
 
     auto channel_id_raw = commands::read_uint64(input->body, "channel_id");
     if (!channel_id_raw.has_value()) {
-        return std::unexpected(CommandError{"missing_channel_id", "channel_id is required"});
+        return std::unexpected(CommandError{3, "channel_id is required"});
     }
 
     auto channel_id_opt = ctx.ids.to_internal(PublicChannelId{channel_id_raw.value()});
     if (!channel_id_opt.has_value()) {
-        return std::unexpected(CommandError{"channel_not_found", "Channel not found"});
+        return std::unexpected(CommandError{4, "Channel not found"});
     }
 
     auto channel_opt = ctx.channel_service.getChannel(*channel_id_opt);
     if (!channel_opt.has_value()) {
-        return std::unexpected(CommandError{"channel_not_found", "Channel not found"});
+        return std::unexpected(CommandError{5, "Channel not found"});
     }
     const Channel channel = channel_opt.value();
     const HubId hub_id = channel.hub_id;
 
     if (!ctx.hub_service.isHubMember(hub_id, user_id)) {
-        return std::unexpected(CommandError{"not_in_hub", "Join the hub before joining channels"});
+        return std::unexpected(CommandError{6, "Join the hub before joining channels"});
     }
 
     // Unsubscribe from previous channel if present

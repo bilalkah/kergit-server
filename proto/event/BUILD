@@ -1,9 +1,9 @@
-load("@protobuf//bazel:proto_library.bzl", "proto_library")
 load("@protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
+load("@protobuf//bazel:proto_library.bzl", "proto_library")
 
 proto_library(
-    name = "bootstrap_proto",
-    srcs = ["bootstrap.proto"],
+    name = "session_proto",
+    srcs = ["session.proto"],
     deps = [
         "//proto/domain:channel_proto",
         "//proto/domain:hub_proto",
@@ -12,21 +12,35 @@ proto_library(
 )
 
 cc_proto_library(
-    name = "bootstrap_cc_proto",
-    deps = [":bootstrap_proto"],
+    name = "session_cc_proto",
     visibility = ["//visibility:public"],
+    deps = [":session_proto"],
 )
 
 proto_library(
-    name = "fetch_messages_proto",
-    srcs = ["fetch_messages.proto"],
+    name = "presence_proto",
+    srcs = ["presence.proto"],
     deps = [
-        "//proto/domain:message_proto",
+        "//proto/domain:hub_proto",
     ],
 )
 
 cc_proto_library(
-    name = "fetch_messages_cc_proto",
-    deps = [":fetch_messages_proto"],
+    name = "presence_cc_proto",
     visibility = ["//visibility:public"],
+    deps = [":presence_proto"],
+)
+
+proto_library(
+    name = "error_proto",
+    srcs = ["error.proto"],
+    deps = [
+        "//proto:envelope_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "error_cc_proto",
+    visibility = ["//visibility:public"],
+    deps = [":error_proto"],
 )

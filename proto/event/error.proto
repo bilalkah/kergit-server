@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package sercom.protocol.event;
+
+import "proto/envelope.proto";
+
+/*
+ * Error codes for rejected client commands.
+ * Used for Authenticate (initial + refresh) and all other commands.
+ */
+enum CommandErrorCode {
+    CommandErrorCode_UNSPECIFIED = 0;
+
+    // Auth / session
+    CommandErrorCode_UNAUTHORIZED = 1;   // token invalid, malformed
+    CommandErrorCode_TOKEN_EXPIRED = 2;  // refresh token expired
+    CommandErrorCode_FORBIDDEN = 3;      // valid token, insufficient permission
+
+    // Generic
+    CommandErrorCode_INVALID_FORMAT = 10;
+    CommandErrorCode_INVALID_ARGUMENT = 11;
+    CommandErrorCode_DUPLICATE_COMMAND = 12;
+    CommandErrorCode_NOT_FOUND = 13;
+    CommandErrorCode_RATE_LIMITED = 14;
+    CommandErrorCode_INTERNAL_ERROR = 15;
+}
+
+/*
+ * Server → Client
+ * Emitted when a command is rejected.
+ */
+message CommandError {
+    sercom.protocol.Envelope.Type command_type = 1;
+    CommandErrorCode code = 2;
+    string message = 3;  // human-readable, optional
+}

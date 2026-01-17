@@ -10,9 +10,9 @@
 
 namespace net::transport::websocket {
 
-std::string trim_ws(std::string_view value);
+std::string_view trim_ws(std::string_view value);
 
-std::string extract_token(std::string_view protocols);
+std::string_view extract_token(std::string_view protocols);
 
 std::expected<std::string, std::string> make_app_pong_response(
     const sercom::protocol::Envelope& env);

@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package sercom.protocol.command;
+
+// Client → Server
+// Authenticate or re-authenticate a session.
+// ---------------------------------
+enum AuthType {
+    AuthType_UNSPECIFIED = 0;
+    AuthType_AUTH = 1;
+    AuthType_REAUTH = 2;
+}
+
+enum AuthProvider {
+    AuthProvider_UNSPECIFIED = 0;
+    AuthProvider_SUPABASE = 1;
+}
+
+message Authenticate {
+    AuthType type = 1;
+    AuthProvider provider = 2;
+    string token = 3;
+}
+// ---------------------------------
+
+

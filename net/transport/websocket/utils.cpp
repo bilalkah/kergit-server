@@ -4,7 +4,7 @@ using namespace sercom::protocol;
 
 namespace net::transport::websocket {
 
-std::string trim_ws(std::string_view value) {
+std::string_view trim_ws(std::string_view value) {
     size_t start = 0;
     while (start < value.size() && std::isspace(static_cast<unsigned char>(value[start]))) {
         ++start;
@@ -13,16 +13,21 @@ std::string trim_ws(std::string_view value) {
     while (end > start && std::isspace(static_cast<unsigned char>(value[end - 1]))) {
         --end;
     }
-    return std::string(value.substr(start, end - start));
+    return value.substr(start, end - start);
 }
 
-std::string extract_token(std::string_view protocols) {
+std::string_view extract_token(std::string_view protocols) {
     auto comma = protocols.find(',');
-    if (comma == std::string_view::npos) return "";
+    if (comma == std::string_view::npos)
+        return {};
+
     auto protocol = trim_ws(protocols.substr(0, comma));
-    if (protocol != "supabase") return "";
+    if (protocol != "supabase")
+        return {};
+
     return trim_ws(protocols.substr(comma + 1));
 }
+
 
 std::expected<std::string, std::string> make_app_pong_response(
     const sercom::protocol::Envelope& env) {

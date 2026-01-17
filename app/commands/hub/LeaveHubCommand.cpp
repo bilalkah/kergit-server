@@ -16,38 +16,38 @@ namespace app {
 CommandResult LeaveHubCommand::execute(CommandContext& ctx, const CommandInput cmd) {
     const auto* input = std::get_if<JsonInput>(&cmd);
     if (!input) {
-        return std::unexpected(CommandError{"invalid_input", "leave_hub expects JSON input"});
+        return std::unexpected(CommandError{1, "leave_hub expects JSON input"});
     }
 
     auto user_exp = ctx.session_manager.sessionOfConnection(input->conn);
     if (!user_exp.has_value()) {
-        return std::unexpected(CommandError{"not_authenticated", "Authenticate first"});
+        return std::unexpected(CommandError{2, "Authenticate first"});
     }
     const UserId user_id = user_exp.value();
 
     auto hub_raw = commands::read_uint64(input->body, "hub_id");
     if (!hub_raw.has_value()) {
-        return std::unexpected(CommandError{"missing_hub_id", "hub_id is required"});
+        return std::unexpected(CommandError{3, "hub_id is required"});
     }
 
     auto hub_id_opt = ctx.ids.to_internal(PublicHubId{hub_raw.value()});
     if (!hub_id_opt.has_value()) {
-        return std::unexpected(CommandError{"hub_not_found", "Hub not found"});
+        return std::unexpected(CommandError{4, "Hub not found"});
     }
     const HubId hub_id = hub_id_opt.value();
 
     auto role = ctx.hub_service.getMembershipRole(hub_id, user_id);
     if (!role.has_value()) {
-        return std::unexpected(CommandError{"not_in_hub", "Join the hub before leaving it"});
+        return std::unexpected(CommandError{5, "Join the hub before leaving it"});
     }
     if (*role == Role::OWNER) {
-        return std::unexpected(CommandError{"hub_owner_must_transfer",
+        return std::unexpected(CommandError{6,
                                             "Owners must transfer ownership before leaving"});
     }
 
     // Remove membership
     if (!ctx.hub_service.isHubMember(hub_id, user_id)) {
-        return std::unexpected(CommandError{"not_in_hub", "Join the hub before leaving it"});
+        return std::unexpected(CommandError{7, "Join the hub before leaving it"});
     }
     ctx.hub_service.removeMember(hub_id, user_id);
 

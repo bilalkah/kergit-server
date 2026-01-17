@@ -6,9 +6,9 @@
 #include "domains/Channel.h"
 #include "domains/Hub.h"
 
-#include <nlohmann/json.hpp>
 #include <algorithm>
 #include <cctype>
+#include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
 
@@ -35,40 +35,43 @@ std::string sanitize_name(std::string name) {
 CommandResult CreateChannelCommand::execute(CommandContext& ctx, const CommandInput cmd) {
     const auto* input = std::get_if<JsonInput>(&cmd);
     if (!input) {
-        return std::unexpected(CommandError{"invalid_input", "create_channel expects JSON input"});
+        return std::unexpected(CommandError{1, "create_channel expects JSON input"});
     }
 
     auto user_exp = ctx.session_manager.sessionOfConnection(input->conn);
     if (!user_exp.has_value()) {
-        return std::unexpected(CommandError{"not_authenticated", "Authenticate first"});
+        return std::unexpected(CommandError{2, "Authenticate first"});
     }
     const UserId user_id = user_exp.value();
 
-    auto hub_raw = commands::read_uint64(input->body, "hub_id");
-    std::string name = sanitize_name(input->body.value("name", ""));
-    const std::string type = input->body.value("type", "text");
+    const auto& j = json::parse(input->body, nullptr, false);
+    if (j.is_discarded()) {
+        return std::unexpected(CommandError{1, "Invalid JSON"});
+    }
+    auto hub_raw = commands::read_uint64(j, "hub_id");
+    std::string name = sanitize_name(j.value("name", ""));
+    const std::string type = j.value("type", "text");
 
     if (!hub_raw.has_value()) {
-        return std::unexpected(CommandError{"missing_hub_id", "hub_id is required"});
+        return std::unexpected(CommandError{3, "hub_id is required"});
     }
     if (name.empty()) {
-        return std::unexpected(CommandError{"invalid_name", "Channel name is required"});
+        return std::unexpected(CommandError{4, "Channel name is required"});
     }
 
     auto hub_id_opt = ctx.ids.to_internal(PublicHubId{hub_raw.value()});
     if (!hub_id_opt.has_value()) {
-        return std::unexpected(CommandError{"hub_not_found", "Hub not found"});
+        return std::unexpected(CommandError{5, "Hub not found"});
     }
     const HubId hub_id = hub_id_opt.value();
 
     if (!ctx.hub_service.isHubMember(hub_id, user_id)) {
-        return std::unexpected(CommandError{"not_in_hub", "Join the hub before creating channels"});
+        return std::unexpected(CommandError{6, "Join the hub before creating channels"});
     }
 
     auto role = ctx.hub_service.getMembershipRole(hub_id, user_id);
     if (!role.has_value() || (*role != Role::OWNER && *role != Role::ADMIN)) {
-        return std::unexpected(CommandError{"insufficient_privilege",
-                                            "Only admins/owners can create channels"});
+        return std::unexpected(CommandError{7, "Only admins/owners can create channels"});
     }
 
     std::string channel_type = type == "voice" ? "voice" : "text";

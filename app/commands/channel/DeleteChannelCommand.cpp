@@ -17,35 +17,35 @@ namespace app {
 CommandResult DeleteChannelCommand::execute(CommandContext& ctx, const CommandInput cmd) {
     const auto* input = std::get_if<JsonInput>(&cmd);
     if (!input) {
-        return std::unexpected(CommandError{"invalid_input", "delete_channel expects JSON input"});
+        return std::unexpected(CommandError{1, "delete_channel expects JSON input"});
     }
 
     auto user_exp = ctx.session_manager.sessionOfConnection(input->conn);
     if (!user_exp.has_value()) {
-        return std::unexpected(CommandError{"not_authenticated", "Authenticate first"});
+        return std::unexpected(CommandError{2, "Authenticate first"});
     }
     const UserId user_id = user_exp.value();
 
     auto channel_id_raw = commands::read_uint64(input->body, "channel_id");
     if (!channel_id_raw.has_value()) {
-        return std::unexpected(CommandError{"missing_channel_id", "channel_id is required"});
+        return std::unexpected(CommandError{3, "channel_id is required"});
     }
 
     auto channel_id_opt = ctx.ids.to_internal(PublicChannelId{channel_id_raw.value()});
     if (!channel_id_opt.has_value()) {
-        return std::unexpected(CommandError{"channel_not_found", "Channel not found"});
+        return std::unexpected(CommandError{4, "Channel not found"});
     }
 
     auto channel_opt = ctx.channel_service.getChannel(*channel_id_opt);
     if (!channel_opt.has_value()) {
-        return std::unexpected(CommandError{"channel_not_found", "Channel not found"});
+        return std::unexpected(CommandError{5, "Channel not found"});
     }
     const Channel channel = channel_opt.value();
 
     auto role = ctx.hub_service.getMembershipRole(channel.hub_id, user_id);
     if (!role.has_value() || (*role != Role::OWNER && *role != Role::ADMIN)) {
         return std::unexpected(
-            CommandError{"insufficient_privilege", "Only admins/owners can delete channels"});
+            CommandError{6, "Only admins/owners can delete channels"});
     }
 
     const auto public_hub_id = ctx.ids.to_public(channel.hub_id);

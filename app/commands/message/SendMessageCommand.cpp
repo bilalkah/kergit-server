@@ -34,47 +34,51 @@ std::string iso_time(const std::chrono::system_clock::time_point& tp) {
 CommandResult SendMessageCommand::execute(CommandContext& ctx, const CommandInput cmd) {
     const auto* input = std::get_if<JsonInput>(&cmd);
     if (!input) {
-        return std::unexpected(CommandError{"invalid_input", "send_message expects JSON input"});
+        return std::unexpected(CommandError{1, "send_message expects JSON input"});
     }
 
     auto user_exp = ctx.session_manager.sessionOfConnection(input->conn);
     if (!user_exp.has_value()) {
-        return std::unexpected(CommandError{"not_authenticated", "Authenticate first"});
+        return std::unexpected(CommandError{2, "Authenticate first"});
     }
     const UserId user_id = user_exp.value();
 
     auto channel_id_raw = commands::read_uint64(input->body, "channel_id");
     if (!channel_id_raw.has_value()) {
-        return std::unexpected(CommandError{"missing_channel_id", "channel_id is required"});
+        return std::unexpected(CommandError{3, "channel_id is required"});
     }
 
-    std::string content = input->body.value("content", "");
+    const auto j = json::parse(input->body, nullptr, false);
+    if (j.is_discarded()) {
+        return std::unexpected(CommandError{4, "Invalid JSON"});
+    }
+    std::string content = j.value("content", "");
     if (content.empty()) {
-        return std::unexpected(CommandError{"empty_message", "Message content cannot be empty"});
+        return std::unexpected(CommandError{4, "Message content cannot be empty"});
     }
     if (content.size() > 4096) {
-        return std::unexpected(CommandError{"message_too_long", "Message exceeds maximum length"});
+        return std::unexpected(CommandError{5, "Message exceeds maximum length"});
     }
 
     auto channel_id_opt = ctx.ids.to_internal(PublicChannelId{channel_id_raw.value()});
     if (!channel_id_opt.has_value()) {
-        return std::unexpected(CommandError{"channel_not_found", "Channel not found"});
+        return std::unexpected(CommandError{6, "Channel not found"});
     }
     auto channel_opt = ctx.channel_service.getChannel(*channel_id_opt);
     if (!channel_opt.has_value()) {
-        return std::unexpected(CommandError{"channel_not_found", "Channel not found"});
+        return std::unexpected(CommandError{7, "Channel not found"});
     }
     const Channel channel = channel_opt.value();
 
     if (!ctx.hub_service.isHubMember(channel.hub_id, user_id)) {
-        return std::unexpected(CommandError{"not_in_hub", "Join the hub before sending messages"});
+        return std::unexpected(CommandError{8, "Join the hub before sending messages"});
     }
 
     auto subbed = ctx.subscription_manager.isSubscribed(user_id,
                                                         Topic::ChannelTopic(channel.hub_id, channel.id));
     if (!subbed) {
         return std::unexpected(
-            CommandError{"not_in_channel", "Join the channel before sending messages"});
+            CommandError{9, "Join the channel before sending messages"});
     }
 
     const auto public_channel_id = ctx.ids.to_public(channel.id);

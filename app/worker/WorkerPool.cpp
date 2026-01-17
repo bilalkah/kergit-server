@@ -1,10 +1,14 @@
 #include "app/worker/WorkerPool.h"
 
+#include "proto/envelope.pb.h"
+#include "proto/event/error.pb.h"
+
 #include <chrono>
 #include <iostream>
 #include <thread>
 #include <variant>
 
+using namespace sercom::protocol;
 namespace app::worker {
 
 WorkerPool::WorkerPool(queue::EventQueue& in_queue, net::outbound::IOutboundSink& out_queue,
@@ -79,6 +83,7 @@ void WorkerPool::worker_loop(std::size_t worker_index) {
 
         app::queue::Event event = evt.value();
         CommandResult cmd_result;
+        Envelope env;
 
         // process evt
         std::visit(
@@ -87,50 +92,58 @@ void WorkerPool::worker_loop(std::size_t worker_index) {
                 if constexpr (std::is_same_v<T, app::queue::MessageEvent>) {
                     const app::queue::MessageEvent& msg_evt = arg;
 
-                    // validate message
-                    auto msg_expected = message_validator_.validate_message(msg_evt.payload.data);
-
-                    if (!msg_expected.has_value()) {
-                        send_error(event.conn_id, "0000", msg_expected.error());
+                    if (!env.ParseFromString(msg_evt.payload.data)) {
+                        send_error(event.conn_id, Envelope::UNKNOWN,
+                                   event::CommandErrorCode_INVALID_FORMAT,
+                                   "Invalid envelope format");
                         return;
                     }
 
-                    auto message = msg_expected.value().message;
-
-                    {
-                        // check for duplicate command processing
-                        std::lock_guard<std::mutex> lock(executing_commands_mtx_);
-                        auto it = executing_commands_.find(event.conn_id);
-                        if (it != executing_commands_.end()) {
-                            if (executing_commands_[event.conn_id] != "send_message") {
-                                log(utils::LogLevel::WARN, "Worker ", worker_index,
-                                    " skipping duplicate command for net: ",
-                                    event.conn_id.netstack_id.value,
-                                    " conn: ", event.conn_id.conn_id.value);
-                                return;
-                            }
-                        }
-                        executing_commands_[event.conn_id] = message["type"];
+                    // validate envelope
+                    auto env_validation = proto_validator_.validate_envelope(env);
+                    if (!env_validation.has_value()) {
+                        send_error(event.conn_id, Envelope::UNKNOWN,
+                                   event::CommandErrorCode_INVALID_ARGUMENT,
+                                   env_validation.error());
+                        return;
                     }
 
-                    JsonInput input;
-                    input.conn = event.conn_id;
-                    input.body = message;
+                    {
+                        // check for duplicate executing command for this connection
+                        std::lock_guard<std::mutex> lock(executing_commands_mtx_);
+                        if (executing_commands_.find(event.conn_id) != executing_commands_.end()) {
+                            // duplicate found
+                            send_error(event.conn_id, env.type(),
+                                       event::CommandErrorCode_DUPLICATE_COMMAND,
+                                       "Another command is currently being processed for "
+                                       "this connection");
+                            return;
+                        }
+                        executing_commands_[event.conn_id] = env.type();
+                    }
+
+                    // parse payload based on type
+                    MessageEvent input{
+                        .conn = event.conn_id,
+                        .body = env.payload(),
+                    };
 
                     // dispatch
-                    cmd_result = dispatcher_.dispatch(message["type"], cmd_ctx_, input);
+                    cmd_result = dispatcher_.dispatch(env.type(), cmd_ctx_, input);
 
                     {
                         // remove from executing commands cache
                         std::lock_guard<std::mutex> lock(executing_commands_mtx_);
                         executing_commands_.erase(event.conn_id);
                     }
+
                 } else if constexpr (std::is_same_v<T, app::queue::ConnectionEvent>) {
                     const ConnectEvent cmd{
                         .conn = event.conn_id,
                         .user_id = arg.user_id,
                     };
                     cmd_result = dispatcher_.dispatch("connection", cmd_ctx_, cmd);
+
                 } else if constexpr (std::is_same_v<T, app::queue::DisconnectionEvent>) {
                     // handle disconnect
                     const app::queue::DisconnectionEvent& devt = arg;
@@ -147,7 +160,8 @@ void WorkerPool::worker_loop(std::size_t worker_index) {
         // handle command result
         if (!cmd_result.has_value()) {
             const CommandError& err = cmd_result.error();
-            send_error(event.conn_id, err.code, err.message);
+            send_error(event.conn_id, env.type(),
+                       event::CommandErrorCode::CommandErrorCode_UNSPECIFIED, err.message);
         } else {
             const CommandSuccess& success = cmd_result.value();
             for (const auto& intent : success.intents) {
@@ -158,25 +172,31 @@ void WorkerPool::worker_loop(std::size_t worker_index) {
                         if constexpr (std::is_same_v<T, Unicast>) {
                             out_msg.target = net::outbound::Target::one(arg.conn);
                             out_msg.action = net::outbound::SendPayload{
-                                .payload = net::outbound::Payload{.data = arg.payload.dump()}};
-                        } else if constexpr (std::is_same_v<T, Fanout>) {
-                            out_msg.target = net::outbound::Target::many(arg.conns);
-                            out_msg.action = net::outbound::SendPayload{
-                                .payload = net::outbound::Payload{.data = arg.payload.dump()}};
+                                .payload = net::outbound::Payload{.data = arg.payload}};
                         } else if constexpr (std::is_same_v<T, BinaryUnicast>) {
                             out_msg.target = net::outbound::Target::one(arg.conn);
                             out_msg.action = net::outbound::SendPayload{
                                 .payload = net::outbound::Payload{.data = arg.payload,
                                                                   .is_binary = true}};
+                        } else if constexpr (std::is_same_v<T, Fanout>) {
+                            out_msg.target = net::outbound::Target::many(arg.conns);
+                            out_msg.action = net::outbound::SendPayload{
+                                .payload = net::outbound::Payload{.data = arg.payload}};
                         } else if constexpr (std::is_same_v<T, BinaryFanout>) {
                             out_msg.target = net::outbound::Target::many(arg.conns);
                             out_msg.action = net::outbound::SendPayload{
                                 .payload = net::outbound::Payload{.data = arg.payload,
                                                                   .is_binary = true}};
+
                         } else if constexpr (std::is_same_v<T, AuthStateIntent>) {
                             out_msg.target = net::outbound::Target::one(arg.conn);
                             out_msg.action = net::outbound::UpdateAuthState{
-                                .is_authenticated = arg.authenticated, .expires_at = arg.expires_at};
+                                .is_authenticated = arg.authenticated,
+                                .expires_at = arg.expires_at};
+                        } else if constexpr (std::is_same_v<T, DropConnectionIntent>) {
+                            out_msg.target = net::outbound::Target::one(arg.conn);
+                            out_msg.action = net::outbound::DropConnection{.code = arg.code,
+                                                                           .reason = arg.reason};
                         }
                         out_queue_.push(std::move(out_msg));
                     },
@@ -186,14 +206,23 @@ void WorkerPool::worker_loop(std::size_t worker_index) {
     }
 }
 
-void WorkerPool::send_error(const GlobalConnId& req, std::string_view code,
-                            std::string_view message) {
-    nlohmann::json err = {{"type", "error"}, {"code", code}, {"message", message}};
-
+void WorkerPool::send_error(const GlobalConnId& req, Envelope::Type type,
+                            event::CommandErrorCode code, std::string_view message) {
+    // construct error envelope
+    Envelope env;
+    env.set_version(1);
+    env.set_type(Envelope::CommandError);
+    event::CommandError err;
+    err.set_command_type(type);
+    err.set_code(code);
+    err.set_message(std::string(message));
+    std::string* payload = env.mutable_payload();
+    err.SerializeToString(payload);
+    // send
     net::outbound::OutgoingMessage out_msg;
     out_msg.target = net::outbound::Target::one(req);
-    out_msg.action =
-        net::outbound::SendPayload{.payload = net::outbound::Payload{.data = err.dump()}};
+    out_msg.action = net::outbound::SendPayload{
+        .payload = net::outbound::Payload{.data = env.SerializeAsString(), .is_binary = true}};
     out_queue_.push(std::move(out_msg));
 }
 
