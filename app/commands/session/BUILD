@@ -8,13 +8,14 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "//app/converters:proto_converters",
         "//app/commands:i_command",
+        "//app/converters:proto_converters",
         "//app/dispatcher:command_context",
         "//app/managers/subscription:topic",
         "//domains:channel_domain",
         "//domains:hub_domain",
         "//proto:envelope_cc_proto",
+        "//proto/event:error_cc_proto",
         "//proto/event:presence_cc_proto",
         "//proto/event:session_cc_proto",
         "@nlohmann_json",
@@ -31,6 +32,8 @@ cc_library(
     deps = [
         "//app/commands:i_command",
         "//app/dispatcher:command_context",
+        "//proto:envelope_cc_proto",
         "//proto/command:session_cc_proto",
+        "//proto/event:error_cc_proto",
     ],
 )

@@ -15,6 +15,7 @@ enum CommandErrorCode {
     CommandErrorCode_UNAUTHORIZED = 1;   // token invalid, malformed
     CommandErrorCode_TOKEN_EXPIRED = 2;  // refresh token expired
     CommandErrorCode_FORBIDDEN = 3;      // valid token, insufficient permission
+    CommandErrorCode_INVALID_SESSION = 4; // session invalid (e.g. user logged out)
 
     // Generic
     CommandErrorCode_INVALID_FORMAT = 10;
@@ -23,6 +24,7 @@ enum CommandErrorCode {
     CommandErrorCode_NOT_FOUND = 13;
     CommandErrorCode_RATE_LIMITED = 14;
     CommandErrorCode_INTERNAL_ERROR = 15;
+    CommandErrorCode_DUPLICATE_IN_FLIGHT = 16;
 }
 
 /*

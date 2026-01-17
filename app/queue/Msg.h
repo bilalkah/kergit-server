@@ -2,6 +2,7 @@
 #define APP_QUEUE_MSG_H
 
 #include "domains/ids/Ids.h"
+#include "proto/envelope.pb.h"
 
 #include <cstdint>
 #include <string>
@@ -10,28 +11,26 @@
 namespace app::queue {
 
 struct Payload {
-    std::string data;
+    sercom::protocol::Envelope env;
 };
 
 struct ConnectionEvent {
+    GlobalConnId conn_id;
     UserId user_id;
 };
 
 struct DisconnectionEvent {
+    GlobalConnId conn_id;
     int code{};
     std::string reason;
 };
 
 struct MessageEvent {
+    GlobalConnId conn_id;
     Payload payload;
 };
 
-using EventBody = std::variant<ConnectionEvent, DisconnectionEvent, MessageEvent>;
-
-struct Event {
-    GlobalConnId conn_id;
-    EventBody body;
-};
+using Event = std::variant<ConnectionEvent, DisconnectionEvent, MessageEvent>;
 
 }  // namespace app::queue
 

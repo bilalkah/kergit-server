@@ -30,7 +30,7 @@ class SessionManager final {
     void createSession(const GlobalConnId& main_conn, const UserId& user);
 
     // Called on DisconnectionEvent
-    bool removeConnection(const GlobalConnId& conn);
+    void removeConnection(const GlobalConnId& conn);
 
     // ---- active operations ----
     void joinTextChannel(const UserId& session, const HubId& hub, const ChannelId& channel);

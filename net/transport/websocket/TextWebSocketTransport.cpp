@@ -172,7 +172,7 @@ void TextWSServer::wire() {
                         return;
                     }
 
-                    hooks_.on_message(psd->conn_id, data);
+                    hooks_.on_message(psd->conn_id, std::move(env));
                 },
             .drain =
                 [this](UwsSocket* ws) {

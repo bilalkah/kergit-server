@@ -13,29 +13,34 @@ void SessionManager::createSession(const GlobalConnId& main_conn, const UserId& 
     conn_to_session_[main_conn] = session;
 }
 
-bool SessionManager::removeConnection(const GlobalConnId& conn) {
+/**
+ * Removes a connection from the session manager.
+ * It will remove the entire session.
+ */
+void SessionManager::removeConnection(const GlobalConnId& conn) {
     std::unique_lock lock(mutex_);
     auto it = conn_to_session_.find(conn);
-    if (it == conn_to_session_.end()) return false;
-
-    UserId session = it->second;
-    conn_to_session_.erase(it);
-
-    auto sit = sessions_.find(session);
-    if (sit == sessions_.end()) return false;
-
-    SessionInfo& info = sit->second;
-
-    // Voice disconnect
-    if (info.voice_conn && *info.voice_conn == conn) {
-        info.voice_conn.reset();
-        info.current_voice_channel.reset();
-        return false;
+    if (it == conn_to_session_.end()) {
+        return;  // connection not found
     }
 
-    // Text disconnect → session ends
+    const UserId session = it->second;
+    auto sit = sessions_.find(session);
+    if (sit == sessions_.end()) {
+        conn_to_session_.erase(it);
+        return;  // session not found, clean up mapping
+    }
+
+    // Remove voice connection mapping if exists
+    if (sit->second.voice_conn) {
+        conn_to_session_.erase(*sit->second.voice_conn);
+    }
+
+    // Remove main connection mapping
+    conn_to_session_.erase(it);
+
+    // Remove session
     sessions_.erase(sit);
-    return true;  // last session for this user (by design)
 }
 
 void SessionManager::joinTextChannel(const UserId& session, const HubId& hub,

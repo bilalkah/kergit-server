@@ -11,8 +11,8 @@
 namespace net::outbound {
 
 struct Payload {
-    std::string data;
-    bool is_binary{false};
+    std::string data;      // serialized bytes
+    bool is_binary{true};  // default for protobuf
 };
 
 struct Target {
@@ -24,7 +24,7 @@ struct Target {
 };
 
 struct SendPayload {
-    Payload payload;
+    Payload payload;  // serialized, wire-ready
 };
 
 struct UpdateAuthState {
