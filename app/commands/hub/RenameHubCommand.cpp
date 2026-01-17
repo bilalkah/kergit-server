@@ -5,9 +5,9 @@
 #include "app/managers/subscription/Topic.h"
 #include "domains/Hub.h"
 
-#include <nlohmann/json.hpp>
 #include <algorithm>
 #include <cctype>
+#include <nlohmann/json.hpp>
 #include <string>
 
 using nlohmann::json;
@@ -74,7 +74,8 @@ CommandResult RenameHubCommand::execute(CommandContext& ctx, const CommandInput 
     }
 
     const auto public_hub_id = ctx.ids.to_public(hub_id);
-    json payload = {{"type", "hub_renamed"}, {"hub_id", public_hub_id.value}, {"name", requested_name}};
+    json payload = {
+        {"type", "hub_renamed"}, {"hub_id", public_hub_id.value}, {"name", requested_name}};
 
     CommandSuccess res;
     // Notify hub subscribers

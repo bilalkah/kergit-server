@@ -40,8 +40,7 @@ CommandResult GetHubInviteCommand::execute(CommandContext& ctx, const CommandInp
 
     auto role = ctx.hub_service.getMembershipRole(hub_id, user_id);
     if (!role.has_value() || (*role != Role::OWNER && *role != Role::ADMIN)) {
-        return std::unexpected(
-            CommandError{6, "Only owners or admins can generate invites"});
+        return std::unexpected(CommandError{6, "Only owners or admins can generate invites"});
     }
 
     const auto public_hub_id = ctx.ids.to_public(hub_id);

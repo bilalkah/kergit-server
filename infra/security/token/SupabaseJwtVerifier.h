@@ -72,9 +72,8 @@ class SupabaseJWTVerifier : public utils::Loggable, public ITokenVerifier {
 
     // Helper methods
     std::expected<ParsedJwt, JwtVerifyError> parse_token(std::string_view token) const;
-    bool split_token(std::string_view token, std::string_view& header,
-                     std::string_view& payload, std::string_view& signature,
-                     std::string_view& signing_input) const;
+    bool split_token(std::string_view token, std::string_view& header, std::string_view& payload,
+                     std::string_view& signature, std::string_view& signing_input) const;
     bool verify_with_key(const ParsedJwt& jwt, const KeyMaterial& key) const;
     bool verify_es256_signature(std::string_view header_payload, std::string_view signature_b64,
                                 const KeyMaterial& key) const;

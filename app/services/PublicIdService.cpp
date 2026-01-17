@@ -113,7 +113,8 @@ std::optional<std::string> PublicIdService::lookup_internal(const ReverseMap& re
 }
 
 uint64_t PublicIdService::generate_token() {
-    std::uniform_int_distribution<uint64_t> dist(1, std::numeric_limits<uint64_t>::max());
+    constexpr uint64_t kMaxSafeJsInt = 9007199254740991ULL;
+    std::uniform_int_distribution<uint64_t> dist(1, kMaxSafeJsInt);
     return dist(rng_);
 }
 

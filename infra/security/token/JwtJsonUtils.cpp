@@ -8,8 +8,7 @@ namespace infra::security::token::jwt_scan {
 namespace {
 
 inline const char* skip_ws(const char* p, const char* end) {
-    while (p < end && (*p == ' ' || *p == '\n' || *p == '\r' || *p == '\t'))
-        ++p;
+    while (p < end && (*p == ' ' || *p == '\n' || *p == '\r' || *p == '\t')) ++p;
     return p;
 }
 
@@ -29,7 +28,10 @@ inline bool parse_string(const char*& p, const char* end, std::string_view& out)
 
 inline bool parse_int(const char*& p, const char* end, int64_t& out) {
     bool neg = false;
-    if (p < end && *p == '-') { neg = true; ++p; }
+    if (p < end && *p == '-') {
+        neg = true;
+        ++p;
+    }
     if (p >= end || !std::isdigit(*p)) return false;
     int64_t v = 0;
     while (p < end && std::isdigit(*p)) {
@@ -40,15 +42,13 @@ inline bool parse_int(const char*& p, const char* end, int64_t& out) {
     return true;
 }
 
-} // namespace
+}  // namespace
 
 // ------------------------------------------------------------
 // HEADER
 // ------------------------------------------------------------
 
-bool parse_header(std::string_view json,
-                  std::string_view& alg,
-                  std::string_view& kid) {
+bool parse_header(std::string_view json, std::string_view& alg, std::string_view& kid) {
     const char* p = json.data();
     const char* end = p + json.size();
 
@@ -57,7 +57,10 @@ bool parse_header(std::string_view json,
 
     while (p < end) {
         p = skip_ws(p, end);
-        if (*p != '"') { ++p; continue; }
+        if (*p != '"') {
+            ++p;
+            continue;
+        }
 
         std::string_view key;
         if (!parse_string(p, end, key)) return false;
@@ -69,7 +72,7 @@ bool parse_header(std::string_view json,
         if (key == "alg") {
             if (!parse_string(p, end, alg)) return false;
         } else if (key == "kid") {
-            parse_string(p, end, kid); // optional
+            parse_string(p, end, kid);  // optional
         } else {
             // skip value
             while (p < end && *p != ',' && *p != '}') ++p;
@@ -83,16 +86,18 @@ bool parse_header(std::string_view json,
 // PAYLOAD
 // ------------------------------------------------------------
 
-bool parse_payload(std::string_view json,
-                   UserClaims& c) {
+bool parse_payload(std::string_view json, UserClaims& c) {
     const char* p = json.data();
     const char* end = p + json.size();
 
-    c = {}; // reset
+    c = {};  // reset
 
     while (p < end) {
         p = skip_ws(p, end);
-        if (*p != '"') { ++p; continue; }
+        if (*p != '"') {
+            ++p;
+            continue;
+        }
 
         std::string_view key;
         if (!parse_string(p, end, key)) return false;
@@ -142,7 +147,10 @@ bool parse_payload(std::string_view json,
             ++p;
             while (p < end && *p != '}') {
                 p = skip_ws(p, end);
-                if (*p != '"') { ++p; continue; }
+                if (*p != '"') {
+                    ++p;
+                    continue;
+                }
                 std::string_view mk;
                 if (!parse_string(p, end, mk)) break;
                 p = skip_ws(p, end);
@@ -164,4 +172,4 @@ bool parse_payload(std::string_view json,
     return !c.id.empty() && c.exp != 0 && !c.iss.empty() && !c.aud.empty();
 }
 
-} // namespace infra::security::token::jwt_scan
+}  // namespace infra::security::token::jwt_scan

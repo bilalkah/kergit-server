@@ -2,6 +2,7 @@
 #define INFRA_SECURITY_VALIDATION_PROTO_MESSAGE_VALIDATOR_H
 
 #include "proto/command/activity.pb.h"
+#include "proto/command/message.pb.h"
 #include "proto/command/session.pb.h"
 #include "proto/envelope.pb.h"
 #include "proto/system/heartbeat.pb.h"
@@ -37,6 +38,12 @@ class ProtoMessageValidator {
         const sercom::protocol::command::Typing& msg);
     std::expected<void, ValidationError> validate_active_channel(
         const sercom::protocol::command::SelectActiveChannel& msg);
+    std::expected<void, ValidationError> validate_send_message(
+        const sercom::protocol::command::SendMessage& msg);
+    std::expected<void, ValidationError> validate_fetch_latest_messages(
+        const sercom::protocol::command::FetchLatestMessages& msg);
+    std::expected<void, ValidationError> validate_fetch_messages_before(
+        const sercom::protocol::command::FetchMessagesBefore& msg);
     std::expected<void, ValidationError> validate_ping(const sercom::protocol::system::Ping& msg);
 };
 

@@ -1,8 +1,8 @@
 #ifndef APP_SERVICES_HUB_HUBSERVICE_H
 #define APP_SERVICES_HUB_HUBSERVICE_H
 
-#include "infra/persistence/repositories/HubRepository.h"
 #include "app/services/hub/HubCache.h"
+#include "infra/persistence/repositories/HubRepository.h"
 
 #include <memory>
 #include <optional>
@@ -11,7 +11,7 @@
 namespace app::services {
 
 class HubService {
-public:
+   public:
     HubService(HubRepository& repo);
 
     // ---- Reads ----
@@ -30,12 +30,11 @@ public:
     void addMember(const HubId& hubId, const UserId& userId, Role role);
     void removeMember(const HubId& hubId, const UserId& userId);
 
-
-private:
+   private:
     HubRepository& repo_;
     std::unique_ptr<IHubCache> cache_;
 };
 
-} // namespace app::services
+}  // namespace app::services
 
 #endif  // APP_SERVICES_HUB_HUBSERVICE_H

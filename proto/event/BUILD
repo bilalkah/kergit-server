@@ -44,3 +44,17 @@ cc_proto_library(
     visibility = ["//visibility:public"],
     deps = [":error_proto"],
 )
+
+proto_library(
+    name = "message_proto",
+    srcs = ["message.proto"],
+    deps = [
+        "//proto/domain:message_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "message_cc_proto",
+    visibility = ["//visibility:public"],
+    deps = [":message_proto"],
+)

@@ -31,4 +31,3 @@ void UserService::updateProfile(const UserId& userId, const std::optional<std::s
     cache_->invalidate(userId);
 }
 }  // namespace app::services
-

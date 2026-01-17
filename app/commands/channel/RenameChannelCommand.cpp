@@ -6,9 +6,9 @@
 #include "domains/Channel.h"
 #include "domains/Hub.h"
 
-#include <nlohmann/json.hpp>
 #include <algorithm>
 #include <cctype>
+#include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
 
@@ -80,13 +80,11 @@ CommandResult RenameChannelCommand::execute(CommandContext& ctx, const CommandIn
 
     auto role = ctx.hub_service.getMembershipRole(hub_id, user_id);
     if (!role.has_value() || (*role != Role::OWNER && *role != Role::ADMIN)) {
-        return std::unexpected(
-            CommandError{8, "Only admins/owners can rename channels"});
+        return std::unexpected(CommandError{8, "Only admins/owners can rename channels"});
     }
 
     if (!ctx.channel_service.renameChannel(channel.id, requested_name)) {
-        return std::unexpected(
-            CommandError{9, "Unable to rename channel at this time"});
+        return std::unexpected(CommandError{9, "Unable to rename channel at this time"});
     }
 
     const auto public_hub_id = ctx.ids.to_public(hub_id);
@@ -97,9 +95,8 @@ CommandResult RenameChannelCommand::execute(CommandContext& ctx, const CommandIn
                          {"name", requested_name},
                          {"type", channel_type_to_string(channel.type)}};
 
-    json payload = {{"type", "channel_renamed"},
-                    {"hub_id", public_hub_id.value},
-                    {"channel", channel_json}};
+    json payload = {
+        {"type", "channel_renamed"}, {"hub_id", public_hub_id.value}, {"channel", channel_json}};
 
     CommandSuccess res;
     // Notify hub subscribers

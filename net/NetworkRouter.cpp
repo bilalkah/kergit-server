@@ -43,7 +43,7 @@ void NetworkRouter::stop_all() {
     for (auto& [id, stack] : net_stacks_by_id_) {
         log(utils::LogLevel::WARN, "Stopping NetworkStack " + id.value);
         auto res = stack->stop();
-        
+
         if (!res) {
             log(utils::LogLevel::ERROR, "Failed to stop NetworkStack " + id.value);
         } else {

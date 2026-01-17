@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <ctime>
 #include <iomanip>
 #include <sstream>
 #include <string>
@@ -39,8 +40,12 @@ inline std::chrono::system_clock::time_point parse_timestamp(const std::string& 
     std::istringstream ss(trimmed);
     ss >> std::get_time(&tm, "%Y-%m-%d %H:%M:%S");
     if (ss.fail()) return {};
-    tm.tm_isdst = -1;
-    std::time_t time = std::mktime(&tm);
+    tm.tm_isdst = 0;
+#if defined(_WIN32)
+    std::time_t time = _mkgmtime(&tm);
+#else
+    std::time_t time = timegm(&tm);
+#endif
     if (time == static_cast<std::time_t>(-1)) return {};
     return std::chrono::system_clock::from_time_t(time);
 }

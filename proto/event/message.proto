@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package sercom.protocol.event;
+
+import "proto/domain/message.proto";
+
+
+/*
+ * Realtime fanout of a newly created message.
+ * Delivered only if channel is active.
+ */
+message MessageCreated {
+  uint64 hub_id = 1;
+  uint64 channel_id = 2;
+  sercom.protocol.domain.Message message = 3;
+}
+
+/*
+ * History delivery (initial load or scroll).
+ */
+message MessageBatch {
+  uint64 hub_id = 1;
+  uint64 channel_id = 2;
+
+  enum Direction {
+    DIRECTION_UNSPECIFIED = 0;
+    LATEST = 1;   // channel entry / reselect
+    BEFORE = 2;   // scroll-up history
+  }
+
+  Direction direction = 3;
+  repeated sercom.protocol.domain.Message messages = 4;
+}

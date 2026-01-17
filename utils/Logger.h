@@ -2,10 +2,10 @@
 #define UTILS_LOGGER_H
 
 #include <ctime>
+#include <fmt/format.h>
 #include <iomanip>
 #include <iostream>
 #include <string>
-#include <fmt/format.h>
 
 namespace utils {
 enum class LogLevel { INFO, WARN, ERROR };

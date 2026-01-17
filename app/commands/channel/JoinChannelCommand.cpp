@@ -6,10 +6,10 @@
 #include "domains/Channel.h"
 #include "domains/Message.h"
 
-#include <nlohmann/json.hpp>
 #include <chrono>
 #include <ctime>
 #include <iomanip>
+#include <nlohmann/json.hpp>
 #include <optional>
 #include <sstream>
 #include <string>

@@ -2,10 +2,10 @@
 
 #include "app/dispatcher/CommandContext.h"
 
-#include <nlohmann/json.hpp>
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <nlohmann/json.hpp>
 #include <optional>
 #include <string>
 
@@ -65,8 +65,7 @@ CommandResult UpdateProfileCommand::execute(CommandContext& ctx, const CommandIn
     }
 
     if (!username_opt.has_value() && !full_name_opt.has_value()) {
-        return std::unexpected(
-            CommandError{3, "Provide a username or full name to update"});
+        return std::unexpected(CommandError{3, "Provide a username or full name to update"});
     }
 
     try {
@@ -90,12 +89,10 @@ CommandResult UpdateProfileCommand::execute(CommandContext& ctx, const CommandIn
         }
         if (chosen_display.empty()) chosen_display = "Member";
 
-        json payload = {{"type", "profile_updated"},
-                        {"success", true},
-                        {"username", final_username},
-                        {"full_name", final_full_name},
-                        {"display_name", chosen_display},
-                        {"user_id", ctx.ids.to_public(user_id).value}};
+        json payload = {
+            {"type", "profile_updated"},      {"success", true},
+            {"username", final_username},     {"full_name", final_full_name},
+            {"display_name", chosen_display}, {"user_id", ctx.ids.to_public(user_id).value}};
 
         CommandSuccess res;
         res.intents.push_back(Unicast{.conn = input->conn, .payload = payload});
@@ -118,7 +115,8 @@ CommandResult UpdateProfileCommand::execute(CommandContext& ctx, const CommandIn
                                  {"username", final_username},
                                  {"full_name", final_full_name},
                                  {"display_name", chosen_display}};
-                res.intents.push_back(Fanout{.conns = std::move(conns), .payload = std::move(presence)});
+                res.intents.push_back(
+                    Fanout{.conns = std::move(conns), .payload = std::move(presence)});
             }
         }
 
