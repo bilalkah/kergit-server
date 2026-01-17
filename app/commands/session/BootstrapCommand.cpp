@@ -5,6 +5,7 @@
 #include "domains/Channel.h"
 #include "domains/Hub.h"
 #include "proto/envelope.pb.h"
+#include "proto/event/error.pb.h"
 #include "proto/event/presence.pb.h"
 #include "proto/event/session.pb.h"
 
@@ -16,166 +17,146 @@
 
 namespace app {
 
-CommandResult BootstrapCommand::execute(CommandContext& ctx, const CommandInput cmd) {
-    const auto* input = std::get_if<ConnectEvent>(&cmd);
-    if (!input) {
-        return std::unexpected(
-            CommandError{1, "Bootstrap command expects a connect event"});
+std::vector<net::outbound::OutgoingMessage> BootstrapCommand::execute(CommandContext& ctx,
+                                                                      const queue::Event& evt) {
+    std::vector<net::outbound::OutgoingMessage> out;
+    const auto* event = std::get_if<queue::ConnectionEvent>(&evt);
+    if (!event) {
+        std::cout << "BootstrapCommand: invalid event type" << std::endl;
+        return out;
     }
 
-    const UserId user_id = input->user_id;
+    const UserId user_id = event->user_id;
     if (user_id.value.empty()) {
-        return std::unexpected(CommandError{2, "User id is required"});
+        return {net::outbound::OutgoingMessage{
+            .target = net::outbound::Target::one(event->conn_id),
+            .action = net::outbound::DropConnection{
+                .code = static_cast<int>(
+                    sercom::protocol::event::CommandErrorCode::CommandErrorCode_UNAUTHORIZED),
+                .reason = "missing_user_id"}}};
     }
 
     auto db_user = ctx.user_service.getUser(user_id);
     if (!db_user) {
-        return std::unexpected(CommandError{3, "User not found in database"});
+        return {net::outbound::OutgoingMessage{
+            .target = net::outbound::Target::one(event->conn_id),
+            .action = net::outbound::DropConnection{
+                .code = static_cast<int>(
+                    sercom::protocol::event::CommandErrorCode::CommandErrorCode_UNAUTHORIZED),
+                .reason = "User not found"}}};
     }
 
-    const std::string display_name =
-        !db_user->username.empty()
-            ? db_user->username
-            : (!db_user->full_name.empty() ? db_user->full_name : "Member");
-
-    // Track session + subscribe to hubs for presence
     if (ctx.session_manager.hasSession(user_id)) {
-        CommandSuccess res;
-        res.intents.push_back(
-            DropConnectionIntent{.conn = input->conn, .code = 4409, .reason = "duplicate_session"});
-        return res;
+        return {net::outbound::OutgoingMessage{
+            .target = net::outbound::Target::one(event->conn_id),
+            .action = net::outbound::DropConnection{
+                .code = static_cast<int>(
+                    sercom::protocol::event::CommandErrorCode::CommandErrorCode_INVALID_SESSION),
+                .reason = "duplicate_session"}}};
     }
-    ctx.session_manager.createSession(input->conn, user_id);
+
+    // --- session + subscriptions ---
+    ctx.session_manager.createSession(event->conn_id, user_id);
+
     const auto hubs = ctx.hub_service.getUserHubs(user_id);
     for (const auto& hub : hubs) {
         ctx.subscription_manager.subscribe(user_id, Topic::HubTopic(hub.id));
     }
 
+    // --- build bootstrap payload ---
     sercom::protocol::event::SessionBootstrap bootstrap;
+
     const auto public_user_id = ctx.ids.to_public(user_id);
     auto* self = bootstrap.mutable_self();
     self->set_id(public_user_id.value);
+
+    const std::string display_name =
+        !db_user->username.empty() ? db_user->username
+                                   : (!db_user->full_name.empty() ? db_user->full_name : "Member");
+
     self->set_username(display_name);
-    std::vector<BinaryFanout> presence_notifications;
 
     for (const auto& hub : hubs) {
         auto* hub_state = bootstrap.add_hubs();
         const auto public_hub_id = ctx.ids.to_public(hub.id);
-        auto* hub_msg = hub_state->mutable_hub();
-        hub_msg->set_id(public_hub_id.value);
-        hub_msg->set_name(hub.name);
 
-        const auto hub_channels = ctx.channel_service.getHubChannels(hub.id);
-        for (const auto& channel : hub_channels) {
-            auto* channel_msg = hub_state->add_channels();
-            const auto public_channel = ctx.ids.to_public(channel.id);
-            channel_msg->set_id(public_channel.value);
-            channel_msg->set_name(channel.name);
-            channel_msg->set_type(converters::to_proto_channel_type(channel.type));
+        hub_state->mutable_hub()->set_id(public_hub_id.value);
+        hub_state->mutable_hub()->set_name(hub.name);
+
+        const auto channels = ctx.channel_service.getHubChannels(hub.id);
+        for (const auto& channel : channels) {
+            auto* ch = hub_state->add_channels();
+            ch->set_id(ctx.ids.to_public(channel.id).value);
+            ch->set_name(channel.name);
+            ch->set_type(converters::to_proto_channel_type(channel.type));
         }
-
-        std::unordered_map<UserId, Role, UserIdHash, UserIdEq> member_roles;
-        if (auto hub_details = ctx.hub_service.getHub(hub.id)) {
-            member_roles = hub_details->members;
-        }
-
-        const auto online_members = ctx.presence_manager.onlineUsersInHub(hub.id);
-        std::unordered_set<UserId> online_set(online_members.begin(), online_members.end());
 
         const auto members = ctx.hub_service.getHubMembers(hub.id);
-        for (const auto& member : members) {
-            const auto& member_id = member.first;
-            std::string display_name = member.second;
-            const auto public_member = ctx.ids.to_public(member_id);
+        const auto online = ctx.presence_manager.onlineUsersInHub(hub.id);
+        std::unordered_set<UserId> online_set(online.begin(), online.end());
 
-            auto* member_msg = hub_state->add_members();
-            member_msg->set_hub_id(public_hub_id.value);
-            member_msg->set_user_id(public_member.value);
-
-            Role role = Role::USER;
-            auto role_it = member_roles.find(member_id);
-            if (role_it != member_roles.end()) {
-                role = role_it->second;
-            }
-            member_msg->set_role(converters::to_proto_hub_role(role));
-            member_msg->set_is_online(online_set.find(member_id) != online_set.end());
-            if (display_name.empty()) {
-                if (auto member_user = ctx.user_service.getUser(member_id)) {
-                    if (!member_user->username.empty()) display_name = member_user->username;
-                    else if (!member_user->full_name.empty())
-                        display_name = member_user->full_name;
-                }
-            }
-            if (display_name.empty()) display_name = "Member";
-            member_msg->set_display_name(display_name);
+        for (const auto& [member_id, name] : members) {
+            auto* m = hub_state->add_members();
+            m->set_hub_id(public_hub_id.value);
+            m->set_user_id(ctx.ids.to_public(member_id).value);
+            m->set_is_online(online_set.contains(member_id));
+            m->set_display_name(name.empty() ? "Member" : name);
         }
 
-        if (!online_members.empty()) {
-            std::vector<GlobalConnId> recipients;
-            recipients.reserve(online_members.size());
-
-            for (const auto& member_id : online_members) {
+        // --- presence fanout ---
+        if (!online.empty()) {
+            std::vector<GlobalConnId> targets;
+            for (const auto& member_id : online) {
                 if (member_id == user_id) continue;
-                auto conn_exp = ctx.session_manager.getMainConnection(member_id);
-                if (!conn_exp.has_value()) continue;
-                recipients.push_back(conn_exp.value());
+                auto conn = ctx.session_manager.getMainConnection(member_id);
+                if (conn) targets.push_back(*conn);
             }
 
-            if (!recipients.empty()) {
-                sercom::protocol::event::PresenceEvent presence_event;
-                auto* presence_changed = presence_event.mutable_presence_changed();
-                presence_changed->set_hub_id(public_hub_id.value);
-                presence_changed->set_user_id(public_user_id.value);
-                presence_changed->set_is_online(true);
+            if (!targets.empty()) {
+                sercom::protocol::event::PresenceEvent pe;
+                auto* pc = pe.mutable_presence_changed();
+                pc->set_hub_id(public_hub_id.value);
+                pc->set_user_id(public_user_id.value);
+                pc->set_is_online(true);
 
-                std::string presence_payload;
-                if (!presence_event.SerializeToString(&presence_payload)) {
-                    continue;
-                }
+                std::string pe_payload;
+                pe.SerializeToString(&pe_payload);
 
-                sercom::protocol::Envelope presence_env;
-                presence_env.set_version(1);
-                presence_env.set_type(sercom::protocol::Envelope::PRESENCE);
-                presence_env.set_payload(std::move(presence_payload));
+                sercom::protocol::Envelope penv;
+                penv.set_version(1);
+                penv.set_type(sercom::protocol::Envelope::PRESENCE);
+                penv.set_payload(std::move(pe_payload));
 
-                std::string out_bytes;
-                if (!presence_env.SerializeToString(&out_bytes)) {
-                    continue;
-                }
+                std::string bytes;
+                penv.SerializeToString(&bytes);
 
-                presence_notifications.push_back(
-                    BinaryFanout{.conns = std::move(recipients),
-                                 .payload = std::move(out_bytes)});
-
+                out.push_back(net::outbound::OutgoingMessage{
+                    .target = net::outbound::Target::many(std::move(targets)),
+                    .action = net::outbound::SendPayload{
+                        .payload =
+                            net::outbound::Payload{.data = std::move(bytes), .is_binary = true}}});
             }
         }
     }
 
-    std::string payload;
-    if (!bootstrap.SerializeToString(&payload)) {
-        return std::unexpected(
-            CommandError{1, "Failed to serialize bootstrap payload"});
-    }
+    // --- send bootstrap ---
+    std::string bootstrap_payload;
+    bootstrap.SerializeToString(&bootstrap_payload);
 
     sercom::protocol::Envelope env;
     env.set_version(1);
     env.set_type(sercom::protocol::Envelope::SESSION_BOOTSTRAP);
-    env.set_payload(std::move(payload));
+    env.set_payload(std::move(bootstrap_payload));
 
     std::string out_bytes;
-    if (!env.SerializeToString(&out_bytes)) {
-        return std::unexpected(
-            CommandError{2, "Failed to serialize bootstrap envelope"});
-    }
+    env.SerializeToString(&out_bytes);
 
-    CommandSuccess res;
-    res.intents.push_back(
-        BinaryUnicast{.conn = input->conn, .payload = std::move(out_bytes)});
-    for (auto& notification : presence_notifications) {
-        res.intents.push_back(std::move(notification));
-    }
+    out.push_back(net::outbound::OutgoingMessage{
+        .target = net::outbound::Target::one(event->conn_id),
+        .action = net::outbound::SendPayload{
+            .payload = net::outbound::Payload{.data = std::move(out_bytes), .is_binary = true}}});
 
-    return res;
+    return out;
 }
 
 }  // namespace app

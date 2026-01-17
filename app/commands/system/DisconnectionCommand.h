@@ -8,7 +8,8 @@ namespace app {
 
 class DisconnectionCommand : public ICommand {
    public:
-    CommandResult execute(CommandContext& ctx, const CommandInput cmd) override;
+    std::vector<net::outbound::OutgoingMessage> execute(CommandContext& ctx,
+                                                        const queue::Event& evt) override;
 };
 
 }  // namespace app

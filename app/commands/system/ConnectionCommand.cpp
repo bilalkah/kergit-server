@@ -14,11 +14,11 @@ using nlohmann::json;
 
 namespace app {
 
-CommandResult ConnectionCommand::execute(CommandContext& ctx, const CommandInput cmd) {
+std::vector<net::outbound::OutgoingMessage> ConnectionCommand::execute(CommandContext& ctx,
+                                                                       const queue::Event& evt) {
     const auto* input = std::get_if<ConnectEvent>(&cmd);
     if (!input) {
-        return std::unexpected(
-            CommandError{1, "Connection command expects a connect event"});
+        return std::unexpected(CommandError{1, "Connection command expects a connect event"});
     }
 
     const UserId user_id = input->user_id;
@@ -32,9 +32,8 @@ CommandResult ConnectionCommand::execute(CommandContext& ctx, const CommandInput
     }
 
     const std::string display_name =
-        !db_user->username.empty()
-            ? db_user->username
-            : (!db_user->full_name.empty() ? db_user->full_name : "Member");
+        !db_user->username.empty() ? db_user->username
+                                   : (!db_user->full_name.empty() ? db_user->full_name : "Member");
 
     // Track session + subscribe to hubs for presence
     ctx.session_manager.createSession(input->conn, user_id);
@@ -93,8 +92,10 @@ CommandResult ConnectionCommand::execute(CommandContext& ctx, const CommandInput
             std::string name = stored_display;
             if (name.empty()) {
                 if (auto member_user = ctx.user_service.getUser(member_id)) {
-                    if (!member_user->username.empty()) name = member_user->username;
-                    else if (!member_user->full_name.empty()) name = member_user->full_name;
+                    if (!member_user->username.empty())
+                        name = member_user->username;
+                    else if (!member_user->full_name.empty())
+                        name = member_user->full_name;
                 }
             }
             if (name.empty() && member_id == user_id) name = display_name;
@@ -135,8 +136,8 @@ CommandResult ConnectionCommand::execute(CommandContext& ctx, const CommandInput
             auto payload = ctx.hub_notifier.memberOnline(hub.id, user_id);
             if (!display_name.empty()) payload["display_name"] = display_name;
             payload["username"] = display_name;
-            res.intents.push_back(Fanout{.conns = std::move(recipients),
-                                         .payload = std::move(payload)});
+            res.intents.push_back(
+                Fanout{.conns = std::move(recipients), .payload = std::move(payload)});
         }
     }
 

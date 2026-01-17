@@ -1,5 +1,7 @@
 #include "net/NetworkStack.h"
 
+using namespace app::queue;
+
 namespace net {
 namespace {
 constexpr auto timeout = std::chrono::seconds(5);
@@ -22,7 +24,7 @@ LoopId NetworkStack::loop_id() const {
 
 net::outbound::IOutboundSink& NetworkStack::outbound_sink() { return *outgoing_queue_; }
 
-void NetworkStack::attach_event_sink(app::queue::IEventSink& sink) { event_sink_ = &sink; }
+void NetworkStack::attach_event_sink(IEventSink& sink) { event_sink_ = &sink; }
 
 NetStackId NetworkStack::id() const { return id_; }
 
@@ -115,23 +117,19 @@ void NetworkStack::wire_components() {
     transport_layer_->set_hooks(
         {.on_open =
              [this](const ConnId& connid, const UserId& user_id) {
-                 event_sink_->push(
-                     app::queue::Event{.conn_id = GlobalConnId{id_, connid},
-                                       .body = app::queue::ConnectionEvent{.user_id = user_id}});
+                 event_sink_->push(Event{
+                     ConnectionEvent{.conn_id = GlobalConnId{id_, connid}, .user_id = user_id}});
              },
          .on_message =
-             [this](const ConnId& connid, std::string_view raw) {
-                 event_sink_->push(app::queue::Event{
-                     .conn_id = GlobalConnId{id_, connid},
-                     .body = app::queue::MessageEvent{
-                         .payload = app::queue::Payload{.data = std::string(raw)}}});
+             [this](const ConnId& connid, sercom::protocol::Envelope&& env) {
+                 event_sink_->push(Event{MessageEvent{.conn_id = GlobalConnId{id_, connid},
+                                                      .payload = Payload{.env = std::move(env)}}});
              },
          .on_close =
              [this](const ConnId& connid, int code, std::string_view reason) {
-                 event_sink_->push(
-                     app::queue::Event{.conn_id = GlobalConnId{id_, connid},
-                                       .body = app::queue::DisconnectionEvent{
-                                           .code = code, .reason = std::string(reason)}});
+                 event_sink_->push(Event{DisconnectionEvent{.conn_id = GlobalConnId{id_, connid},
+                                                            .code = code,
+                                                            .reason = std::string(reason)}});
              }});
 }
 }  // namespace net

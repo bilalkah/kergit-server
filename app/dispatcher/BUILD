@@ -31,6 +31,7 @@ cc_library(
         ":command_context",
         "//app/commands:i_command",
         "//proto:envelope_cc_proto",
+        "//utils:loggable",
         "@nlohmann_json",
     ] + COMMAND_LIST,
 )

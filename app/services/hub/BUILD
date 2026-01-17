@@ -51,6 +51,8 @@ cc_library(
     deps = [
         "//app/services:public_id_service",
         "//domains/ids:domain_ids",
+        "//proto:envelope_cc_proto",
+        "//proto/event:presence_cc_proto",
         "@nlohmann_json",
     ],
 )

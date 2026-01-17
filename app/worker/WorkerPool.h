@@ -9,6 +9,10 @@
 #include "net/outbound/IOutBoundSink.h"
 #include "utils/Loggable.h"
 
+// Protobuf
+#include "proto/envelope.pb.h"
+#include "proto/event/error.pb.h"
+
 #include <atomic>
 #include <condition_variable>
 #include <mutex>
@@ -51,19 +55,38 @@ class WorkerPool : public utils::Loggable {
     std::atomic_bool paused_{false};
     std::vector<std::jthread> workers_;
 
-    // cache for currently executing commands to prevent duplicate processing for connection id
-    std::unordered_map<GlobalConnId, std::string> executing_commands_;
-    mutable std::mutex executing_commands_mtx_;
+    /**
+     * In-flight command tracking to prevent duplicates
+     * try_mark_executing: marks a command as executing for a given connection.
+     * unmark_executing: unmarks a command as executing for a given connection.
+     */
+    std::unordered_map<GlobalConnId, std::unordered_set<sercom::protocol::Envelope::Type>>
+        executing_commands_;
+    std::mutex executing_commands_mtx_;
+    bool try_mark_executing(GlobalConnId conn, sercom::protocol::Envelope::Type type);
+    void unmark_executing(GlobalConnId conn, sercom::protocol::Envelope::Type type);
 
-    // pause gate
+    /**
+     * Pause handling
+     */
     mutable std::mutex pause_mtx_;
     std::condition_variable pause_cv_;
-
     void worker_loop(std::size_t worker_index);
     void wait_if_paused();
 
-    void send_error(const GlobalConnId& req, sercom::protocol::Envelope::Type type,
-                    sercom::protocol::event::CommandErrorCode code, std::string_view message);
+    /**
+     * Prepare a serialized error message envelope
+     */
+    std::string prepare_error_msg(const GlobalConnId& req, sercom::protocol::Envelope::Type type,
+                                  sercom::protocol::event::CommandErrorCode code,
+                                  std::string_view message);
+
+    /**
+     * Handle different event types
+     */
+    std::vector<net::outbound::OutgoingMessage> handle_event(const queue::MessageEvent& msg_evt);
+    std::vector<net::outbound::OutgoingMessage> handle_event(const queue::ConnectionEvent& evt);
+    std::vector<net::outbound::OutgoingMessage> handle_event(const queue::DisconnectionEvent& evt);
 };
 
 }  // namespace app::worker
