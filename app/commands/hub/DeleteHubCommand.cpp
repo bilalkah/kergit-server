@@ -43,15 +43,13 @@ CommandResult DeleteHubCommand::execute(CommandContext& ctx, const CommandInput 
 
     auto role = ctx.hub_service.getMembershipRole(hub_id, user_id);
     if (!role.has_value() || *role != Role::OWNER) {
-        return std::unexpected(
-            CommandError{6, "Only owners can delete hubs"});
+        return std::unexpected(CommandError{6, "Only owners can delete hubs"});
     }
 
     const auto channels = ctx.channel_service.getHubChannels(hub_id);
 
     if (!ctx.hub_service.deleteHub(hub_id, user_id)) {
-        return std::unexpected(
-            CommandError{7, "Unable to delete hub at this time"});
+        return std::unexpected(CommandError{7, "Unable to delete hub at this time"});
     }
 
     const auto public_hub_id = ctx.ids.to_public(hub_id);
@@ -74,8 +72,7 @@ CommandResult DeleteHubCommand::execute(CommandContext& ctx, const CommandInput 
                 if (conn.has_value()) conns.push_back(conn.value());
             }
             if (!conns.empty()) {
-                res.intents.push_back(Fanout{.conns = std::move(conns),
-                                             .payload = channel_closed});
+                res.intents.push_back(Fanout{.conns = std::move(conns), .payload = channel_closed});
             }
         }
     }

@@ -18,16 +18,13 @@ std::string_view trim_ws(std::string_view value) {
 
 std::string_view extract_token(std::string_view protocols) {
     auto comma = protocols.find(',');
-    if (comma == std::string_view::npos)
-        return {};
+    if (comma == std::string_view::npos) return {};
 
     auto protocol = trim_ws(protocols.substr(0, comma));
-    if (protocol != "supabase")
-        return {};
+    if (protocol != "supabase") return {};
 
     return trim_ws(protocols.substr(comma + 1));
 }
-
 
 std::expected<std::string, std::string> make_app_pong_response(
     const sercom::protocol::Envelope& env) {

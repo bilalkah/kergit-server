@@ -15,7 +15,6 @@
 #include "app/managers/session/SessionManager.h"
 #include "app/managers/subscription/SubscriptionManager.h"
 
-
 namespace app {
 
 struct CommandContext {

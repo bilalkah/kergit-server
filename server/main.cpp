@@ -7,7 +7,6 @@
 
 using namespace core;
 
-
 std::atomic<bool> g_shutdown_requested{false};
 
 void handle_signal(int) {
@@ -18,7 +17,7 @@ void handle_signal(int) {
 int main() {
     std::signal(SIGINT, handle_signal);
     std::signal(SIGTERM, handle_signal);
-    
+
     try {
         std::unique_ptr<server::Server> g_server;
         utils::EnvLoader::load_env_file();

@@ -30,7 +30,6 @@ struct WsHandle {
     UwsSocket::SendStatus send(std::string payload, bool binary = false) {
         if (ws) {
             return ws->send(payload, binary ? uWS::OpCode::BINARY : uWS::OpCode::TEXT);
-            
         }
         return UwsSocket::SendStatus::DROPPED;
     }

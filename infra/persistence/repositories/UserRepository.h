@@ -1,8 +1,8 @@
 #ifndef INFRA_PERSISTENCE_REPOSITORIES_USER_REPOSITORY_H
 #define INFRA_PERSISTENCE_REPOSITORIES_USER_REPOSITORY_H
 
-#include "domains/ids/Ids.h"
 #include "domains/User.h"
+#include "domains/ids/Ids.h"
 #include "infra/persistence/RepositoryMux.h"
 
 #include <optional>
@@ -22,6 +22,5 @@ class UserRepository {
    private:
     RepositoryMux& mux_;
 };
-
 
 #endif  // INFRA_PERSISTENCE_REPOSITORIES_USER_REPOSITORY_H

@@ -19,12 +19,8 @@ std::expected<User, UserCacheError> UserCache::get(UserId id) {
     return *user;
 }
 
-void UserCache::put(const User& user) {
-    cache_->put(core::cache::AnyKey::make(user.id), user);
-}
+void UserCache::put(const User& user) { cache_->put(core::cache::AnyKey::make(user.id), user); }
 
-void UserCache::invalidate(UserId id) {
-    cache_->erase(core::cache::AnyKey::make(id));
-}
+void UserCache::invalidate(UserId id) { cache_->erase(core::cache::AnyKey::make(id)); }
 
 }  // namespace app::services

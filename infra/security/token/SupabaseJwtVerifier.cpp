@@ -79,7 +79,7 @@ std::optional<SupabaseJWTVerifier::KeyMaterial> SupabaseJWTVerifier::parse_jwk(
     SupabaseJWK jwk;
     json j = json::parse(jwk_json, nullptr, false);
     if (j.is_discarded()) return std::nullopt;
-    
+
     jwk.kty = j.value("kty", "");
     jwk.alg = j.value("alg", "");
     jwk.kid = j.value("kid", "");

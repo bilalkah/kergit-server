@@ -39,8 +39,10 @@ json build_members(CommandContext& ctx, const HubId& hub_id, const UserId& self)
         std::string display = stored_display;
         if (display.empty()) {
             if (auto user = ctx.user_service.getUser(user_id)) {
-                if (!user->username.empty()) display = user->username;
-                else if (!user->full_name.empty()) display = user->full_name;
+                if (!user->username.empty())
+                    display = user->username;
+                else if (!user->full_name.empty())
+                    display = user->full_name;
             }
         }
         if (display.empty()) display = "Member";
@@ -115,10 +117,13 @@ CommandResult JoinHubByInviteCommand::execute(CommandContext& ctx, const Command
         if (!conns.empty()) {
             auto payload_online = ctx.hub_notifier.memberOnline(hub_id, user_id);
             if (auto u = ctx.user_service.getUser(user_id)) {
-                if (!u->username.empty()) payload_online["display_name"] = u->username;
-                else if (!u->full_name.empty()) payload_online["display_name"] = u->full_name;
+                if (!u->username.empty())
+                    payload_online["display_name"] = u->username;
+                else if (!u->full_name.empty())
+                    payload_online["display_name"] = u->full_name;
             }
-            res.intents.push_back(Fanout{.conns = std::move(conns), .payload = std::move(payload_online)});
+            res.intents.push_back(
+                Fanout{.conns = std::move(conns), .payload = std::move(payload_online)});
         }
     }
 

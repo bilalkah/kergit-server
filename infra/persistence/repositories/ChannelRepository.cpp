@@ -67,6 +67,56 @@ std::vector<Message> ChannelRepository::fetchMessages(const ChannelId& channelId
     });
 }
 
+std::vector<Message> ChannelRepository::fetchMessagesAfter(const ChannelId& channelId,
+                                                           const MessageId& afterId, int limit) {
+    return mux_.run(Repository::Message, [&](pqxx::work& txn) {
+        auto res = txn.exec(
+            "SELECT id::text, channel_id::text, sender_id::text, content, created_at "
+            "FROM public.messages WHERE channel_id = $1::uuid "
+            "AND created_at > (SELECT created_at FROM public.messages WHERE id = $2::uuid) "
+            "ORDER BY created_at ASC LIMIT $3",
+            pqxx::params{channelId.value, afterId.value, limit});
+
+        std::vector<Message> msgs;
+        msgs.reserve(res.size());
+        for (const auto& row : res) {
+            Message msg;
+            msg.id = MessageId{row[0].as<std::string>()};
+            msg.ch_id = ChannelId{row[1].as<std::string>()};
+            msg.sender_id = UserId{row[2].as<std::string>()};
+            msg.text = row[3].as<std::string>();
+            msg.sent_at = parse_timestamp(row[4].as<std::string>());
+            msgs.push_back(std::move(msg));
+        }
+        return msgs;
+    });
+}
+
+std::vector<Message> ChannelRepository::fetchMessagesBefore(const ChannelId& channelId,
+                                                            const MessageId& beforeId, int limit) {
+    return mux_.run(Repository::Message, [&](pqxx::work& txn) {
+        auto res = txn.exec(
+            "SELECT id::text, channel_id::text, sender_id::text, content, created_at "
+            "FROM public.messages WHERE channel_id = $1::uuid "
+            "AND created_at < (SELECT created_at FROM public.messages WHERE id = $2::uuid) "
+            "ORDER BY created_at DESC LIMIT $3",
+            pqxx::params{channelId.value, beforeId.value, limit});
+
+        std::vector<Message> msgs;
+        msgs.reserve(res.size());
+        for (const auto& row : res) {
+            Message msg;
+            msg.id = MessageId{row[0].as<std::string>()};
+            msg.ch_id = ChannelId{row[1].as<std::string>()};
+            msg.sender_id = UserId{row[2].as<std::string>()};
+            msg.text = row[3].as<std::string>();
+            msg.sent_at = parse_timestamp(row[4].as<std::string>());
+            msgs.push_back(std::move(msg));
+        }
+        return msgs;
+    });
+}
+
 std::vector<Channel> ChannelRepository::getHubChannels(const HubId& hubId) {
     return mux_.run(Repository::Channel, [&](pqxx::work& txn) {
         auto res = txn.exec(
