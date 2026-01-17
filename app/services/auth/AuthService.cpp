@@ -8,7 +8,8 @@ AuthService::AuthService()
     : token_verifier_([this] {
           auto exp = SupabaseJWTVerifier::create();
           if (!exp) {
-              throw std::runtime_error("Failed to initialize SupabaseJWTVerifier, err: " + std::to_string(static_cast<int>(exp.error())));
+              throw std::runtime_error("Failed to initialize SupabaseJWTVerifier, err: " +
+                                       std::to_string(static_cast<int>(exp.error())));
           }
           return std::move(exp.value());
       }()) {}

@@ -41,8 +41,7 @@ CommandResult UpdateMemberRoleCommand::execute(CommandContext& ctx, const Comman
     const std::string role_raw = j.value("role", "");
 
     if (!hub_raw.has_value() || !user_raw.has_value() || role_raw.empty()) {
-        return std::unexpected(
-            CommandError{3, "hub_id, user_id and role are required"});
+        return std::unexpected(CommandError{3, "hub_id, user_id and role are required"});
     }
 
     auto hub_id_opt = ctx.ids.to_internal(PublicHubId{hub_raw.value()});
@@ -65,8 +64,7 @@ CommandResult UpdateMemberRoleCommand::execute(CommandContext& ctx, const Comman
         return std::unexpected(CommandError{6, "Join the hub before updating roles"});
     }
     if (*actor_role != Role::OWNER) {
-        return std::unexpected(
-            CommandError{7, "Only owners can update member roles"});
+        return std::unexpected(CommandError{7, "Only owners can update member roles"});
     }
 
     // target must be a member and not owner

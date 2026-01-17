@@ -5,13 +5,13 @@
 #include "net/Types.h"
 #include "net/transport/Handle.h"
 
+#include <deque>
 #include <expected>
 #include <mutex>
 #include <shared_mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <deque>
 
 namespace net::connection {
 

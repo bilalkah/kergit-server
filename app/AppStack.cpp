@@ -32,13 +32,13 @@ void AppStack::attach_outbound_sink(net::outbound::IOutboundSink& sink) { out_qu
 void AppStack::init_database() {
     persistence_gateway_ = std::make_unique<PersistenceGateway>(
         config_.database.to_connection_string(), config_.database.pool_size);
-    log(utils::LogLevel::INFO,"Database is inited.");
+    log(utils::LogLevel::INFO, "Database is inited.");
 }
 
 void AppStack::init_managers() {
     subscription_manager_ = std::make_unique<SubscriptionManager>();
     session_manager_ = std::make_unique<SessionManager>();
-    log(utils::LogLevel::INFO,"Managers are inited.");
+    log(utils::LogLevel::INFO, "Managers are inited.");
 }
 
 void AppStack::init_services() {
@@ -78,7 +78,7 @@ void AppStack::init_services() {
 void AppStack::init_dispatcher() {
     dispatcher_ = std::make_unique<Dispatcher>();
     dispatcher_->register_all();
-    log(utils::LogLevel::INFO,"Dispatcher is inited.");
+    log(utils::LogLevel::INFO, "Dispatcher is inited.");
 }
 
 void AppStack::init_workers() {

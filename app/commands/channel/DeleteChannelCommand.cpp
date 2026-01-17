@@ -44,8 +44,7 @@ CommandResult DeleteChannelCommand::execute(CommandContext& ctx, const CommandIn
 
     auto role = ctx.hub_service.getMembershipRole(channel.hub_id, user_id);
     if (!role.has_value() || (*role != Role::OWNER && *role != Role::ADMIN)) {
-        return std::unexpected(
-            CommandError{6, "Only admins/owners can delete channels"});
+        return std::unexpected(CommandError{6, "Only admins/owners can delete channels"});
     }
 
     const auto public_hub_id = ctx.ids.to_public(channel.hub_id);

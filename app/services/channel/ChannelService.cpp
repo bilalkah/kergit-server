@@ -45,6 +45,14 @@ bool ChannelService::deleteChannel(const ChannelId& channelId, const HubId& hubI
 std::vector<Message> ChannelService::fetchMessages(const ChannelId& channelId, int limit) {
     return repo_.fetchMessages(channelId, limit);
 }
+std::vector<Message> ChannelService::fetchMessagesAfter(const ChannelId& channelId,
+                                                        const MessageId& afterId, int limit) {
+    return repo_.fetchMessagesAfter(channelId, afterId, limit);
+}
+std::vector<Message> ChannelService::fetchMessagesBefore(const ChannelId& channelId,
+                                                         const MessageId& beforeId, int limit) {
+    return repo_.fetchMessagesBefore(channelId, beforeId, limit);
+}
 Message ChannelService::sendMessage(const ChannelId& channelId, const UserId& senderId,
                                     const std::string& content) {
     return repo_.sendMessage(channelId, senderId, content);

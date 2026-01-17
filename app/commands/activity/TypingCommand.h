@@ -1,12 +1,11 @@
-#ifndef APP_SESSION_BOOTSTRAPCOMMAND_H
-#define APP_SESSION_BOOTSTRAPCOMMAND_H
+#ifndef APP_COMMANDS_ACTIVITY_TYPINGCOMMAND_H
+#define APP_COMMANDS_ACTIVITY_TYPINGCOMMAND_H
 
 #include "app/commands/ICommand.h"
-#include "app/dispatcher/CommandContext.h"
 
 namespace app {
 
-class BootstrapCommand : public ICommand {
+class TypingCommand : public ICommand {
    public:
     std::vector<net::outbound::OutgoingMessage> execute(CommandContext& ctx,
                                                         const queue::Event& evt) override;
@@ -14,4 +13,4 @@ class BootstrapCommand : public ICommand {
 
 }  // namespace app
 
-#endif  // APP_SESSION_BOOTSTRAPCOMMAND_H
+#endif  // APP_COMMANDS_ACTIVITY_TYPINGCOMMAND_H

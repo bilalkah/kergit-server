@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package sercom.protocol.command;
+
+message SendMessage {
+  uint64 hub_id = 1;
+  uint64 channel_id = 2;
+  string content = 3;
+}
+
+message FetchLatestMessages {
+  uint64 hub_id = 1;
+  uint64 channel_id = 2;
+  uint32 limit = 3;
+
+  // public message id last seen by client
+  optional uint64 known_latest_message_id = 4;
+}
+
+message FetchMessagesBefore {
+  uint64 hub_id = 1;
+  uint64 channel_id = 2;
+  uint64 before_message_id = 3;
+  uint32 limit = 4;
+}
+

@@ -95,7 +95,8 @@ void OutgoingWorker::tick() {
                         log(utils::LogLevel::INFO,
                             "Sent payload to connection: ", conn_ctx.conn_id.value,
                             " Payload size: ", action.payload.data.size());
-                    } else if (status == transport::websocket::UwsSocket::SendStatus::BACKPRESSURE) {
+                    } else if (status ==
+                               transport::websocket::UwsSocket::SendStatus::BACKPRESSURE) {
                         log(utils::LogLevel::WARN,
                             "Backpressure on connection: ", conn_ctx.conn_id.value);
                         conns_.mutate(conn_ctx.conn_id, [&](auto& ctx) {

@@ -18,6 +18,13 @@ message Envelope {
         PRESENCE = 30;
         TYPING = 31;
         ACTIVE_CHANNEL = 32;
+
+        MESSAGE_SEND = 40;
+        MESSAGE_FETCH_LATEST = 41;
+        MESSAGE_FETCH_BEFORE = 42;
+
+        MESSAGE_CREATED = 43;
+        MESSAGE_BATCH = 44;
     }
 
     Type type = 3;

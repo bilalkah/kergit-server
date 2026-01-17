@@ -166,8 +166,7 @@ HubId HubRepository::ensurePersonalHubWithGeneral(const UserId& ownerUuid,
     });
 }
 
-std::vector<ChannelId> HubRepository::getHubChannelIds(const HubId& hubId)
-{
+std::vector<ChannelId> HubRepository::getHubChannelIds(const HubId& hubId) {
     return mux_.run(Repository::Hub, [&](pqxx::work& txn) {
         auto res = txn.exec(
             "SELECT id::text FROM public.channels WHERE hub_id = $1::uuid ORDER BY created_at ASC",

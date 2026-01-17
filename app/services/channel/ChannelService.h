@@ -23,6 +23,10 @@ class ChannelService {
 
     // ---- Message reads ----
     std::vector<Message> fetchMessages(const ChannelId& channelId, int limit);
+    std::vector<Message> fetchMessagesAfter(const ChannelId& channelId, const MessageId& afterId,
+                                            int limit);
+    std::vector<Message> fetchMessagesBefore(const ChannelId& channelId, const MessageId& beforeId,
+                                             int limit);
     // ---- Message writes ----
     Message sendMessage(const ChannelId& channelId, const UserId& senderId,
                         const std::string& content);

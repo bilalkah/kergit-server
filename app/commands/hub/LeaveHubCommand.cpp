@@ -41,8 +41,7 @@ CommandResult LeaveHubCommand::execute(CommandContext& ctx, const CommandInput c
         return std::unexpected(CommandError{5, "Join the hub before leaving it"});
     }
     if (*role == Role::OWNER) {
-        return std::unexpected(CommandError{6,
-                                            "Owners must transfer ownership before leaving"});
+        return std::unexpected(CommandError{6, "Owners must transfer ownership before leaving"});
     }
 
     // Remove membership
@@ -82,11 +81,13 @@ CommandResult LeaveHubCommand::execute(CommandContext& ctx, const CommandInput c
                             {"user_id", public_user_id.value}};
             res.intents.push_back(Fanout{.conns = conns, .payload = offline});
 
-            // Backward/compat: also emit member_offline so clients that only handle presence still update
+            // Backward/compat: also emit member_offline so clients that only handle presence still
+            // update
             json offline_presence = {{"type", "member_offline"},
                                      {"hub_id", public_hub_id.value},
                                      {"user_id", public_user_id.value}};
-            res.intents.push_back(Fanout{.conns = std::move(conns), .payload = std::move(offline_presence)});
+            res.intents.push_back(
+                Fanout{.conns = std::move(conns), .payload = std::move(offline_presence)});
         }
     }
 

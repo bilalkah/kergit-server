@@ -42,6 +42,27 @@ std::expected<void, ValidationError> ProtoMessageValidator::validate_envelope(
             }
             return validate_active_channel(active_channel);
         }
+        case sercom::protocol::Envelope::MESSAGE_SEND: {
+            sercom::protocol::command::SendMessage send_message;
+            if (!send_message.ParseFromArray(env.payload().data(), env.payload().size())) {
+                return std::unexpected("Invalid MESSAGE_SEND payload");
+            }
+            return validate_send_message(send_message);
+        }
+        case sercom::protocol::Envelope::MESSAGE_FETCH_LATEST: {
+            sercom::protocol::command::FetchLatestMessages fetch_latest;
+            if (!fetch_latest.ParseFromArray(env.payload().data(), env.payload().size())) {
+                return std::unexpected("Invalid MESSAGE_FETCH_LATEST payload");
+            }
+            return validate_fetch_latest_messages(fetch_latest);
+        }
+        case sercom::protocol::Envelope::MESSAGE_FETCH_BEFORE: {
+            sercom::protocol::command::FetchMessagesBefore fetch_before;
+            if (!fetch_before.ParseFromArray(env.payload().data(), env.payload().size())) {
+                return std::unexpected("Invalid MESSAGE_FETCH_BEFORE payload");
+            }
+            return validate_fetch_messages_before(fetch_before);
+        }
 
         case sercom::protocol::Envelope::UNKNOWN:
             return std::unexpected("Unknown message type");
@@ -50,6 +71,8 @@ std::expected<void, ValidationError> ProtoMessageValidator::validate_envelope(
         case sercom::protocol::Envelope::PONG:
         case sercom::protocol::Envelope::SESSION_BOOTSTRAP:
         case sercom::protocol::Envelope::PRESENCE:
+        case sercom::protocol::Envelope::MESSAGE_CREATED:
+        case sercom::protocol::Envelope::MESSAGE_BATCH:
             return std::unexpected("Server-only message type");
 
         default:
@@ -115,6 +138,59 @@ std::expected<void, ValidationError> ProtoMessageValidator::validate_active_chan
 
     if (msg.channel_id() == 0) {
         return std::unexpected("channel_id is empty");
+    }
+
+    return {};
+}
+
+// ---------- MESSAGE_SEND validation ----------
+
+std::expected<void, ValidationError> ProtoMessageValidator::validate_send_message(
+    const sercom::protocol::command::SendMessage& msg) {
+    if (msg.hub_id() == 0) {
+        return std::unexpected("hub_id is empty");
+    }
+
+    if (msg.channel_id() == 0) {
+        return std::unexpected("channel_id is empty");
+    }
+
+    if (msg.content().empty()) {
+        return std::unexpected("content is empty");
+    }
+
+    return {};
+}
+
+// ---------- MESSAGE_FETCH_LATEST validation ----------
+
+std::expected<void, ValidationError> ProtoMessageValidator::validate_fetch_latest_messages(
+    const sercom::protocol::command::FetchLatestMessages& msg) {
+    if (msg.hub_id() == 0) {
+        return std::unexpected("hub_id is empty");
+    }
+
+    if (msg.channel_id() == 0) {
+        return std::unexpected("channel_id is empty");
+    }
+
+    return {};
+}
+
+// ---------- MESSAGE_FETCH_BEFORE validation ----------
+
+std::expected<void, ValidationError> ProtoMessageValidator::validate_fetch_messages_before(
+    const sercom::protocol::command::FetchMessagesBefore& msg) {
+    if (msg.hub_id() == 0) {
+        return std::unexpected("hub_id is empty");
+    }
+
+    if (msg.channel_id() == 0) {
+        return std::unexpected("channel_id is empty");
+    }
+
+    if (msg.before_message_id() == 0) {
+        return std::unexpected("before_message_id is empty");
     }
 
     return {};
