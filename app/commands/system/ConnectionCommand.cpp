@@ -18,17 +18,17 @@ CommandResult ConnectionCommand::execute(CommandContext& ctx, const CommandInput
     const auto* input = std::get_if<ConnectEvent>(&cmd);
     if (!input) {
         return std::unexpected(
-            CommandError{"invalid_input", "Connection command expects a connect event"});
+            CommandError{1, "Connection command expects a connect event"});
     }
 
     const UserId user_id = input->user_id;
     if (user_id.value.empty()) {
-        return std::unexpected(CommandError{"invalid_input", "User id is required"});
+        return std::unexpected(CommandError{2, "User id is required"});
     }
 
     auto db_user = ctx.user_service.getUser(user_id);
     if (!db_user) {
-        return std::unexpected(CommandError{"user_not_found", "User not found in database"});
+        return std::unexpected(CommandError{3, "User not found in database"});
     }
 
     const std::string display_name =

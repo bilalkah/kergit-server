@@ -2,11 +2,9 @@
 #define APP_COMMANDS_ICOMMAND_H
 
 #include "domains/ids/Ids.h"
+#include "proto/event/error.pb.h"
 
-#include <chrono>
-#include <cstdint>
 #include <expected>
-#include <nlohmann/json.hpp>
 #include <string>
 #include <variant>
 #include <vector>
@@ -14,10 +12,14 @@
 namespace app {
 
 // ------------------- command input ----------------
-
 struct JsonInput {
     GlobalConnId conn;
-    nlohmann::json body;
+    std::string body;
+};
+
+struct MessageEvent {
+    GlobalConnId conn;
+    std::string body;
 };
 
 struct ConnectEvent {
@@ -31,22 +33,22 @@ struct DisconnectEvent {
     std::string reason;
 };
 
-using CommandInput = std::variant<JsonInput, ConnectEvent, DisconnectEvent>;
+using CommandInput = std::variant<JsonInput, MessageEvent, ConnectEvent, DisconnectEvent>;
 
 // ---------------- outbound intents ----------------
 
 struct Unicast {
     GlobalConnId conn;
-    nlohmann::json payload;
-};
-
-struct Fanout {
-    std::vector<GlobalConnId> conns;
-    nlohmann::json payload;
+    std::string payload;
 };
 
 struct BinaryUnicast {
     GlobalConnId conn;
+    std::string payload;
+};
+
+struct Fanout {
+    std::vector<GlobalConnId> conns;
     std::string payload;
 };
 
@@ -61,12 +63,20 @@ struct AuthStateIntent {
     bool authenticated{false};
 };
 
-using OutboundIntent = std::variant<Unicast, Fanout, BinaryUnicast, BinaryFanout, AuthStateIntent>;
+struct DropConnectionIntent {
+    GlobalConnId conn;
+    int code{};
+    std::string reason;
+};
+
+using OutboundIntent =
+    std::variant<Unicast, BinaryUnicast, Fanout, BinaryFanout, AuthStateIntent,
+                 DropConnectionIntent>;
 
 // ---------------- command result ----------------
 
 struct CommandError {
-    std::string code;
+    int code;
     std::string message;
 };
 

@@ -5,6 +5,7 @@
 #include "app/queue/EventQueue.h"
 #include "core/ServerConfig.h"
 #include "infra/security/validation/JsonValidator.h"
+#include "infra/security/validation/ProtoValidator.h"
 #include "net/outbound/IOutBoundSink.h"
 #include "utils/Loggable.h"
 
@@ -43,6 +44,7 @@ class WorkerPool : public utils::Loggable {
     CommandContext& cmd_ctx_;
 
     infra::security::validation::MessageValidator message_validator_;
+    infra::security::validation::ProtoMessageValidator proto_validator_;
 
     core::AppStackConfig config_;
     std::atomic_bool running_{false};
@@ -60,7 +62,8 @@ class WorkerPool : public utils::Loggable {
     void worker_loop(std::size_t worker_index);
     void wait_if_paused();
 
-    void send_error(const GlobalConnId& req, std::string_view code, std::string_view message);
+    void send_error(const GlobalConnId& req, sercom::protocol::Envelope::Type type,
+                    sercom::protocol::event::CommandErrorCode code, std::string_view message);
 };
 
 }  // namespace app::worker

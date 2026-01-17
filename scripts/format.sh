@@ -15,7 +15,9 @@ echo "=== Formatting C++ files ==="
 cpp_files=$(find . -name "*.cpp" -o -name "*.h" -o -name "*.hpp" | \
     grep -v "^./bazel-" | \
     grep -v "^./external/" | \
-    grep -v "^./third_party/")
+    grep -v "^./third_party/"|\
+    grep -v "^./proto/" |\
+    grep -v "^./clients/web/")
 
 if [[ -n "$cpp_files" ]]; then
     echo "Formatting $(echo "$cpp_files" | wc -l) C++ files..."
@@ -31,7 +33,9 @@ echo "=== Formatting BUILD files ==="
 build_files=$(find . -name "BUILD" -o -name "BUILD.bazel" -o -name "*.bzl" | \
     grep -v "^./bazel-" | \
     grep -v "^./external/" | \
-    grep -v "^./third_party/")
+    grep -v "^./third_party/"|\
+    grep -v "^./proto/" |\
+    grep -v "^./clients/web/")
 
 if [[ -n "$build_files" ]]; then
     if command -v buildifier-linux-amd64 &> /dev/null; then

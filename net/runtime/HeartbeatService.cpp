@@ -103,11 +103,15 @@ void HeartbeatService::tick() {
         auto id = ctx.conn_id;
         if (!ctx.handle.valid()) continue;
 
-        const bool has_auth_deadline = ctx.auth.expires_at.time_since_epoch().count() > 0;
-        if (has_auth_deadline && now >= ctx.auth.expires_at) {
-            const bool authed = ctx.auth.is_authenticated;
-            const char* reason = authed ? "auth_token_expired" : "auth_timeout";
+        if (!ctx.auth.is_authenticated) {
+            const char* reason = "unauthenticated";
             ctx.handle.end(4401, reason);
+            continue;
+        }
+
+        if (now >= ctx.auth.expires_at) {
+            const char* reason = "auth_token_expired";
+            ctx.handle.end(4402, reason);
             continue;
         }
 

@@ -13,10 +13,10 @@ struct us_timer_t;
 namespace net::runtime {
 
 struct HeartbeatConfig {
-    std::chrono::milliseconds interval{2500};
-    std::chrono::milliseconds timeout{8000};
+    std::chrono::seconds interval{5};
+    std::chrono::seconds timeout{15};
     int close_code = 4000;
-    const char* close_reason = "pong timeout";
+    const char* close_reason = "Client did not respond to heartbeat PINGs";
 };
 
 class HeartbeatService {
@@ -58,8 +58,7 @@ class HeartbeatService {
      */
     inline std::string make_conn_status_msg(bool alive, int rtt_ms) const {
         const char* status = alive ? "alive" : "stale";
-        return fmt::format(R"({{"type":"conn_status","status":"{}","rtt_ms":{}}})", status,
-                           rtt_ms);
+        return fmt::format(R"({{"type":"conn_status","status":"{}","rtt_ms":{}}})", status, rtt_ms);
     };
 };
 

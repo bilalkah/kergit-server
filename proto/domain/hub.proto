@@ -3,10 +3,10 @@ syntax = "proto3";
 package sercom.protocol.domain;
 
 enum HubRole {
-    HUB_ROLE_UNSPECIFIED = 0;
-    HUB_ROLE_MEMBER = 1;
-    HUB_ROLE_OWNER = 2;
-    HUB_ROLE_ADMIN = 3;
+    HubRole_UNSPECIFIED = 0;
+    HubRole_MEMBER = 1;
+    HubRole_OWNER = 2;
+    HubRole_ADMIN = 3;
 }
 
 message Hub {
@@ -19,4 +19,5 @@ message HubMember {
     uint64 user_id = 2;
     bool is_online = 3;
     HubRole role = 4;
+    string display_name = 5;
 }

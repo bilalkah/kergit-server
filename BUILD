@@ -16,6 +16,7 @@ refresh_compile_commands(
     targets = {
         "//...": "--config=vanilla_dbg",
     },
+    exclude_external_sources = True,
     # No need to add flags already in .bazelrc. They're automatically picked up.
     # If you don't need flags, a list of targets is also okay, as is a single target string.
     # Wildcard patterns, like //... for everything, *are* allowed here, just like a build.

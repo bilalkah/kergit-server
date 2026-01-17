@@ -2,9 +2,13 @@ load("@rules_cc//cc:defs.bzl", "cc_library")
 
 cc_library(
     name = "supabase_jwt_verifier",
-    srcs = ["token/SupabaseJwtVerifier.cpp"],
+    srcs = [
+        "token/JwtJsonUtils.cpp",
+        "token/SupabaseJwtVerifier.cpp",
+    ],
     hdrs = [
         "token/ITokenVerifier.h",
+        "token/JwtJsonUtils.h",
         "token/SupabaseJwtVerifier.h",
     ],
     copts = ["-std=gnu++23"],
@@ -36,5 +40,8 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//proto:envelope_cc_proto",
+        "//proto/command:activity_cc_proto",
+        "//proto/command:session_cc_proto",
+        "//proto/system:heartbeat_cc_proto",
     ],
 )

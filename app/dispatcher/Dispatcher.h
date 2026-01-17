@@ -4,6 +4,7 @@
 #include "app/commands/ICommand.h"
 #include "app/dispatcher/CommandContext.h"
 #include "domains/ids/Ids.h"
+#include "proto/envelope.pb.h"
 
 #include <functional>
 #include <nlohmann/json.hpp>
@@ -16,13 +17,16 @@ namespace app {
 
 class Dispatcher {
    public:
-    void register_cmd(std::string type, std::unique_ptr<ICommand> cmd);
     CommandResult dispatch(const std::string& type, CommandContext& ctx, const CommandInput cmd);
+    CommandResult dispatch(const sercom::protocol::Envelope_Type type, CommandContext& ctx,
+                           const CommandInput cmd);
+
     std::unordered_set<std::string> registered_commands() const;
     void register_all();
 
    private:
-    std::unordered_map<std::string, std::unique_ptr<ICommand>> map_;
+    std::unordered_map<sercom::protocol::Envelope_Type, std::unique_ptr<ICommand>> map_proto_;
+    std::unordered_map<std::string, std::unique_ptr<ICommand>> map_str_;
 };
 
 }  // namespace app

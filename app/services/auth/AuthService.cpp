@@ -14,7 +14,7 @@ AuthService::AuthService()
       }()) {}
 
 AuthResult AuthService::authenticate(const std::string_view token) {
-    auto result = token_verifier_.verify_token(std::string{token});
+    auto result = token_verifier_.verify_token(token);
     if (!result) {
         switch (result.error()) {
             case JwtVerifyError::InvalidSignature:

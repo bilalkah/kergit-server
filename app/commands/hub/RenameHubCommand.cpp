@@ -31,42 +31,46 @@ std::string RenameHubCommand::sanitize(std::string name) {
 CommandResult RenameHubCommand::execute(CommandContext& ctx, const CommandInput cmd) {
     const auto* input = std::get_if<JsonInput>(&cmd);
     if (!input) {
-        return std::unexpected(CommandError{"invalid_input", "rename_hub expects JSON input"});
+        return std::unexpected(CommandError{1, "rename_hub expects JSON input"});
     }
 
     auto user_exp = ctx.session_manager.sessionOfConnection(input->conn);
     if (!user_exp.has_value()) {
-        return std::unexpected(CommandError{"not_authenticated", "Authenticate first"});
+        return std::unexpected(CommandError{2, "Authenticate first"});
     }
     const UserId user_id = user_exp.value();
 
     auto hub_raw = commands::read_uint64(input->body, "hub_id");
-    std::string requested_name = sanitize(input->body.value("name", std::string{}));
+    const auto j = json::parse(input->body, nullptr, false);
+    if (j.is_discarded()) {
+        return std::unexpected(CommandError{3, "Invalid JSON"});
+    }
+    std::string requested_name = sanitize(j.value("name", std::string{}));
 
     if (!hub_raw.has_value()) {
-        return std::unexpected(CommandError{"missing_hub_id", "hub_id is required"});
+        return std::unexpected(CommandError{3, "hub_id is required"});
     }
     if (requested_name.empty()) {
-        return std::unexpected(CommandError{"invalid_hub_name", "Hub name is required"});
+        return std::unexpected(CommandError{4, "Hub name is required"});
     }
 
     auto hub_id_opt = ctx.ids.to_internal(PublicHubId{hub_raw.value()});
     if (!hub_id_opt.has_value()) {
-        return std::unexpected(CommandError{"hub_not_found", "Hub not found"});
+        return std::unexpected(CommandError{5, "Hub not found"});
     }
     const HubId hub_id = hub_id_opt.value();
 
     if (!ctx.hub_service.isHubMember(hub_id, user_id)) {
-        return std::unexpected(CommandError{"not_in_hub", "Join the hub before renaming it"});
+        return std::unexpected(CommandError{6, "Join the hub before renaming it"});
     }
 
     auto role = ctx.hub_service.getMembershipRole(hub_id, user_id);
     if (!role.has_value() || *role != Role::OWNER) {
-        return std::unexpected(CommandError{"insufficient_privilege", "Only owners can rename hubs"});
+        return std::unexpected(CommandError{7, "Only owners can rename hubs"});
     }
 
     if (!ctx.hub_service.renameHub(hub_id, requested_name)) {
-        return std::unexpected(CommandError{"rename_hub_failed", "Unable to rename hub at this time"});
+        return std::unexpected(CommandError{8, "Unable to rename hub at this time"});
     }
 
     const auto public_hub_id = ctx.ids.to_public(hub_id);
