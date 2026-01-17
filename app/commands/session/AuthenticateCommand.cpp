@@ -1,65 +1,108 @@
 #include "app/commands/session/AuthenticateCommand.h"
 
 #include "proto/command/session.pb.h"
+#include "proto/envelope.pb.h"
+#include "proto/event/error.pb.h"
 
 #include <chrono>
 
 namespace app {
-CommandResult AuthenticateCommand::execute(CommandContext& ctx, const CommandInput cmd) {
-    const auto* input = std::get_if<MessageEvent>(&cmd);
-    if (!input) {
-        return std::unexpected(
-            CommandError{1, "Authenticate command expects a message event"});
+std::vector<net::outbound::OutgoingMessage> AuthenticateCommand::execute(CommandContext& ctx,
+                                                                         const queue::Event& evt) {
+    std::vector<net::outbound::OutgoingMessage> result;
+    const auto* event = std::get_if<queue::MessageEvent>(&evt);
+    if (!event) {
+        std::cout << "AuthenticateCommand: invalid event type" << std::endl;
+        return {};
+    }
+
+    const auto& env = event->payload.env;
+    if (env.type() != sercom::protocol::Envelope::AUTH) {
+        std::cout << "AuthenticateCommand: unexpected envelope type" << std::endl;
+        return {};
     }
 
     sercom::protocol::command::Authenticate auth;
-    if (!auth.ParseFromString(input->body)) {
-        return std::unexpected(CommandError{2, "Invalid AUTH payload"});
+    auth.ParseFromString(env.payload());
+
+    if (!auth.ParseFromString(env.payload())) {
+        result.emplace_back(net::outbound::OutgoingMessage{
+            .target = net::outbound::Target::one(event->conn_id),
+            .action = net::outbound::DropConnection{
+                .code = static_cast<int>(
+                    sercom::protocol::event::CommandErrorCode::CommandErrorCode_INVALID_FORMAT),
+                .reason = "Invalid AUTH payload",
+            }});
+        return result;
     }
 
-    if (auth.type() != sercom::protocol::command::AuthType_REAUTH) {
-        return std::unexpected(CommandError{3, "Unsupported auth type"});
+    // 4. Validate command fields
+    if (auth.type() != sercom::protocol::command::AuthType_REAUTH &&
+        auth.type() != sercom::protocol::command::AuthType_AUTH) {
+        result.emplace_back(net::outbound::OutgoingMessage{
+            .target = net::outbound::Target::one(event->conn_id),
+            .action = net::outbound::DropConnection{
+                .code = static_cast<int>(
+                    sercom::protocol::event::CommandErrorCode::CommandErrorCode_INVALID_ARGUMENT),
+                .reason = "Unsupported auth type",
+            }});
+        return result;
     }
 
     if (auth.provider() != sercom::protocol::command::AuthProvider_SUPABASE) {
-        return std::unexpected(CommandError{4, "Unsupported auth provider"});
+        result.emplace_back(net::outbound::OutgoingMessage{
+            .target = net::outbound::Target::one(event->conn_id),
+            .action = net::outbound::DropConnection{
+                .code = static_cast<int>(
+                    sercom::protocol::event::CommandErrorCode::CommandErrorCode_INVALID_ARGUMENT),
+                .reason = "Unsupported auth provider",
+            }});
+        return result;
     }
 
     if (auth.token().empty()) {
-        return std::unexpected(CommandError{5, "Token is required"});
+        result.emplace_back(net::outbound::OutgoingMessage{
+            .target = net::outbound::Target::one(event->conn_id),
+            .action = net::outbound::DropConnection{
+                .code = static_cast<int>(
+                    sercom::protocol::event::CommandErrorCode::CommandErrorCode_INVALID_ARGUMENT),
+                .reason = "Token is required",
+            }});
+        return result;
     }
 
     auto auth_result = ctx.auth_service.authenticate(auth.token());
     if (!auth_result.has_value()) {
-        switch (auth_result.error()) {
-            case services::AuthError::InvalidToken:
-                return std::unexpected(CommandError{6, "Invalid token"});
-            case services::AuthError::ExpiredToken:
-                return std::unexpected(CommandError{7, "Token expired"});
-            default:
-                return std::unexpected(CommandError{8, "Auth failed"});
-        }
+        result.emplace_back(net::outbound::OutgoingMessage{
+            .target = net::outbound::Target::one(event->conn_id),
+            .action = net::outbound::DropConnection{
+                .code = static_cast<int>(sercom::protocol::event::CommandErrorCode_UNAUTHORIZED),
+                .reason = "Authentication failed",
+            }});
+        return result;
     }
 
     const auto& claims = auth_result.value();
-    if (claims.id.empty()) {
-        return std::unexpected(CommandError{9, "Auth claims missing user id"});
+
+    // 6. Check session consistency
+    auto existing = ctx.session_manager.sessionOfConnection(event->conn_id);
+    if (existing && existing->value != claims.id) {
+        result.emplace_back(net::outbound::OutgoingMessage{
+            .target = net::outbound::Target::one(event->conn_id),
+            .action = net::outbound::DropConnection{
+                .code = static_cast<int>(sercom::protocol::event::CommandErrorCode_FORBIDDEN),
+                .reason = "Auth user mismatch",
+            }});
+        return result;
     }
 
-    auto session_user = ctx.session_manager.sessionOfConnection(input->conn);
-    if (session_user.has_value() && session_user.value().value != claims.id) {
-        return std::unexpected(CommandError{10, "Auth user mismatch"});
-    }
+    result.emplace_back(net::outbound::OutgoingMessage{
+        .target = net::outbound::Target::one(event->conn_id),
+        .action = net::outbound::UpdateAuthState{
+            .is_authenticated = true,
+            .expires_at =
+                std::chrono::system_clock::time_point{std::chrono::seconds{claims.exp}}}});
 
-    const auto expires_at =
-        std::chrono::system_clock::time_point{std::chrono::seconds{claims.exp}};
-
-    CommandSuccess res;
-    res.intents.push_back(AuthStateIntent{
-        .conn = input->conn,
-        .expires_at = expires_at,
-        .authenticated = true,
-    });
-    return res;
+    return result;
 }
 }  // namespace app

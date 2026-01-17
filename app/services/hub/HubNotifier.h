@@ -21,8 +21,8 @@ class HubNotifier {
     // membership events
     nlohmann::json memberJoined(const HubId& hubId, const UserId& userId);
     nlohmann::json memberLeft(const HubId& hubId, const UserId& userId);
-    nlohmann::json memberOnline(const HubId& hubId, const UserId& userId);
-    nlohmann::json memberOffline(const HubId& hubId, const UserId& userId);
+    std::string memberOnline(const HubId& hubId, const UserId& userId);
+    std::string memberOffline(const HubId& hubId, const UserId& userId);
 
     // channel events
     nlohmann::json channelCreated(const HubId& hubId, const ChannelId& channelId);

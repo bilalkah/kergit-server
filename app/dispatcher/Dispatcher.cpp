@@ -1,41 +1,44 @@
 #include "app/dispatcher/Dispatcher.h"
 
-#include "app/commands/channel/CreateChannelCommand.h"
-#include "app/commands/channel/DeleteChannelCommand.h"
-#include "app/commands/channel/JoinChannelCommand.h"
-#include "app/commands/channel/RenameChannelCommand.h"
-#include "app/commands/hub/CreateHubCommand.h"
-#include "app/commands/hub/DeleteHubCommand.h"
-#include "app/commands/hub/GetHubInviteCommand.h"
-#include "app/commands/hub/JoinHubByInviteCommand.h"
-#include "app/commands/hub/LeaveHubCommand.h"
-#include "app/commands/hub/RenameHubCommand.h"
-#include "app/commands/member/UpdateMemberRoleCommand.h"
-#include "app/commands/message/SendMessageCommand.h"
-#include "app/commands/profile/UpdateProfileCommand.h"
+// #include "app/commands/channel/CreateChannelCommand.h"
+// #include "app/commands/channel/DeleteChannelCommand.h"
+// #include "app/commands/channel/JoinChannelCommand.h"
+// #include "app/commands/channel/RenameChannelCommand.h"
+// #include "app/commands/hub/CreateHubCommand.h"
+// #include "app/commands/hub/DeleteHubCommand.h"
+// #include "app/commands/hub/GetHubInviteCommand.h"
+// #include "app/commands/hub/JoinHubByInviteCommand.h"
+// #include "app/commands/hub/LeaveHubCommand.h"
+// #include "app/commands/hub/RenameHubCommand.h"
+// #include "app/commands/member/UpdateMemberRoleCommand.h"
+// #include "app/commands/message/SendMessageCommand.h"
+// #include "app/commands/profile/UpdateProfileCommand.h"
 #include "app/commands/session/AuthenticateCommand.h"
 #include "app/commands/session/BootstrapCommand.h"
 #include "app/commands/system/DisconnectionCommand.h"
 
 namespace app {
 
-CommandResult Dispatcher::dispatch(const std::string& type, CommandContext& ctx,
-                                   const CommandInput cmd) {
+std::vector<net::outbound::OutgoingMessage> Dispatcher::dispatch(const std::string& type,
+                                                                 CommandContext& ctx,
+                                                                 const queue::Event& evt) {
     auto it = map_str_.find(type);
     if (it == map_str_.end()) {
-        return std::unexpected(CommandError{3000, "Unknown command type: " + std::string(type)});
+        log(utils::LogLevel::WARN, "No command registered for type '", type, "'");
+        return {};
     }
-    return it->second->execute(ctx, cmd);
+    return it->second->execute(ctx, evt);
 }
 
-CommandResult Dispatcher::dispatch(const sercom::protocol::Envelope_Type type, CommandContext& ctx,
-                                   const CommandInput cmd) {
+std::vector<net::outbound::OutgoingMessage> Dispatcher::dispatch(
+    const sercom::protocol::Envelope_Type type, CommandContext& ctx, const queue::Event& evt) {
     auto it = map_proto_.find(type);
     if (it == map_proto_.end()) {
-        return std::unexpected(
-            CommandError{3000, "Unknown command type: " + std::to_string(type)});
+        log(utils::LogLevel::WARN, "No command registered for proto type '", static_cast<int>(type),
+            "'");
+        return {};
     }
-    return it->second->execute(ctx, cmd);
+    return it->second->execute(ctx, evt);
 }
 
 std::unordered_set<std::string> Dispatcher::registered_commands() const {
@@ -50,8 +53,7 @@ void Dispatcher::register_all() {
     map_str_["connection"] = std::make_unique<BootstrapCommand>();
     map_str_["disconnection"] = std::make_unique<DisconnectionCommand>();
 
-    map_proto_[sercom::protocol::Envelope_Type_AUTH] =
-        std::make_unique<AuthenticateCommand>();
+    map_proto_[sercom::protocol::Envelope_Type_AUTH] = std::make_unique<AuthenticateCommand>();
     // register_cmd("join_channel", std::make_unique<JoinChannelCommand>());
     // register_cmd("send_message", std::make_unique<SendMessageCommand>());
     // register_cmd("create_channel", std::make_unique<CreateChannelCommand>());

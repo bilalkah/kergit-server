@@ -4,7 +4,10 @@ cc_library(
     name = "outbound_msg",
     hdrs = ["Msg.h"],
     copts = ["-std=gnu++23"],
-    visibility = ["//net:__subpackages__"],
+    visibility = [
+        "//app/commands:__subpackages__",
+        "//net:__subpackages__",
+    ],
     deps = [
         "//domains/ids:domain_ids",
     ],

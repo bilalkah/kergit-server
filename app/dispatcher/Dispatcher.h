@@ -5,6 +5,7 @@
 #include "app/dispatcher/CommandContext.h"
 #include "domains/ids/Ids.h"
 #include "proto/envelope.pb.h"
+#include "utils/Loggable.h"
 
 #include <functional>
 #include <nlohmann/json.hpp>
@@ -15,11 +16,14 @@
 
 namespace app {
 
-class Dispatcher {
+class Dispatcher : public utils::Loggable {
    public:
-    CommandResult dispatch(const std::string& type, CommandContext& ctx, const CommandInput cmd);
-    CommandResult dispatch(const sercom::protocol::Envelope_Type type, CommandContext& ctx,
-                           const CommandInput cmd);
+    std::vector<net::outbound::OutgoingMessage> dispatch(const std::string& type,
+                                                         CommandContext& ctx,
+                                                         const queue::Event& evt);
+    std::vector<net::outbound::OutgoingMessage> dispatch(const sercom::protocol::Envelope_Type type,
+                                                         CommandContext& ctx,
+                                                         const queue::Event& evt);
 
     std::unordered_set<std::string> registered_commands() const;
     void register_all();

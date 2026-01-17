@@ -1,5 +1,7 @@
 #include "app/commands/system/DisconnectionCommand.h"
 
+#include "app/managers/subscription/Topic.h"
+
 #include <nlohmann/json.hpp>
 #include <variant>
 #include <vector>
@@ -8,32 +10,39 @@ using nlohmann::json;
 
 namespace app {
 
-CommandResult DisconnectionCommand::execute(CommandContext& ctx, const CommandInput cmd) {
-    const auto* input = std::get_if<DisconnectEvent>(&cmd);
-    if (!input) {
-        return std::unexpected(
-            CommandError{1, "Disconnection command expects a disconnect event"});
+std::vector<net::outbound::OutgoingMessage> DisconnectionCommand::execute(CommandContext& ctx,
+                                                                          const queue::Event& evt) {
+    std::vector<net::outbound::OutgoingMessage> out;
+    const auto* event = std::get_if<queue::DisconnectionEvent>(&evt);
+    if (!event) {
+        std::cout << "DisconnectionCommand: invalid event type" << std::endl;
+        return out;
     }
 
-    auto session_exp = ctx.session_manager.sessionOfConnection(input->conn);
+    auto session_exp = ctx.session_manager.sessionOfConnection(event->conn_id);
     if (!session_exp.has_value()) {
-        return CommandSuccess{};
+        return out;  // unknown connection, ignore
     }
 
     const UserId user_id = session_exp.value();
-    const bool session_removed = ctx.session_manager.removeConnection(input->conn);
+    const auto hubid_list = [&]() {
+        std::vector<HubId> hubid_list;
+        const auto user_subs = ctx.subscription_manager.getSubscriptions(user_id);
+        if (!user_subs.has_value()) {
+            return hubid_list;
+        }
+        for (const auto& topic : user_subs.value()) {
+            if (topic.kind != TopicKind::Hub) continue;
+            hubid_list.emplace_back(topic_utils::extractHubId(topic));
+        }
+        return hubid_list;
+    }();
 
-    CommandSuccess res;
-
-    if (!session_removed) {
-        return res;  // voice-only disconnect or still active elsewhere
-    }
-
+    ctx.session_manager.removeConnection(event->conn_id);
     ctx.subscription_manager.removeAllForUser(user_id);
 
-    const auto hubs = ctx.hub_service.getUserHubs(user_id);
-    for (const auto& hub : hubs) {
-        const auto online_members = ctx.presence_manager.onlineUsersInHub(hub.id);
+    for (const auto& hub_id : hubid_list) {
+        const auto online_members = ctx.presence_manager.onlineUsersInHub(hub_id);
         std::vector<GlobalConnId> recipients;
         recipients.reserve(online_members.size());
 
@@ -45,16 +54,14 @@ CommandResult DisconnectionCommand::execute(CommandContext& ctx, const CommandIn
         }
 
         if (!recipients.empty()) {
-            auto payload = ctx.hub_notifier.memberOffline(hub.id, user_id);
-            if (auto user = ctx.user_service.getUser(user_id)) {
-                if (!user->username.empty()) payload["display_name"] = user->username;
-            }
-            res.intents.push_back(Fanout{.conns = std::move(recipients),
-                                         .payload = std::move(payload)});
+            auto payload = ctx.hub_notifier.memberOffline(hub_id, user_id);
+            out.push_back(net::outbound::OutgoingMessage{
+                .target = net::outbound::Target::many(std::move(recipients)),
+                .action = net::outbound::SendPayload{.payload = std::move(payload)}});
         }
     }
 
-    return res;
+    return out;
 }
 
 }  // namespace app
