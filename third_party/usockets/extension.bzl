@@ -44,9 +44,7 @@ cc_library(
     hdrs = glob(["src/**/*.h"]),
     includes = ["src"],
 
-    copts = [
-        "-std=c11",
-    ]
+    copts = []
     + select({":with_boringssl": ["-DLIBUS_USE_OPENSSL", "-pthread"],
               ":with_openssl":  ["-DLIBUS_USE_OPENSSL"],
               ":with_wolfssl":  ["-DLIBUS_USE_WOLFSSL"],

@@ -7,13 +7,21 @@ message Envelope {
 
     enum Type {
         UNKNOWN = 0;
-        PING = 1;
-        PONG = 2;
-        SESSION_BOOTSTRAP = 3;
-        FETCH_MESSAGES = 4;
-        AUTH = 5;
+        CommandError = 1;
+
+        PING = 10;
+        PONG = 11;
+
+        SESSION_BOOTSTRAP = 20;
+        AUTH = 21;
+
+        PRESENCE = 30;
+        TYPING = 31;
+        ACTIVE_CHANNEL = 32;
     }
 
     Type type = 3;
-    bytes payload = 4;
+
+
+    bytes payload = 100;
 }

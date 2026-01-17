@@ -6,7 +6,9 @@ import "proto/domain/channel.proto";
 import "proto/domain/user.proto";
 import "proto/domain/hub.proto";
 
-
+// Represents the state of a Hub including its channels and members.
+// Send as part of the Connection Bootstrap.
+// -----------------------------------
 message HubState {
     sercom.protocol.domain.Hub hub = 1;
     repeated sercom.protocol.domain.Channel channels = 2;
@@ -15,7 +17,6 @@ message HubState {
 
 message SessionBootstrap {
     sercom.protocol.domain.User self = 1;
-    uint64 num_hub = 2;
-    repeated HubState hubs = 3;
-    repeated sercom.protocol.domain.User users = 4;
+    repeated HubState hubs = 2;
 }
+// -----------------------------------

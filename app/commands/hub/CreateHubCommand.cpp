@@ -5,9 +5,9 @@
 #include "domains/Channel.h"
 #include "domains/Hub.h"
 
-#include <nlohmann/json.hpp>
 #include <algorithm>
 #include <cctype>
+#include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
 
@@ -38,18 +38,23 @@ std::string CreateHubCommand::sanitize_name(std::string name) {
 CommandResult CreateHubCommand::execute(CommandContext& ctx, const CommandInput cmd) {
     const auto* input = std::get_if<JsonInput>(&cmd);
     if (!input) {
-        return std::unexpected(CommandError{"invalid_input", "create_hub expects JSON input"});
+        return std::unexpected(CommandError{1, "create_hub expects JSON input"});
     }
 
     auto user_exp = ctx.session_manager.sessionOfConnection(input->conn);
     if (!user_exp.has_value()) {
-        return std::unexpected(CommandError{"not_authenticated", "Authenticate first"});
+        return std::unexpected(CommandError{2, "Authenticate first"});
     }
     const UserId user_id = user_exp.value();
 
-    std::string name = sanitize_name(input->body.value("name", std::string{}));
+    const auto j = json::parse(input->body, nullptr, false);
+    if (j.is_discarded()) {
+        return std::unexpected(CommandError{3, "Invalid JSON"});
+    }
+
+    std::string name = sanitize_name(j.value("name", std::string{}));
     if (name.empty()) {
-        return std::unexpected(CommandError{"invalid_name", "Hub name is required"});
+        return std::unexpected(CommandError{3, "Hub name is required"});
     }
 
     try {
@@ -75,16 +80,17 @@ CommandResult CreateHubCommand::execute(CommandContext& ctx, const CommandInput 
 
         std::string owner_display = "Member";
         if (auto u = ctx.user_service.getUser(user_id)) {
-            if (!u->username.empty()) owner_display = u->username;
-            else if (!u->full_name.empty()) owner_display = u->full_name;
+            if (!u->username.empty())
+                owner_display = u->username;
+            else if (!u->full_name.empty())
+                owner_display = u->full_name;
         }
 
         json hub_json = {{"id", public_hub_id.value}, {"name", name}, {"role", "owner"}};
-        json members = json::array(
-            {{ {"handle", owner_display},
-               {"display_name", owner_display},
-               {"online", true},
-               {"user_id", ctx.ids.to_public(user_id).value} }});
+        json members = json::array({{{"handle", owner_display},
+                                     {"display_name", owner_display},
+                                     {"online", true},
+                                     {"user_id", ctx.ids.to_public(user_id).value}}});
         json payload = {{"type", "hub_created"},
                         {"hub", hub_json},
                         {"channels", channels},
@@ -95,7 +101,6 @@ CommandResult CreateHubCommand::execute(CommandContext& ctx, const CommandInput 
 
         // Subscribe creator to hub topic
         ctx.subscription_manager.subscribe(user_id, Topic::HubTopic(hub_id));
-
         return res;
     } catch (const std::exception& ex) {
         // Surface DB/business errors to client instead of terminating the worker
@@ -103,14 +108,12 @@ CommandResult CreateHubCommand::execute(CommandContext& ctx, const CommandInput 
         // Strip noisy Postgres CONTEXT
         auto ctx_pos = raw.find("CONTEXT:");
         if (ctx_pos != std::string::npos) raw = raw.substr(0, ctx_pos);
-        std::string msg = raw;
-        std::string code = "create_hub_failed";
         if (raw.find("ownership limit") != std::string::npos) {
-            code = "hub_limit_reached";
-            msg = "Hub ownership limit reached (max 2 hubs per user). Delete a hub to create another.";
+            return std::unexpected(CommandError{4, "Hub ownership limit reached"});
         }
-        return std::unexpected(CommandError{code, msg});
     }
+
+    return CommandSuccess{};
 }
 
 }  // namespace app

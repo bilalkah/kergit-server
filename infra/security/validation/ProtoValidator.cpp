@@ -1,12 +1,6 @@
-#include "infra/security/validation/ProtoMessageValidator.h"
-
-#include <algorithm>
+#include "infra/security/validation/ProtoValidator.h"
 
 namespace infra::security::validation {
-
-// ---------- ctor ----------
-
-ProtoMessageValidator::ProtoMessageValidator() { load_profanity_filter(); }
 
 // ---------- entry point ----------
 
@@ -17,60 +11,113 @@ std::expected<void, ValidationError> ProtoMessageValidator::validate_envelope(
     }
 
     switch (env.type()) {
-        case sercom::protocol::Envelope::CHAT: {
-            sercom::protocol::chat::ChatMessage msg;
-            if (!msg.ParseFromArray(env.payload().data(), env.payload().size())) {
-                return std::unexpected("Invalid CHAT payload");
+        case sercom::protocol::Envelope::PING: {
+            sercom::protocol::system::Ping ping;
+            if (!ping.ParseFromArray(env.payload().data(), env.payload().size())) {
+                return std::unexpected("Invalid PING payload");
             }
-            return validate_chat(msg);
+            return validate_ping(ping);
         }
+
+        case sercom::protocol::Envelope::AUTH: {
+            sercom::protocol::command::Authenticate auth;
+            if (!auth.ParseFromArray(env.payload().data(), env.payload().size())) {
+                return std::unexpected("Invalid AUTH payload");
+            }
+            return validate_authenticate(auth);
+        }
+
+        case sercom::protocol::Envelope::TYPING: {
+            sercom::protocol::command::Typing typing;
+            if (!typing.ParseFromArray(env.payload().data(), env.payload().size())) {
+                return std::unexpected("Invalid TYPING payload");
+            }
+            return validate_typing(typing);
+        }
+
+        case sercom::protocol::Envelope::ACTIVE_CHANNEL: {
+            sercom::protocol::command::SelectActiveChannel active_channel;
+            if (!active_channel.ParseFromArray(env.payload().data(), env.payload().size())) {
+                return std::unexpected("Invalid ACTIVE_CHANNEL payload");
+            }
+            return validate_active_channel(active_channel);
+        }
+
+        case sercom::protocol::Envelope::UNKNOWN:
+            return std::unexpected("Unknown message type");
+
+        case sercom::protocol::Envelope::CommandError:
+        case sercom::protocol::Envelope::PONG:
+        case sercom::protocol::Envelope::SESSION_BOOTSTRAP:
+        case sercom::protocol::Envelope::PRESENCE:
+            return std::unexpected("Server-only message type");
 
         default:
             return std::unexpected("Unsupported message type");
     }
 }
 
-// ---------- CHAT validation ----------
+// ---------- PING validation ----------
 
-std::expected<void, ValidationError> ProtoMessageValidator::validate_chat(
-    const sercom::protocol::chat::ChatMessage& msg) {
-    if (msg.channel_id().empty()) {
-        return std::unexpected("channel_id is empty");
+std::expected<void, ValidationError> ProtoMessageValidator::validate_ping(
+    const sercom::protocol::system::Ping& msg) {
+    if (msg.client_ts_ms() == 0) {
+        return std::unexpected("client_ts_ms is empty");
+    }
+    return {};
+}
+
+// ---------- AUTH validation ----------
+
+std::expected<void, ValidationError> ProtoMessageValidator::validate_authenticate(
+    const sercom::protocol::command::Authenticate& msg) {
+    if (msg.type() == sercom::protocol::command::AuthType_UNSPECIFIED) {
+        return std::unexpected("auth type is unspecified");
     }
 
-    if (msg.content().empty()) {
-        return std::unexpected("content is empty");
+    if (msg.provider() == sercom::protocol::command::AuthProvider_UNSPECIFIED) {
+        return std::unexpected("auth provider is unspecified");
     }
 
-    if (msg.content().size() > MAX_CHAT_LENGTH) {
-        return std::unexpected("message too long");
-    }
-
-    if (contains_profanity(msg.content())) {
-        return std::unexpected("profanity detected");
+    if (msg.token().empty()) {
+        return std::unexpected("token is empty");
     }
 
     return {};
 }
 
-// ---------- helpers ----------
+// ---------- TYPING validation ----------
 
-bool ProtoMessageValidator::contains_pattern(
-    std::string_view text, const std::unordered_set<std::string>& patterns) const {
-    for (const auto& p : patterns) {
-        if (text.find(p) != std::string_view::npos) return true;
+std::expected<void, ValidationError> ProtoMessageValidator::validate_typing(
+    const sercom::protocol::command::Typing& msg) {
+    if (msg.hub_id() == 0) {
+        return std::unexpected("hub_id is empty");
     }
-    return false;
+
+    if (msg.channel_id() == 0) {
+        return std::unexpected("channel_id is empty");
+    }
+
+    if (msg.state() == sercom::protocol::command::Typing::STATE_UNSPECIFIED) {
+        return std::unexpected("typing state is unspecified");
+    }
+
+    return {};
 }
 
-bool ProtoMessageValidator::contains_profanity(std::string_view text) const {
-    std::string lowered(text);
-    std::transform(lowered.begin(), lowered.end(), lowered.begin(), ::tolower);
-    return contains_pattern(lowered, profanity_words_);
-}
+// ---------- ACTIVE_CHANNEL validation ----------
 
-void ProtoMessageValidator::load_profanity_filter() {
-    profanity_words_ = {"spam", "scam", "fraud", "phishing"};
+std::expected<void, ValidationError> ProtoMessageValidator::validate_active_channel(
+    const sercom::protocol::command::SelectActiveChannel& msg) {
+    if (msg.hub_id() == 0) {
+        return std::unexpected("hub_id is empty");
+    }
+
+    if (msg.channel_id() == 0) {
+        return std::unexpected("channel_id is empty");
+    }
+
+    return {};
 }
 
 }  // namespace infra::security::validation

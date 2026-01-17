@@ -12,7 +12,7 @@ CommandResult DisconnectionCommand::execute(CommandContext& ctx, const CommandIn
     const auto* input = std::get_if<DisconnectEvent>(&cmd);
     if (!input) {
         return std::unexpected(
-            CommandError{"invalid_input", "Disconnection command expects a disconnect event"});
+            CommandError{1, "Disconnection command expects a disconnect event"});
     }
 
     auto session_exp = ctx.session_manager.sessionOfConnection(input->conn);

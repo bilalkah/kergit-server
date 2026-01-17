@@ -15,7 +15,22 @@ cc_library(
         "//domains:channel_domain",
         "//domains:hub_domain",
         "//proto:envelope_cc_proto",
-        "//proto/event:bootstrap_cc_proto",
+        "//proto/event:presence_cc_proto",
+        "//proto/event:session_cc_proto",
         "@nlohmann_json",
+    ],
+)
+
+cc_library(
+    name = "authenticate_command",
+    srcs = ["AuthenticateCommand.cpp"],
+    hdrs = [
+        "AuthenticateCommand.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//app/commands:i_command",
+        "//app/dispatcher:command_context",
+        "//proto/command:session_cc_proto",
     ],
 )

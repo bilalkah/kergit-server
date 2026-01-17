@@ -11,6 +11,8 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <deque>
+
 namespace net::connection {
 
 /**
@@ -55,6 +57,9 @@ struct ConnectionContext {
 
     // Authentication state
     AuthState auth{};
+
+    // deque for backpressured outgoing messages
+    std::deque<std::pair<std::string, uWS::OpCode>> pending;
 };
 
 /**

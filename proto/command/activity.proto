@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package sercom.protocol.command;
+
+/*
+ * Client intent: select the active channel inside a hub.
+ * This affects routing and visibility only.
+ * It does NOT imply membership or presence by itself.
+ */
+message SelectActiveChannel {
+  uint64 hub_id = 1;
+  uint64 channel_id = 2;
+}
+
+/*
+ * Client typing hint.
+ * Best-effort signal.
+ *
+ * Server validates:
+ * - hub membership
+ * - HubMember.is_online == true
+ * - active_channel == channel_id
+ */
+message Typing {
+  enum State {
+    STATE_UNSPECIFIED = 0;
+    STATE_STARTED = 1;
+    STATE_STOPPED = 2;
+  }
+
+  uint64 hub_id = 1;
+  uint64 channel_id = 2;
+  State state = 3;
+}

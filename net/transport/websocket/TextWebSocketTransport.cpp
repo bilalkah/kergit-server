@@ -2,92 +2,12 @@
 
 #include "net/transport/websocket/WsAppFactory.h"
 #include "net/transport/websocket/utils.h"
-#include "proto/auth/auth.pb.h"
 
 #include <cctype>
 #include <chrono>
 #include <string_view>
 
 namespace net::transport::websocket {
-namespace {
-
-std::string_view jwt_error_code(infra::security::token::JwtVerifyError err) {
-    using infra::security::token::JwtVerifyError;
-    switch (err) {
-        case JwtVerifyError::EmptyToken:
-            return "EMPTY_TOKEN";
-        case JwtVerifyError::InvalidFormat:
-            return "INVALID_FORMAT";
-        case JwtVerifyError::UnsupportedAlgorithm:
-            return "UNSUPPORTED_ALG";
-        case JwtVerifyError::InvalidSignature:
-            return "INVALID_SIGNATURE";
-        case JwtVerifyError::TokenExpired:
-            return "TOKEN_EXPIRED";
-        case JwtVerifyError::MissingClaims:
-            return "MISSING_CLAIMS";
-        case JwtVerifyError::KeyNotFound:
-            return "KEY_NOT_FOUND";
-        case JwtVerifyError::JwkParseError:
-            return "JWK_PARSE_ERROR";
-    }
-    return "UNKNOWN_ERROR";
-}
-
-std::string_view jwt_error_message(infra::security::token::JwtVerifyError err) {
-    using infra::security::token::JwtVerifyError;
-    switch (err) {
-        case JwtVerifyError::EmptyToken:
-            return "Token is empty";
-        case JwtVerifyError::InvalidFormat:
-            return "Token format is invalid";
-        case JwtVerifyError::UnsupportedAlgorithm:
-            return "Token algorithm is unsupported";
-        case JwtVerifyError::InvalidSignature:
-            return "Token signature is invalid";
-        case JwtVerifyError::TokenExpired:
-            return "Token has expired";
-        case JwtVerifyError::MissingClaims:
-            return "Token claims are missing";
-        case JwtVerifyError::KeyNotFound:
-            return "Signing key not found";
-        case JwtVerifyError::JwkParseError:
-            return "Failed to parse JWK";
-    }
-    return "Unknown token error";
-}
-
-std::string build_auth_envelope(sercom::protocol::auth::AuthStatus status,
-                                std::string_view code, std::string_view message) {
-    sercom::protocol::auth::AuthResponse resp;
-    resp.set_status(status);
-    if (status == sercom::protocol::auth::AUTH_STATUS_SUCCESS) {
-        resp.mutable_success();
-    } else {
-        auto* failure = resp.mutable_failure();
-        failure->set_code(std::string(code));
-        failure->set_message(std::string(message));
-    }
-
-    std::string payload;
-    if (!resp.SerializeToString(&payload)) {
-        return {};
-    }
-
-    sercom::protocol::Envelope env;
-    env.set_version(1);
-    env.set_type(sercom::protocol::Envelope::AUTH);
-    env.set_payload(std::move(payload));
-
-    std::string out_bytes;
-    if (!env.SerializeToString(&out_bytes)) {
-        return {};
-    }
-    return out_bytes;
-}
-
-
-}  // namespace
 
 TextWSServer::TextWSServer(core::NetworkStackConfig cfg, connection::ConnectionRegistery& conns,
                            outbound::OutgoingQueue& outgoing_queue, OriginAllowlist origins,
@@ -165,29 +85,33 @@ void TextWSServer::wire() {
                         res->writeStatus("403 Forbidden")->end("Origin not allowed");
                         return;
                     }
+
                     if (!auth_.has_value()) {
-                        res->writeStatus("500")->end();
+                        res->writeStatus("500")->end("Server misconfiguration");
                         return;
                     }
+
                     if (active_connections_.load(std::memory_order_relaxed) >=
                         limits_.max_connections) {
                         res->writeStatus("503")->end("Max connections reached");
                         return;
                     }
-                    auto protocols = req->getHeader("sec-websocket-protocol");
-                    auto ws_key = req->getHeader("sec-websocket-key");
-                    auto token = extract_token(protocols);
+
+                    const auto protocols = req->getHeader("sec-websocket-protocol");
+                    const auto ws_key = req->getHeader("sec-websocket-key");
+                    const auto token = extract_token(protocols);
+
                     if (token.empty()) {
-                        res->writeStatus("401")->end();
+                        res->writeStatus("401")->end("Unauthorized");
                         return;
                     }
                     auto auth_result = auth_->verify_token(std::string(token));
                     if (!auth_result.has_value()) {
-                        res->writeStatus("401")->end();
+                        res->writeStatus("401")->end("Unauthorized");
                         return;
                     }
-                    const auto& claims = auth_result.value();
 
+                    const auto& claims = auth_result.value();
                     TextPerSocketData psd{};
                     psd.conn_id = conn_id_gen_.allocate();
                     psd.user_id = UserId{claims.id};
@@ -202,18 +126,19 @@ void TextWSServer::wire() {
 
             .open =
                 [this](UwsSocket* ws) {
-                    auto* psd = ws->getUserData();
-                    connection::ConnectionContext ctx(psd->conn_id,
-                                                      transport::WsHandle{ws},
-                                                      TransportKind::TextWebSocket);
-                    ctx.auth.is_authenticated = true;
-                    if (psd->exp > 0) {
-                        ctx.auth.expires_at =
-                            std::chrono::system_clock::time_point{std::chrono::seconds{psd->exp}};
-                    } else {
+                    const auto* psd = ws->getUserData();
+                    if (!psd) return;
+
+                    if (psd->exp < 0) {
                         ws->end(4403, "Invalid token expiration");
                         return;
                     }
+
+                    connection::ConnectionContext ctx(psd->conn_id, transport::WsHandle{ws},
+                                                      TransportKind::TextWebSocket);
+                    ctx.auth.is_authenticated = true;
+                    ctx.auth.expires_at =
+                        std::chrono::system_clock::time_point{std::chrono::seconds{psd->exp}};
 
                     conns_.attach(psd->conn_id, std::move(ctx));
                     heartbeat_service_.on_open(psd->conn_id);
@@ -247,101 +172,31 @@ void TextWSServer::wire() {
                         return;
                     }
 
-                    if (env.type() == sercom::protocol::Envelope::AUTH) {
-                        auto send_auth_response =
-                            [&](sercom::protocol::auth::AuthStatus status,
-                                std::string_view code, std::string_view message) {
-                                auto out = build_auth_envelope(status, code, message);
-                                if (!out.empty()) {
-                                    ws->send(out, uWS::OpCode::BINARY);
-                                }
-                            };
-
-                        sercom::protocol::auth::AuthRequest req;
-                        if (!req.ParseFromArray(env.payload().data(), env.payload().size())) {
-                            send_auth_response(sercom::protocol::auth::AUTH_STATUS_FAILED,
-                                               "INVALID_REQUEST", "Invalid auth payload");
-                            return;
-                        }
-
-                        if (req.type() != sercom::protocol::auth::AUTH_TYPE_REAUTH) {
-                            send_auth_response(sercom::protocol::auth::AUTH_STATUS_FAILED,
-                                               "UNSUPPORTED_AUTH_TYPE", "Only REAUTH is supported");
-                            return;
-                        }
-
-                        if (req.provider() != sercom::protocol::auth::AUTH_PROVIDER_SUPABASE) {
-                            send_auth_response(sercom::protocol::auth::AUTH_STATUS_FAILED,
-                                               "UNSUPPORTED_PROVIDER",
-                                               "Unsupported auth provider");
-                            return;
-                        }
-
-                        if (req.token().empty()) {
-                            send_auth_response(sercom::protocol::auth::AUTH_STATUS_FAILED,
-                                               "EMPTY_TOKEN", "Token is required");
-                            return;
-                        }
-
-                        if (!auth_.has_value()) {
-                            send_auth_response(sercom::protocol::auth::AUTH_STATUS_FAILED,
-                                               "AUTH_UNAVAILABLE",
-                                               "Auth verifier is not initialized");
-                            return;
-                        }
-
-                        auto auth_result = auth_->verify_token(req.token());
-                        if (!auth_result.has_value()) {
-                            send_auth_response(sercom::protocol::auth::AUTH_STATUS_FAILED,
-                                               jwt_error_code(auth_result.error()),
-                                               jwt_error_message(auth_result.error()));
-                            return;
-                        }
-
-                        const auto& claims = auth_result.value();
-                        if (claims.id != psd->user_id.value) {
-                            send_auth_response(sercom::protocol::auth::AUTH_STATUS_FAILED,
-                                               "USER_MISMATCH",
-                                               "Token user does not match connection");
-                            ws->end(4401, "reauth_user_mismatch");
-                            return;
-                        }
-
-                        if (claims.exp <= 0) {
-                            send_auth_response(sercom::protocol::auth::AUTH_STATUS_FAILED,
-                                               "MISSING_EXP", "Token expiration missing");
-                            return;
-                        }
-
-                        auto update_result = conns_.mutate(
-                            psd->conn_id, [&](connection::ConnectionContext& ctx) {
-                                ctx.auth.is_authenticated = true;
-                                ctx.auth.expires_at =
-                                    std::chrono::system_clock::time_point{
-                                        std::chrono::seconds{claims.exp}};
-                            });
-                        if (!update_result.has_value()) {
-                            send_auth_response(sercom::protocol::auth::AUTH_STATUS_FAILED,
-                                               "CONNECTION_NOT_FOUND",
-                                               update_result.error().message);
-                            return;
-                        }
-
-                        psd->exp = claims.exp;
-                        send_auth_response(sercom::protocol::auth::AUTH_STATUS_SUCCESS, "", "");
-                        return;
-                    }
-
                     hooks_.on_message(psd->conn_id, data);
                 },
             .drain =
-                [](UwsSocket* /*ws*/) {
-                    // No-op for now
+                [this](UwsSocket* ws) {
+                    auto* psd = ws->getUserData();
+                    if (!psd) return;
+                    auto conn = conns_.get(psd->conn_id);
+                    if (!conn.has_value()) return;
+                    auto& conn_ctx = conn.value();
+
+                    while (!conn_ctx.pending.empty()) {
+                        const auto& msg = conn_ctx.pending.front();
+                        const auto status = ws->send(msg.first, msg.second);
+                        if (status != transport::websocket::UwsSocket::SendStatus::SUCCESS) {
+                            break;
+                        }
+                        conn_ctx.pending.pop_front();
+                    }
                 },
 
             .pong =
                 [this](UwsSocket* ws, std::string_view data) {
                     auto* psd = ws->getUserData();
+                    if (!psd) return;
+
                     const auto& status = heartbeat_service_.on_pong(psd->conn_id);
 
                     if (!status.has_value()) return;
@@ -350,9 +205,6 @@ void TextWSServer::wire() {
                 [this](UwsSocket* ws, int code, std::string_view reason) {
                     auto* psd = ws->getUserData();
                     if (!psd) return;
-
-                    log(utils::LogLevel::INFO, "Connection closed: ", psd->conn_id.value,
-                        " Code: ", code, " Reason: ", reason);
 
                     auto conn_id = psd->conn_id;
                     conns_.detach(conn_id);

@@ -30,20 +30,23 @@ std::string UpdateProfileCommand::trim(std::string value) {
 CommandResult UpdateProfileCommand::execute(CommandContext& ctx, const CommandInput cmd) {
     const auto* input = std::get_if<JsonInput>(&cmd);
     if (!input) {
-        return std::unexpected(CommandError{"invalid_input", "update_profile expects JSON input"});
+        return std::unexpected(CommandError{1, "update_profile expects JSON input"});
     }
 
     auto user_exp = ctx.session_manager.sessionOfConnection(input->conn);
     if (!user_exp.has_value()) {
-        return std::unexpected(CommandError{"not_authenticated", "Authenticate first"});
+        return std::unexpected(CommandError{2, "Authenticate first"});
     }
     const UserId user_id = user_exp.value();
 
     std::optional<std::string> username_opt;
     std::optional<std::string> full_name_opt;
-
-    if (input->body.contains("username") && input->body["username"].is_string()) {
-        auto value = trim(input->body["username"].get<std::string>());
+    const auto j = json::parse(input->body, nullptr, false);
+    if (j.is_discarded()) {
+        return std::unexpected(CommandError{3, "Invalid JSON"});
+    }
+    if (j.contains("username") && j["username"].is_string()) {
+        auto value = trim(j["username"].get<std::string>());
         if (!value.empty()) {
             if (value.size() > kMaxNameLength) value.resize(kMaxNameLength);
             username_opt = value;
@@ -51,8 +54,8 @@ CommandResult UpdateProfileCommand::execute(CommandContext& ctx, const CommandIn
             username_opt = std::string{};
         }
     }
-    if (input->body.contains("full_name") && input->body["full_name"].is_string()) {
-        auto value = trim(input->body["full_name"].get<std::string>());
+    if (j.contains("full_name") && j["full_name"].is_string()) {
+        auto value = trim(j["full_name"].get<std::string>());
         if (!value.empty()) {
             if (value.size() > kMaxNameLength) value.resize(kMaxNameLength);
             full_name_opt = value;
@@ -63,7 +66,7 @@ CommandResult UpdateProfileCommand::execute(CommandContext& ctx, const CommandIn
 
     if (!username_opt.has_value() && !full_name_opt.has_value()) {
         return std::unexpected(
-            CommandError{"invalid_profile", "Provide a username or full name to update"});
+            CommandError{3, "Provide a username or full name to update"});
     }
 
     try {
@@ -121,7 +124,7 @@ CommandResult UpdateProfileCommand::execute(CommandContext& ctx, const CommandIn
 
         return res;
     } catch (const std::exception& ex) {
-        return std::unexpected(CommandError{"update_failed", ex.what()});
+        return std::unexpected(CommandError{4, ex.what()});
     }
 }
 

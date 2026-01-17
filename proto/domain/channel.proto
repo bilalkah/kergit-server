@@ -3,9 +3,9 @@ syntax = "proto3";
 package sercom.protocol.domain;
 
 enum ChannelType {
-    CHANNEL_TYPE_UNSPECIFIED = 0;
-    CHANNEL_TYPE_TEXT = 1;
-    CHANNEL_TYPE_VOICE = 2;
+    ChannelType_UNSPECIFIED = 0;
+    ChannelType_TEXT = 1;
+    ChannelType_VOICE = 2;
 }
 
 message Channel {

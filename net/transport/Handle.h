@@ -27,10 +27,12 @@ struct WsHandle {
 
     bool valid() const { return ws != nullptr; }
 
-    void send(std::string payload, bool binary = false) {
+    UwsSocket::SendStatus send(std::string payload, bool binary = false) {
         if (ws) {
-            ws->send(payload, binary ? uWS::OpCode::BINARY : uWS::OpCode::TEXT);
+            return ws->send(payload, binary ? uWS::OpCode::BINARY : uWS::OpCode::TEXT);
+            
         }
+        return UwsSocket::SendStatus::DROPPED;
     }
 
     void end(const int code, const std::string reason) {

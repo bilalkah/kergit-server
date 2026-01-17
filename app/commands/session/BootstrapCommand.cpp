@@ -1,20 +1,18 @@
-#include "app/commands/bootstrap/BootstrapCommand.h"
+#include "app/commands/session/BootstrapCommand.h"
 
 #include "app/converters/ProtoConverters.h"
 #include "app/managers/subscription/Topic.h"
 #include "domains/Channel.h"
 #include "domains/Hub.h"
 #include "proto/envelope.pb.h"
-#include "proto/event/bootstrap.pb.h"
+#include "proto/event/presence.pb.h"
+#include "proto/event/session.pb.h"
 
-#include <nlohmann/json.hpp>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
-
-using nlohmann::json;
 
 namespace app {
 
@@ -22,17 +20,17 @@ CommandResult BootstrapCommand::execute(CommandContext& ctx, const CommandInput 
     const auto* input = std::get_if<ConnectEvent>(&cmd);
     if (!input) {
         return std::unexpected(
-            CommandError{"invalid_input", "Bootstrap command expects a connect event"});
+            CommandError{1, "Bootstrap command expects a connect event"});
     }
 
     const UserId user_id = input->user_id;
     if (user_id.value.empty()) {
-        return std::unexpected(CommandError{"invalid_input", "User id is required"});
+        return std::unexpected(CommandError{2, "User id is required"});
     }
 
     auto db_user = ctx.user_service.getUser(user_id);
     if (!db_user) {
-        return std::unexpected(CommandError{"user_not_found", "User not found in database"});
+        return std::unexpected(CommandError{3, "User not found in database"});
     }
 
     const std::string display_name =
@@ -41,6 +39,12 @@ CommandResult BootstrapCommand::execute(CommandContext& ctx, const CommandInput 
             : (!db_user->full_name.empty() ? db_user->full_name : "Member");
 
     // Track session + subscribe to hubs for presence
+    if (ctx.session_manager.hasSession(user_id)) {
+        CommandSuccess res;
+        res.intents.push_back(
+            DropConnectionIntent{.conn = input->conn, .code = 4409, .reason = "duplicate_session"});
+        return res;
+    }
     ctx.session_manager.createSession(input->conn, user_id);
     const auto hubs = ctx.hub_service.getUserHubs(user_id);
     for (const auto& hub : hubs) {
@@ -52,12 +56,7 @@ CommandResult BootstrapCommand::execute(CommandContext& ctx, const CommandInput 
     auto* self = bootstrap.mutable_self();
     self->set_id(public_user_id.value);
     self->set_username(display_name);
-    bootstrap.set_num_hub(static_cast<uint64_t>(hubs.size()));
-
-    std::unordered_map<UserId, std::string> user_display;
-    user_display.emplace(user_id, display_name);
-
-    std::vector<Fanout> notifications;
+    std::vector<BinaryFanout> presence_notifications;
 
     for (const auto& hub : hubs) {
         auto* hub_state = bootstrap.add_hubs();
@@ -84,19 +83,9 @@ CommandResult BootstrapCommand::execute(CommandContext& ctx, const CommandInput 
         std::unordered_set<UserId> online_set(online_members.begin(), online_members.end());
 
         const auto members = ctx.hub_service.getHubMembers(hub.id);
-        for (const auto& [member_id, stored_display] : members) {
-            std::string name = stored_display;
-            if (name.empty()) {
-                if (auto member_user = ctx.user_service.getUser(member_id)) {
-                    if (!member_user->username.empty()) name = member_user->username;
-                    else if (!member_user->full_name.empty()) name = member_user->full_name;
-                }
-            }
-            if (name.empty() && member_id == user_id) name = display_name;
-            if (name.empty()) name = "Member";
-
-            user_display.insert_or_assign(member_id, name);
-
+        for (const auto& member : members) {
+            const auto& member_id = member.first;
+            std::string display_name = member.second;
             const auto public_member = ctx.ids.to_public(member_id);
 
             auto* member_msg = hub_state->add_members();
@@ -110,6 +99,15 @@ CommandResult BootstrapCommand::execute(CommandContext& ctx, const CommandInput 
             }
             member_msg->set_role(converters::to_proto_hub_role(role));
             member_msg->set_is_online(online_set.find(member_id) != online_set.end());
+            if (display_name.empty()) {
+                if (auto member_user = ctx.user_service.getUser(member_id)) {
+                    if (!member_user->username.empty()) display_name = member_user->username;
+                    else if (!member_user->full_name.empty())
+                        display_name = member_user->full_name;
+                }
+            }
+            if (display_name.empty()) display_name = "Member";
+            member_msg->set_display_name(display_name);
         }
 
         if (!online_members.empty()) {
@@ -124,26 +122,39 @@ CommandResult BootstrapCommand::execute(CommandContext& ctx, const CommandInput 
             }
 
             if (!recipients.empty()) {
-                auto payload = ctx.hub_notifier.memberOnline(hub.id, user_id);
-                if (!display_name.empty()) payload["display_name"] = display_name;
-                payload["username"] = display_name;
-                notifications.push_back(
-                    Fanout{.conns = std::move(recipients), .payload = std::move(payload)});
+                sercom::protocol::event::PresenceEvent presence_event;
+                auto* presence_changed = presence_event.mutable_presence_changed();
+                presence_changed->set_hub_id(public_hub_id.value);
+                presence_changed->set_user_id(public_user_id.value);
+                presence_changed->set_is_online(true);
+
+                std::string presence_payload;
+                if (!presence_event.SerializeToString(&presence_payload)) {
+                    continue;
+                }
+
+                sercom::protocol::Envelope presence_env;
+                presence_env.set_version(1);
+                presence_env.set_type(sercom::protocol::Envelope::PRESENCE);
+                presence_env.set_payload(std::move(presence_payload));
+
+                std::string out_bytes;
+                if (!presence_env.SerializeToString(&out_bytes)) {
+                    continue;
+                }
+
+                presence_notifications.push_back(
+                    BinaryFanout{.conns = std::move(recipients),
+                                 .payload = std::move(out_bytes)});
+
             }
         }
-    }
-
-    for (const auto& [member_id, name] : user_display) {
-        auto* user_msg = bootstrap.add_users();
-        const auto public_member = ctx.ids.to_public(member_id);
-        user_msg->set_id(public_member.value);
-        user_msg->set_username(name);
     }
 
     std::string payload;
     if (!bootstrap.SerializeToString(&payload)) {
         return std::unexpected(
-            CommandError{"serialization_error", "Failed to serialize bootstrap payload"});
+            CommandError{1, "Failed to serialize bootstrap payload"});
     }
 
     sercom::protocol::Envelope env;
@@ -154,13 +165,13 @@ CommandResult BootstrapCommand::execute(CommandContext& ctx, const CommandInput 
     std::string out_bytes;
     if (!env.SerializeToString(&out_bytes)) {
         return std::unexpected(
-            CommandError{"serialization_error", "Failed to serialize bootstrap envelope"});
+            CommandError{2, "Failed to serialize bootstrap envelope"});
     }
 
     CommandSuccess res;
     res.intents.push_back(
         BinaryUnicast{.conn = input->conn, .payload = std::move(out_bytes)});
-    for (auto& notification : notifications) {
+    for (auto& notification : presence_notifications) {
         res.intents.push_back(std::move(notification));
     }
 

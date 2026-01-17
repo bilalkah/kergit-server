@@ -57,29 +57,29 @@ json build_members(CommandContext& ctx, const HubId& hub_id, const UserId& self)
 CommandResult JoinHubByInviteCommand::execute(CommandContext& ctx, const CommandInput cmd) {
     const auto* input = std::get_if<JsonInput>(&cmd);
     if (!input) {
-        return std::unexpected(CommandError{"invalid_input", "join_hub_by_code expects JSON input"});
+        return std::unexpected(CommandError{1, "join_hub_by_code expects JSON input"});
     }
 
     auto user_exp = ctx.session_manager.sessionOfConnection(input->conn);
     if (!user_exp.has_value()) {
-        return std::unexpected(CommandError{"not_authenticated", "Authenticate first"});
+        return std::unexpected(CommandError{2, "Authenticate first"});
     }
     const UserId user_id = user_exp.value();
 
     auto invite_code = commands::read_uint64(input->body, "invite_code");
     if (!invite_code.has_value()) {
-        return std::unexpected(CommandError{"invalid_invite", "Invite code is required"});
+        return std::unexpected(CommandError{3, "Invite code is required"});
     }
 
     auto hub_id_opt = ctx.ids.to_internal(PublicHubId{invite_code.value()});
     if (!hub_id_opt.has_value()) {
-        return std::unexpected(CommandError{"invite_not_found", "Invite code is invalid"});
+        return std::unexpected(CommandError{4, "Invite code is invalid"});
     }
     const HubId hub_id = hub_id_opt.value();
 
     auto hub_opt = ctx.hub_service.getHub(hub_id);
     if (!hub_opt.has_value()) {
-        return std::unexpected(CommandError{"hub_not_found", "Hub not found"});
+        return std::unexpected(CommandError{5, "Hub not found"});
     }
 
     // If already a member, just return snapshot data

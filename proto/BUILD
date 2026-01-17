@@ -4,6 +4,7 @@ load("@protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
 proto_library(
     name = "envelope_proto",
     srcs = ["envelope.proto"],
+    visibility = ["//visibility:public"],
 )
 
 cc_proto_library(

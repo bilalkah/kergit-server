@@ -93,7 +93,7 @@ class TextWSServer : public ITransportServer, public utils::Loggable {
     std::atomic<bool> started_{false};
     std::atomic<bool> stopped_{false};
     std::atomic<bool> stop_requested_{false};
-    
+
     /**
      * Number of active connections
      */

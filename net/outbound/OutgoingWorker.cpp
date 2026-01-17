@@ -89,9 +89,24 @@ void OutgoingWorker::tick() {
                 using T = std::decay_t<decltype(action)>;
                 if constexpr (std::is_same_v<T, SendPayload>) {
                     if (!conn_ctx.handle.valid()) return;
-                    conn_ctx.handle.send(action.payload.data, action.payload.is_binary);
-                    log(utils::LogLevel::INFO, "Sent payload to connection: ",
-                        conn_ctx.conn_id.value, " Payload size: ", action.payload.data.size());
+                    const auto status =
+                        conn_ctx.handle.send(action.payload.data, action.payload.is_binary);
+                    if (status == transport::websocket::UwsSocket::SendStatus::SUCCESS) {
+                        log(utils::LogLevel::INFO,
+                            "Sent payload to connection: ", conn_ctx.conn_id.value,
+                            " Payload size: ", action.payload.data.size());
+                    } else if (status == transport::websocket::UwsSocket::SendStatus::BACKPRESSURE) {
+                        log(utils::LogLevel::WARN,
+                            "Backpressure on connection: ", conn_ctx.conn_id.value);
+                        conns_.mutate(conn_ctx.conn_id, [&](auto& ctx) {
+                            ctx.pending.push_back(std::make_pair(
+                                action.payload.data, action.payload.is_binary ? uWS::OpCode::BINARY
+                                                                              : uWS::OpCode::TEXT));
+                        });
+                    } else if (transport::websocket::UwsSocket::SendStatus::DROPPED == status) {
+                        log(utils::LogLevel::ERROR,
+                            "Connection closed while sending to: ", conn_ctx.conn_id.value);
+                    }
                 } else if constexpr (std::is_same_v<T, UpdateAuthState>) {
                     auto result = conns_.mutate(conn_ctx.conn_id, [&](auto& ctx) {
                         ctx.auth.is_authenticated = action.is_authenticated;
@@ -99,11 +114,10 @@ void OutgoingWorker::tick() {
                     });
                     if (!result.has_value()) {
                         log(utils::LogLevel::ERROR,
-                            "Failed to update auth state for connection: ",
-                            conn_ctx.conn_id.value);
+                            "Failed to update auth state for connection: ", conn_ctx.conn_id.value);
                     } else {
-                        log(utils::LogLevel::INFO, "Updated auth state for connection: ",
-                            conn_ctx.conn_id.value);
+                        log(utils::LogLevel::INFO,
+                            "Updated auth state for connection: ", conn_ctx.conn_id.value);
                     }
                 } else if constexpr (std::is_same_v<T, DropConnection>) {
                     if (!conn_ctx.handle.valid()) return;

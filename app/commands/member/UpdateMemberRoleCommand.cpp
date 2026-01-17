@@ -22,59 +22,64 @@ std::optional<Role> parse_role(const std::string& role_str) {
 CommandResult UpdateMemberRoleCommand::execute(CommandContext& ctx, const CommandInput cmd) {
     const auto* input = std::get_if<JsonInput>(&cmd);
     if (!input) {
-        return std::unexpected(CommandError{"invalid_input", "update_member_role expects JSON input"});
+        return std::unexpected(CommandError{1, "update_member_role expects JSON input"});
     }
 
     auto actor_exp = ctx.session_manager.sessionOfConnection(input->conn);
     if (!actor_exp.has_value()) {
-        return std::unexpected(CommandError{"not_authenticated", "Authenticate first"});
+        return std::unexpected(CommandError{2, "Authenticate first"});
     }
     const UserId actor = actor_exp.value();
 
     auto hub_raw = commands::read_uint64(input->body, "hub_id");
     auto user_raw = commands::read_uint64(input->body, "user_id");
-    const std::string role_raw = input->body.value("role", "");
+    const auto j = json::parse(input->body, nullptr, false);
+    if (j.is_discarded()) {
+        return std::unexpected(CommandError{3, "Invalid JSON"});
+    }
+
+    const std::string role_raw = j.value("role", "");
 
     if (!hub_raw.has_value() || !user_raw.has_value() || role_raw.empty()) {
         return std::unexpected(
-            CommandError{"invalid_request", "hub_id, user_id and role are required"});
+            CommandError{3, "hub_id, user_id and role are required"});
     }
 
     auto hub_id_opt = ctx.ids.to_internal(PublicHubId{hub_raw.value()});
     auto target_id_opt = ctx.ids.to_internal(PublicUserId{user_raw.value()});
     if (!hub_id_opt.has_value() || !target_id_opt.has_value()) {
-        return std::unexpected(CommandError{"not_found", "Invalid hub or user identifier"});
+        return std::unexpected(CommandError{4, "Invalid hub or user identifier"});
     }
     const HubId hub_id = hub_id_opt.value();
     const UserId target_id = target_id_opt.value();
 
     auto new_role_opt = parse_role(role_raw);
     if (!new_role_opt.has_value()) {
-        return std::unexpected(CommandError{"invalid_role", "Role must be 'admin' or 'member'"});
+        return std::unexpected(CommandError{5, "Role must be 'admin' or 'member'"});
     }
     const Role new_role = *new_role_opt;
 
     // actor must be owner
     auto actor_role = ctx.hub_service.getMembershipRole(hub_id, actor);
     if (!actor_role.has_value()) {
-        return std::unexpected(CommandError{"not_in_hub", "Join the hub before updating roles"});
+        return std::unexpected(CommandError{6, "Join the hub before updating roles"});
     }
     if (*actor_role != Role::OWNER) {
         return std::unexpected(
-            CommandError{"insufficient_privilege", "Only owners can update member roles"});
+            CommandError{7, "Only owners can update member roles"});
     }
 
     // target must be a member and not owner
     auto target_role = ctx.hub_service.getMembershipRole(hub_id, target_id);
     if (!target_role.has_value()) {
-        return std::unexpected(CommandError{"not_member", "Target user is not a member"});
+        return std::unexpected(CommandError{8, "Target user is not a member"});
     }
     if (*target_role == Role::OWNER) {
-        return std::unexpected(CommandError{"invalid_target", "Cannot modify the owner's role"});
+        return std::unexpected(CommandError{9, "Cannot modify the owner's role"});
     }
 
     if (actor == target_id) {
-        return std::unexpected(CommandError{"invalid_target", "Cannot change your own role"});
+        return std::unexpected(CommandError{10, "Cannot change your own role"});
     }
 
     // Apply role change
