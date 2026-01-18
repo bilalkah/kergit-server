@@ -16,6 +16,7 @@ cc_proto_library(
 proto_library(
     name = "hub_proto",
     srcs = ["hub.proto"],
+    deps = [":channel_proto"],
     visibility = ["//visibility:public"],
 )
 

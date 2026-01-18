@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package sercom.protocol.domain;
 
+import "proto/domain/channel.proto";
+
 enum HubRole {
     HubRole_UNSPECIFIED = 0;
     HubRole_MEMBER = 1;
@@ -20,4 +22,10 @@ message HubMember {
     bool is_online = 3;
     HubRole role = 4;
     string display_name = 5;
+}
+
+message HubState {
+    sercom.protocol.domain.Hub hub = 1;
+    repeated sercom.protocol.domain.Channel channels = 2;
+    repeated sercom.protocol.domain.HubMember members = 3;
 }

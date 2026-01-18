@@ -2,21 +2,14 @@ syntax = "proto3";
 
 package sercom.protocol.event;
 
-import "proto/domain/channel.proto";
 import "proto/domain/user.proto";
 import "proto/domain/hub.proto";
 
-// Represents the state of a Hub including its channels and members.
-// Send as part of the Connection Bootstrap.
-// -----------------------------------
-message HubState {
-    sercom.protocol.domain.Hub hub = 1;
-    repeated sercom.protocol.domain.Channel channels = 2;
-    repeated sercom.protocol.domain.HubMember members = 3;
-}
 
+// Sent as part of the Connection Bootstrap.
+// -----------------------------------
 message SessionBootstrap {
     sercom.protocol.domain.User self = 1;
-    repeated HubState hubs = 2;
+    repeated sercom.protocol.domain.HubState hubs = 2;
 }
 // -----------------------------------

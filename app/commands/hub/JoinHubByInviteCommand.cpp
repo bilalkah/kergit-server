@@ -1,133 +1,226 @@
 #include "app/commands/hub/JoinHubByInviteCommand.h"
 
-#include "app/commands/CommandJson.h"
+#include "app/commands/utils.h"
+#include "app/converters/ProtoConverters.h"
 #include "app/dispatcher/CommandContext.h"
+#include "app/managers/subscription/Topic.h"
 #include "domains/Hub.h"
+#include "proto/command/hub.pb.h"
+#include "proto/domain/channel.pb.h"
+#include "proto/domain/hub.pb.h"
+#include "proto/envelope.pb.h"
+#include "proto/event/error.pb.h"
+#include "proto/event/hub.pb.h"
+#include "proto/event/session.pb.h"
 
-#include <nlohmann/json.hpp>
 #include <string>
-#include <unordered_set>
-
-using nlohmann::json;
+#include <vector>
 
 namespace app {
 
 namespace {
-json build_channels(CommandContext& ctx, const HubId& hub_id) {
-    json channels_json = json::array();
-    const auto channels = ctx.channel_service.getHubChannels(hub_id);
-    for (const auto& channel : channels) {
-        const auto public_channel_id = ctx.ids.to_public(channel.id);
-        const auto public_hub_id = ctx.ids.to_public(channel.hub_id);
-        std::string type = channel.type == ChannelType::VOICE ? "voice" : "text";
-        channels_json.push_back({{"id", public_channel_id.value},
-                                 {"hub_id", public_hub_id.value},
-                                 {"name", channel.name},
-                                 {"type", type}});
+
+std::string resolve_display_name(CommandContext& ctx, const UserId& user_id,
+                                 const std::string& stored_display) {
+    if (!stored_display.empty()) return stored_display;
+    if (auto user = ctx.user_service.getUser(user_id)) {
+        if (!user->username.empty()) return user->username;
+        if (!user->full_name.empty()) return user->full_name;
     }
-    return channels_json;
+    return "Member";
 }
 
-json build_members(CommandContext& ctx, const HubId& hub_id, const UserId& self) {
-    json members = json::array();
-    const auto db_members = ctx.hub_service.getHubMembers(hub_id);
-    const auto online_members = ctx.presence_manager.onlineUsersInHub(hub_id);
-    std::unordered_set<UserId> online_set(online_members.begin(), online_members.end());
-
-    for (const auto& [user_id, stored_display] : db_members) {
-        const auto public_user = ctx.ids.to_public(user_id);
-        std::string display = stored_display;
-        if (display.empty()) {
-            if (auto user = ctx.user_service.getUser(user_id)) {
-                if (!user->username.empty())
-                    display = user->username;
-                else if (!user->full_name.empty())
-                    display = user->full_name;
-            }
-        }
-        if (display.empty()) display = "Member";
-        const bool is_online = online_set.count(user_id) > 0 || user_id == self;
-        members.push_back({{"handle", display},
-                           {"display_name", display},
-                           {"online", is_online},
-                           {"user_id", public_user.value}});
-    }
-    return members;
+sercom::protocol::domain::HubRole role_to_proto(const std::optional<Role>& role) {
+    if (!role.has_value()) return sercom::protocol::domain::HubRole_MEMBER;
+    return converters::to_proto_hub_role(*role);
 }
+
+bool parse_join_code(const std::string& join_code, uint64_t& out) {
+    if (join_code.empty()) return false;
+    try {
+        std::size_t idx = 0;
+        auto value = std::stoull(join_code, &idx, 10);
+        if (idx != join_code.size()) return false;
+        out = value;
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
 }  // namespace
 
-CommandResult JoinHubByInviteCommand::execute(CommandContext& ctx, const CommandInput cmd) {
-    const auto* input = std::get_if<JsonInput>(&cmd);
-    if (!input) {
-        return std::unexpected(CommandError{1, "join_hub_by_code expects JSON input"});
+std::vector<net::outbound::OutgoingMessage> JoinHubByInviteCommand::execute(
+    CommandContext& ctx, const queue::Event& evt) {
+    const auto* event = std::get_if<queue::MessageEvent>(&evt);
+    if (!event) {
+        return {};
     }
 
-    auto user_exp = ctx.session_manager.sessionOfConnection(input->conn);
+    const auto& env = event->payload.env;
+    if (env.type() != sercom::protocol::Envelope::HUB_JOIN) {
+        return {};
+    }
+
+    sercom::protocol::command::JoinHub cmd;
+    if (!cmd.ParseFromString(env.payload())) {
+        return {make_command_error(event->conn_id, env.type(),
+                                   sercom::protocol::event::CommandErrorCode_INVALID_FORMAT,
+                                   "Invalid HUB_JOIN payload")};
+    }
+
+    auto user_exp = ctx.session_manager.sessionOfConnection(event->conn_id);
     if (!user_exp.has_value()) {
-        return std::unexpected(CommandError{2, "Authenticate first"});
+        return {make_command_error(event->conn_id, env.type(),
+                                   sercom::protocol::event::CommandErrorCode_UNAUTHORIZED,
+                                   "Authenticate first")};
     }
     const UserId user_id = user_exp.value();
 
-    auto invite_code = commands::read_uint64(input->body, "invite_code");
-    if (!invite_code.has_value()) {
-        return std::unexpected(CommandError{3, "Invite code is required"});
+    uint64_t join_code = 0;
+    if (!parse_join_code(cmd.join_code(), join_code)) {
+        return {make_command_error(event->conn_id, env.type(),
+                                   sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
+                                   "Join code is invalid")};
     }
 
-    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{invite_code.value()});
+    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{join_code});
     if (!hub_id_opt.has_value()) {
-        return std::unexpected(CommandError{4, "Invite code is invalid"});
+        return {make_command_error(event->conn_id, env.type(),
+                                   sercom::protocol::event::CommandErrorCode_NOT_FOUND,
+                                   "Hub not found")};
     }
     const HubId hub_id = hub_id_opt.value();
 
     auto hub_opt = ctx.hub_service.getHub(hub_id);
     if (!hub_opt.has_value()) {
-        return std::unexpected(CommandError{5, "Hub not found"});
+        return {make_command_error(event->conn_id, env.type(),
+                                   sercom::protocol::event::CommandErrorCode_NOT_FOUND,
+                                   "Hub not found")};
     }
 
-    // If already a member, just return snapshot data
     const bool already_member = ctx.hub_service.isHubMember(hub_id, user_id);
     if (!already_member) {
-        ctx.hub_service.addMember(hub_id, user_id, Role::USER);
+        try {
+            ctx.hub_service.addMember(hub_id, user_id, Role::USER);
+        } catch (const std::exception& ex) {
+            return {make_command_error(event->conn_id, env.type(),
+                                       sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
+                                       ex.what())};
+        } catch (...) {
+            return {make_command_error(event->conn_id, env.type(),
+                                       sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
+                                       "Failed to join hub")};
+        }
     }
 
-    const auto public_hub_id = ctx.ids.to_public(hub_id);
-    json hub_json = {{"id", public_hub_id.value}, {"name", hub_opt->name}, {"role", "member"}};
-    json payload = {{"type", "hub_joined"},
-                    {"hub", std::move(hub_json)},
-                    {"channels", build_channels(ctx, hub_id)},
-                    {"members", build_members(ctx, hub_id, user_id)},
-                    {"already_member", already_member}};
-
-    CommandSuccess res;
-    res.intents.push_back(Unicast{.conn = input->conn, .payload = std::move(payload)});
-
-    // Subscribe user to hub topic for future broadcasts
     ctx.subscription_manager.subscribe(user_id, Topic::HubTopic(hub_id));
 
-    // Notify existing online members about the new online user
-    const auto online_members = ctx.presence_manager.onlineUsersInHub(hub_id);
-    if (!online_members.empty()) {
-        std::vector<GlobalConnId> conns;
-        conns.reserve(online_members.size());
-        for (const auto& member_id : online_members) {
-            if (member_id == user_id) continue;
-            auto conn = ctx.session_manager.getMainConnection(member_id);
-            if (conn.has_value()) conns.push_back(conn.value());
-        }
-        if (!conns.empty()) {
-            auto payload_online = ctx.hub_notifier.memberOnline(hub_id, user_id);
-            if (auto u = ctx.user_service.getUser(user_id)) {
-                if (!u->username.empty())
-                    payload_online["display_name"] = u->username;
-                else if (!u->full_name.empty())
-                    payload_online["display_name"] = u->full_name;
+    const auto public_hub_id = ctx.ids.to_public(hub_id).value;
+    const auto public_user_id = ctx.ids.to_public(user_id).value;
+
+    if (already_member) {
+        sercom::protocol::event::HubAlreadyMember already;
+        auto* member = already.mutable_self_member();
+        member->set_hub_id(public_hub_id);
+        member->set_user_id(public_user_id);
+        member->set_is_online(true);
+        member->set_role(role_to_proto(ctx.hub_service.getMembershipRole(hub_id, user_id)));
+        member->set_display_name(resolve_display_name(ctx, user_id, ""));
+
+        sercom::protocol::Envelope already_env;
+        already_env.set_version(1);
+        already_env.set_type(sercom::protocol::Envelope::HUB_ALREADY_MEMBER);
+        already.SerializeToString(already_env.mutable_payload());
+
+        std::string already_bytes;
+        already_env.SerializeToString(&already_bytes);
+
+        return {net::outbound::OutgoingMessage{
+            .target = net::outbound::Target::one(event->conn_id),
+            .action = net::outbound::SendPayload{
+                .payload = net::outbound::Payload{.data = std::move(already_bytes),
+                                                  .is_binary = true}}}};
+    }
+
+    sercom::protocol::event::SessionBootstrap bootstrap;
+    auto* self = bootstrap.mutable_self();
+    self->set_id(public_user_id);
+    self->set_username(resolve_display_name(ctx, user_id, ""));
+
+    auto* hub_state = bootstrap.add_hubs();
+    hub_state->mutable_hub()->set_id(public_hub_id);
+    hub_state->mutable_hub()->set_name(hub_opt->name);
+
+    const auto channels = ctx.channel_service.getHubChannels(hub_id);
+    for (const auto& channel : channels) {
+        auto* ch = hub_state->add_channels();
+        ch->set_id(ctx.ids.to_public(channel.id).value);
+        ch->set_name(channel.name);
+        ch->set_type(converters::to_proto_channel_type(channel.type));
+    }
+
+    const auto members = ctx.hub_service.getHubMembers(hub_id);
+    for (const auto& [member_id, display] : members) {
+        auto* m = hub_state->add_members();
+        m->set_hub_id(public_hub_id);
+        m->set_user_id(ctx.ids.to_public(member_id).value);
+        m->set_is_online(ctx.presence_manager.isUserOnline(member_id) || member_id == user_id);
+        m->set_role(role_to_proto(ctx.hub_service.getMembershipRole(hub_id, member_id)));
+        m->set_display_name(resolve_display_name(ctx, member_id, display));
+    }
+
+    sercom::protocol::Envelope joined_env;
+    joined_env.set_version(1);
+    joined_env.set_type(sercom::protocol::Envelope::SESSION_BOOTSTRAP);
+    bootstrap.SerializeToString(joined_env.mutable_payload());
+
+    std::string joined_bytes;
+    joined_env.SerializeToString(&joined_bytes);
+
+    std::vector<net::outbound::OutgoingMessage> out;
+    out.push_back(net::outbound::OutgoingMessage{
+        .target = net::outbound::Target::one(event->conn_id),
+        .action = net::outbound::SendPayload{
+            .payload = net::outbound::Payload{.data = std::move(joined_bytes), .is_binary = true}}});
+
+    if (!already_member) {
+        auto subs = ctx.subscription_manager.getSubscribers(Topic::HubTopic(hub_id));
+        if (subs.has_value()) {
+            std::vector<GlobalConnId> conns;
+            conns.reserve(subs->size());
+            for (const auto& uid : subs.value()) {
+                if (uid == user_id) continue;
+                auto conn = ctx.session_manager.getMainConnection(uid);
+                if (conn.has_value()) conns.push_back(conn.value());
             }
-            res.intents.push_back(
-                Fanout{.conns = std::move(conns), .payload = std::move(payload_online)});
+            if (!conns.empty()) {
+                sercom::protocol::event::HubMemberJoined member_joined;
+                auto* member = member_joined.mutable_member();
+                member->set_hub_id(public_hub_id);
+                member->set_user_id(public_user_id);
+                member->set_is_online(true);
+                member->set_role(role_to_proto(ctx.hub_service.getMembershipRole(hub_id, user_id)));
+                member->set_display_name(resolve_display_name(ctx, user_id, ""));
+
+                sercom::protocol::Envelope env_out;
+                env_out.set_version(1);
+                env_out.set_type(sercom::protocol::Envelope::HUB_MEMBER_JOINED);
+                member_joined.SerializeToString(env_out.mutable_payload());
+
+                std::string bytes;
+                env_out.SerializeToString(&bytes);
+
+                out.push_back(net::outbound::OutgoingMessage{
+                    .target = net::outbound::Target::many(std::move(conns)),
+                    .action = net::outbound::SendPayload{
+                        .payload =
+                            net::outbound::Payload{.data = std::move(bytes), .is_binary = true}}});
+            }
         }
     }
 
-    return res;
+    return out;
 }
 
 }  // namespace app

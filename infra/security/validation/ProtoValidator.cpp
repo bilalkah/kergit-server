@@ -63,6 +63,48 @@ std::expected<void, ValidationError> ProtoMessageValidator::validate_envelope(
             }
             return validate_fetch_messages_before(fetch_before);
         }
+        case sercom::protocol::Envelope::HUB_CREATE: {
+            sercom::protocol::command::CreateHub create_hub;
+            if (!create_hub.ParseFromArray(env.payload().data(), env.payload().size())) {
+                return std::unexpected("Invalid HUB_CREATE payload");
+            }
+            return validate_create_hub(create_hub);
+        }
+        case sercom::protocol::Envelope::HUB_JOIN: {
+            sercom::protocol::command::JoinHub join_hub;
+            if (!join_hub.ParseFromArray(env.payload().data(), env.payload().size())) {
+                return std::unexpected("Invalid HUB_JOIN payload");
+            }
+            return validate_join_hub(join_hub);
+        }
+        case sercom::protocol::Envelope::HUB_CREATE_JOIN_CODE: {
+            sercom::protocol::command::CreateHubJoinCode create_join_code;
+            if (!create_join_code.ParseFromArray(env.payload().data(), env.payload().size())) {
+                return std::unexpected("Invalid HUB_CREATE_JOIN_CODE payload");
+            }
+            return validate_create_hub_join_code(create_join_code);
+        }
+        case sercom::protocol::Envelope::HUB_LEAVE: {
+            sercom::protocol::command::LeaveHub leave_hub;
+            if (!leave_hub.ParseFromArray(env.payload().data(), env.payload().size())) {
+                return std::unexpected("Invalid HUB_LEAVE payload");
+            }
+            return validate_leave_hub(leave_hub);
+        }
+        case sercom::protocol::Envelope::HUB_REMOVE: {
+            sercom::protocol::command::RemoveHub remove_hub;
+            if (!remove_hub.ParseFromArray(env.payload().data(), env.payload().size())) {
+                return std::unexpected("Invalid HUB_REMOVE payload");
+            }
+            return validate_remove_hub(remove_hub);
+        }
+        case sercom::protocol::Envelope::HUB_RENAME: {
+            sercom::protocol::command::RenameHub rename_hub;
+            if (!rename_hub.ParseFromArray(env.payload().data(), env.payload().size())) {
+                return std::unexpected("Invalid HUB_RENAME payload");
+            }
+            return validate_rename_hub(rename_hub);
+        }
 
         case sercom::protocol::Envelope::UNKNOWN:
             return std::unexpected("Unknown message type");
@@ -73,6 +115,12 @@ std::expected<void, ValidationError> ProtoMessageValidator::validate_envelope(
         case sercom::protocol::Envelope::PRESENCE:
         case sercom::protocol::Envelope::MESSAGE_CREATED:
         case sercom::protocol::Envelope::MESSAGE_BATCH:
+        case sercom::protocol::Envelope::HUB_CREATED:
+        case sercom::protocol::Envelope::HUB_MEMBER_JOINED:
+        case sercom::protocol::Envelope::HUB_MEMBER_LEFT:
+        case sercom::protocol::Envelope::HUB_REMOVED:
+        case sercom::protocol::Envelope::HUB_JOIN_CODE_CREATED:
+        case sercom::protocol::Envelope::HUB_RENAMED:
             return std::unexpected("Server-only message type");
 
         default:
@@ -193,6 +241,69 @@ std::expected<void, ValidationError> ProtoMessageValidator::validate_fetch_messa
         return std::unexpected("before_message_id is empty");
     }
 
+    return {};
+}
+
+// ---------- HUB_CREATE validation ----------
+
+std::expected<void, ValidationError> ProtoMessageValidator::validate_create_hub(
+    const sercom::protocol::command::CreateHub& msg) {
+    if (msg.name().empty()) {
+        return std::unexpected("name is empty");
+    }
+    return {};
+}
+
+// ---------- HUB_JOIN validation ----------
+
+std::expected<void, ValidationError> ProtoMessageValidator::validate_join_hub(
+    const sercom::protocol::command::JoinHub& msg) {
+    if (msg.join_code().empty()) {
+        return std::unexpected("join_code is empty");
+    }
+    return {};
+}
+
+// ---------- HUB_CREATE_JOIN_CODE validation ----------
+
+std::expected<void, ValidationError> ProtoMessageValidator::validate_create_hub_join_code(
+    const sercom::protocol::command::CreateHubJoinCode& msg) {
+    if (msg.hub_id() == 0) {
+        return std::unexpected("hub_id is empty");
+    }
+    return {};
+}
+
+// ---------- HUB_LEAVE validation ----------
+
+std::expected<void, ValidationError> ProtoMessageValidator::validate_leave_hub(
+    const sercom::protocol::command::LeaveHub& msg) {
+    if (msg.hub_id() == 0) {
+        return std::unexpected("hub_id is empty");
+    }
+    return {};
+}
+
+// ---------- HUB_REMOVE validation ----------
+
+std::expected<void, ValidationError> ProtoMessageValidator::validate_remove_hub(
+    const sercom::protocol::command::RemoveHub& msg) {
+    if (msg.hub_id() == 0) {
+        return std::unexpected("hub_id is empty");
+    }
+    return {};
+}
+
+// ---------- HUB_RENAME validation ----------
+
+std::expected<void, ValidationError> ProtoMessageValidator::validate_rename_hub(
+    const sercom::protocol::command::RenameHub& msg) {
+    if (msg.hub_id() == 0) {
+        return std::unexpected("hub_id is empty");
+    }
+    if (msg.name().empty()) {
+        return std::unexpected("name is empty");
+    }
     return {};
 }
 

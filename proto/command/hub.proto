@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package sercom.protocol.command;
+
+/*
+ * Create a new hub.
+ * The requesting user becomes OWNER and first member.
+ */
+message CreateHub {
+  string name = 1;
+}
+
+/*
+ * Join an existing hub using a join code.
+ */
+message JoinHub {
+  string join_code = 1;
+}
+
+/*
+ * Generate or rotate a join code.
+ * Only OWNER / ADMIN.
+ */
+message CreateHubJoinCode {
+  uint64 hub_id = 1;
+}
+
+/*
+ * Leave a hub.
+ */
+message LeaveHub {
+  uint64 hub_id = 1;
+}
+
+/*
+ * Permanently delete a hub.
+ * Only OWNER.
+ */
+message RemoveHub {
+  uint64 hub_id = 1;
+}
+
+/*
+ * Rename a hub.
+ * Only OWNER / ADMIN.
+ */
+message RenameHub {
+  uint64 hub_id = 1;
+  string name = 2;
+}
+

@@ -1,27 +1,27 @@
 #include "app/commands/hub/CreateHubCommand.h"
 
+#include "app/commands/utils.h"
+#include "app/converters/ProtoConverters.h"
 #include "app/dispatcher/CommandContext.h"
 #include "app/managers/subscription/Topic.h"
-#include "domains/Channel.h"
 #include "domains/Hub.h"
+#include "proto/command/hub.pb.h"
+#include "proto/domain/channel.pb.h"
+#include "proto/domain/hub.pb.h"
+#include "proto/envelope.pb.h"
+#include "proto/event/error.pb.h"
+#include "proto/event/hub.pb.h"
 
 #include <algorithm>
 #include <cctype>
-#include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
-
-using nlohmann::json;
 
 namespace app {
 
 namespace {
-std::string channel_type_to_string(ChannelType type) {
-    return type == ChannelType::VOICE ? "voice" : "text";
-}
-}  // namespace
 
-std::string CreateHubCommand::sanitize_name(std::string name) {
+std::string sanitize_name(std::string name) {
     auto trim = [](std::string& s) {
         s.erase(s.begin(), std::find_if(s.begin(), s.end(),
                                         [](unsigned char ch) { return !std::isspace(ch); }));
@@ -35,85 +35,112 @@ std::string CreateHubCommand::sanitize_name(std::string name) {
     return name;
 }
 
-CommandResult CreateHubCommand::execute(CommandContext& ctx, const CommandInput cmd) {
-    const auto* input = std::get_if<JsonInput>(&cmd);
-    if (!input) {
-        return std::unexpected(CommandError{1, "create_hub expects JSON input"});
+std::string resolve_display_name(CommandContext& ctx, const UserId& user_id,
+                                 const std::string& stored_display) {
+    if (!stored_display.empty()) return stored_display;
+    if (auto user = ctx.user_service.getUser(user_id)) {
+        if (!user->username.empty()) return user->username;
+        if (!user->full_name.empty()) return user->full_name;
+    }
+    return "Member";
+}
+
+sercom::protocol::domain::HubRole role_to_proto(const std::optional<Role>& role) {
+    if (!role.has_value()) return sercom::protocol::domain::HubRole_MEMBER;
+    return converters::to_proto_hub_role(*role);
+}
+
+}  // namespace
+
+std::vector<net::outbound::OutgoingMessage> CreateHubCommand::execute(CommandContext& ctx,
+                                                                      const queue::Event& evt) {
+    const auto* event = std::get_if<queue::MessageEvent>(&evt);
+    if (!event) {
+        return {};
     }
 
-    auto user_exp = ctx.session_manager.sessionOfConnection(input->conn);
+    const auto& env = event->payload.env;
+    if (env.type() != sercom::protocol::Envelope::HUB_CREATE) {
+        return {};
+    }
+
+    sercom::protocol::command::CreateHub cmd;
+    if (!cmd.ParseFromString(env.payload())) {
+        return {make_command_error(event->conn_id, env.type(),
+                                   sercom::protocol::event::CommandErrorCode_INVALID_FORMAT,
+                                   "Invalid HUB_CREATE payload")};
+    }
+
+    auto user_exp = ctx.session_manager.sessionOfConnection(event->conn_id);
     if (!user_exp.has_value()) {
-        return std::unexpected(CommandError{2, "Authenticate first"});
+        return {make_command_error(event->conn_id, env.type(),
+                                   sercom::protocol::event::CommandErrorCode_UNAUTHORIZED,
+                                   "Authenticate first")};
     }
     const UserId user_id = user_exp.value();
 
-    const auto j = json::parse(input->body, nullptr, false);
-    if (j.is_discarded()) {
-        return std::unexpected(CommandError{3, "Invalid JSON"});
+    std::string name = sanitize_name(cmd.name());
+    if (name.empty()) {
+        return {make_command_error(event->conn_id, env.type(),
+                                   sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
+                                   "Hub name is required")};
     }
 
-    std::string name = sanitize_name(j.value("name", std::string{}));
-    if (name.empty()) {
-        return std::unexpected(CommandError{3, "Hub name is required"});
+    HubId hub_id;
+    try {
+        hub_id = ctx.hub_service.createHub(name, user_id);
+    } catch (const std::exception& ex) {
+        return {make_command_error(event->conn_id, env.type(),
+                                   sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
+                                   ex.what())};
+    } catch (...) {
+        return {make_command_error(event->conn_id, env.type(),
+                                   sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
+                                   "Failed to create hub")};
     }
 
     try {
-        HubId hub_id = ctx.hub_service.createHub(name, user_id);
-        const auto public_hub_id = ctx.ids.to_public(hub_id);
-
-        // Create default "general" channel
-        ChannelId general_id{""};
-        try {
-            general_id = ctx.channel_service.createChannel(hub_id, "general", "text");
-        } catch (const std::exception&) {
-            // proceed without default channel
-        }
-
-        json channels = json::array();
-        if (!general_id.value.empty()) {
-            const auto public_channel_id = ctx.ids.to_public(general_id);
-            channels.push_back({{"id", public_channel_id.value},
-                                {"hub_id", public_hub_id.value},
-                                {"name", "general"},
-                                {"type", channel_type_to_string(ChannelType::CHAT)}});
-        }
-
-        std::string owner_display = "Member";
-        if (auto u = ctx.user_service.getUser(user_id)) {
-            if (!u->username.empty())
-                owner_display = u->username;
-            else if (!u->full_name.empty())
-                owner_display = u->full_name;
-        }
-
-        json hub_json = {{"id", public_hub_id.value}, {"name", name}, {"role", "owner"}};
-        json members = json::array({{{"handle", owner_display},
-                                     {"display_name", owner_display},
-                                     {"online", true},
-                                     {"user_id", ctx.ids.to_public(user_id).value}}});
-        json payload = {{"type", "hub_created"},
-                        {"hub", hub_json},
-                        {"channels", channels},
-                        {"members", std::move(members)}};
-
-        CommandSuccess res;
-        res.intents.push_back(Unicast{.conn = input->conn, .payload = payload});
-
-        // Subscribe creator to hub topic
-        ctx.subscription_manager.subscribe(user_id, Topic::HubTopic(hub_id));
-        return res;
-    } catch (const std::exception& ex) {
-        // Surface DB/business errors to client instead of terminating the worker
-        std::string raw = ex.what() ? ex.what() : "Unable to create hub";
-        // Strip noisy Postgres CONTEXT
-        auto ctx_pos = raw.find("CONTEXT:");
-        if (ctx_pos != std::string::npos) raw = raw.substr(0, ctx_pos);
-        if (raw.find("ownership limit") != std::string::npos) {
-            return std::unexpected(CommandError{4, "Hub ownership limit reached"});
-        }
+        ctx.channel_service.createChannel(hub_id, "general", "text");
+    } catch (...) {
     }
 
-    return CommandSuccess{};
+    ctx.subscription_manager.subscribe(user_id, Topic::HubTopic(hub_id));
+
+    const auto public_hub_id = ctx.ids.to_public(hub_id).value;
+    const auto public_user_id = ctx.ids.to_public(user_id).value;
+
+    sercom::protocol::event::HubCreated created;
+    created.mutable_hub()->set_id(public_hub_id);
+    created.mutable_hub()->set_name(name);
+
+    auto* self = created.mutable_self_member();
+    self->set_hub_id(public_hub_id);
+    self->set_user_id(public_user_id);
+    self->set_is_online(true);
+    self->set_role(role_to_proto(ctx.hub_service.getMembershipRole(hub_id, user_id)));
+    self->set_display_name(resolve_display_name(ctx, user_id, ""));
+
+    const auto channels = ctx.channel_service.getHubChannels(hub_id);
+    if (!channels.empty()) {
+        const auto& channel = channels.front();
+        auto* ch = created.mutable_channel();
+        ch->set_id(ctx.ids.to_public(channel.id).value);
+        ch->set_name(channel.name);
+        ch->set_type(converters::to_proto_channel_type(channel.type));
+    }
+
+    sercom::protocol::Envelope out_env;
+    out_env.set_version(1);
+    out_env.set_type(sercom::protocol::Envelope::HUB_CREATED);
+    created.SerializeToString(out_env.mutable_payload());
+
+    std::string bytes;
+    out_env.SerializeToString(&bytes);
+
+    return {net::outbound::OutgoingMessage{
+        .target = net::outbound::Target::one(event->conn_id),
+        .action = net::outbound::SendPayload{
+            .payload = net::outbound::Payload{.data = std::move(bytes), .is_binary = true}}}};
 }
 
 }  // namespace app

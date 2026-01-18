@@ -1,0 +1,70 @@
+syntax = "proto3";
+
+package sercom.protocol.event;
+
+import "proto/domain/channel.proto";
+import "proto/domain/hub.proto";
+import "proto/domain/user.proto";
+
+/*
+ * Hub was created.
+ * Sent only to the creator.
+ * Includes the creator as the first HubMember.
+ */
+message HubCreated {
+  sercom.protocol.domain.Hub hub = 1;
+  sercom.protocol.domain.HubMember self_member = 2;
+  sercom.protocol.domain.Channel channel = 3;
+}
+
+/*
+ * A user joined a hub.
+ * Fanout to all members.
+ */
+message HubMemberJoined {
+  sercom.protocol.domain.HubMember member = 1;
+  sercom.protocol.domain.User user = 2;
+}
+
+/*
+ * A user left a hub.
+ * Fanout to all members.
+ */
+message HubMemberLeft {
+  uint64 hub_id = 1;
+  uint64 user_id = 2;
+}
+
+/*
+ * Hub was removed.
+ * Fanout to all members.
+ */
+message HubRemoved {
+  uint64 hub_id = 1;
+}
+
+/*
+ * New join code generated.
+ * Sent only to requester.
+ */
+message HubJoinCodeCreated {
+  uint64 hub_id = 1;
+  string join_code = 2;
+}
+
+/*
+ * Hub was renamed.
+ * Fanout to all members.
+ */
+message HubRenamed {
+  uint64 hub_id = 1;
+  string name = 2;
+}
+
+/*
+ * Already member of hub.
+ * Sent only to requester.
+ */
+message HubAlreadyMember {
+  sercom.protocol.domain.HubMember self_member = 1;
+}
