@@ -25,6 +25,21 @@ message Envelope {
 
         MESSAGE_CREATED = 43;
         MESSAGE_BATCH = 44;
+
+        HUB_CREATE = 50;
+        HUB_JOIN = 51;
+        HUB_CREATE_JOIN_CODE = 52;
+        HUB_LEAVE = 53;
+        HUB_REMOVE = 54;
+        HUB_RENAME = 55;
+
+        HUB_CREATED = 60;
+        HUB_MEMBER_JOINED = 61;
+        HUB_JOIN_CODE_CREATED = 62;
+        HUB_MEMBER_LEFT = 63;
+        HUB_REMOVED = 64;
+        HUB_RENAMED = 65;
+        HUB_ALREADY_MEMBER = 66;
     }
 
     Type type = 3;

@@ -36,3 +36,15 @@ cc_proto_library(
     deps = [":message_proto"],
     visibility = ["//visibility:public"],
 )
+
+
+proto_library(
+    name = "hub_proto",
+    srcs = ["hub.proto"],
+)
+
+cc_proto_library(
+    name = "hub_cc_proto",
+    deps = [":hub_proto"],
+    visibility = ["//visibility:public"],
+)

@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package sercom.protocol.event;
 
-import "proto/domain/hub.proto";
+import "proto/event/hub.proto";
 
 /*
  * Hub member presence mutation.
@@ -12,18 +12,6 @@ message HubMemberPresenceChanged {
   uint64 hub_id = 1;
   uint64 user_id = 2;
   bool is_online = 3;
-}
-
-/*
- * Membership lifecycle (structural change)
- */
-message HubMemberJoined {
-  sercom.protocol.domain.HubMember member = 1;
-}
-
-message HubMemberLeft {
-  uint64 hub_id = 1;
-  uint64 user_id = 2;
 }
 
 /*

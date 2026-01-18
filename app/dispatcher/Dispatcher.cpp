@@ -4,12 +4,12 @@
 // #include "app/commands/channel/DeleteChannelCommand.h"
 // #include "app/commands/channel/JoinChannelCommand.h"
 // #include "app/commands/channel/RenameChannelCommand.h"
-// #include "app/commands/hub/CreateHubCommand.h"
-// #include "app/commands/hub/DeleteHubCommand.h"
-// #include "app/commands/hub/GetHubInviteCommand.h"
-// #include "app/commands/hub/JoinHubByInviteCommand.h"
-// #include "app/commands/hub/LeaveHubCommand.h"
-// #include "app/commands/hub/RenameHubCommand.h"
+#include "app/commands/hub/CreateHubCommand.h"
+#include "app/commands/hub/DeleteHubCommand.h"
+#include "app/commands/hub/GetHubInviteCommand.h"
+#include "app/commands/hub/JoinHubByInviteCommand.h"
+#include "app/commands/hub/LeaveHubCommand.h"
+#include "app/commands/hub/RenameHubCommand.h"
 // #include "app/commands/member/UpdateMemberRoleCommand.h"
 #include "app/commands/activity/SelectActiveChannelCommand.h"
 #include "app/commands/activity/TypingCommand.h"
@@ -67,6 +67,16 @@ void Dispatcher::register_all() {
         std::make_unique<FetchLatestMessagesCommand>();
     map_proto_[sercom::protocol::Envelope_Type_MESSAGE_FETCH_BEFORE] =
         std::make_unique<FetchMessagesBeforeCommand>();
+    map_proto_[sercom::protocol::Envelope_Type_HUB_CREATE] = std::make_unique<CreateHubCommand>();
+    map_proto_[sercom::protocol::Envelope_Type_HUB_JOIN] =
+        std::make_unique<JoinHubByInviteCommand>();
+    map_proto_[sercom::protocol::Envelope_Type_HUB_CREATE_JOIN_CODE] =
+        std::make_unique<GetHubInviteCommand>();
+    map_proto_[sercom::protocol::Envelope_Type_HUB_LEAVE] = std::make_unique<LeaveHubCommand>();
+    map_proto_[sercom::protocol::Envelope_Type_HUB_REMOVE] =
+        std::make_unique<DeleteHubCommand>();
+    map_proto_[sercom::protocol::Envelope_Type_HUB_RENAME] =
+        std::make_unique<RenameHubCommand>();
     // register_cmd("join_channel", std::make_unique<JoinChannelCommand>());
     // register_cmd("send_message", std::make_unique<SendMessageCommand>());
     // register_cmd("create_channel", std::make_unique<CreateChannelCommand>());
