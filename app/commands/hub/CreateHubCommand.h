@@ -7,10 +7,8 @@ namespace app {
 
 class CreateHubCommand : public ICommand {
    public:
-    CommandResult execute(CommandContext& ctx, const CommandInput cmd) override;
-
-   private:
-    static std::string sanitize_name(std::string name);
+    std::vector<net::outbound::OutgoingMessage> execute(CommandContext& ctx,
+                                                        const queue::Event& evt) override;
 };
 
 }  // namespace app

@@ -7,7 +7,8 @@ namespace app {
 
 class RenameHubCommand : public ICommand {
    public:
-    CommandResult execute(CommandContext& ctx, const CommandInput cmd) override;
+    std::vector<net::outbound::OutgoingMessage> execute(CommandContext& ctx,
+                                                        const queue::Event& evt) override;
 
    private:
     static std::string sanitize(std::string name);

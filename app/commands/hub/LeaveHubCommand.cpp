@@ -1,97 +1,130 @@
 #include "app/commands/hub/LeaveHubCommand.h"
 
-#include "app/commands/CommandJson.h"
+#include "app/commands/utils.h"
 #include "app/dispatcher/CommandContext.h"
 #include "app/managers/subscription/Topic.h"
 #include "domains/Hub.h"
+#include "proto/command/hub.pb.h"
+#include "proto/envelope.pb.h"
+#include "proto/event/error.pb.h"
+#include "proto/event/hub.pb.h"
 
-#include <nlohmann/json.hpp>
-#include <string>
 #include <vector>
-
-using nlohmann::json;
 
 namespace app {
 
-CommandResult LeaveHubCommand::execute(CommandContext& ctx, const CommandInput cmd) {
-    const auto* input = std::get_if<JsonInput>(&cmd);
-    if (!input) {
-        return std::unexpected(CommandError{1, "leave_hub expects JSON input"});
+std::vector<net::outbound::OutgoingMessage> LeaveHubCommand::execute(CommandContext& ctx,
+                                                                     const queue::Event& evt) {
+    const auto* event = std::get_if<queue::MessageEvent>(&evt);
+    if (!event) {
+        return {};
     }
 
-    auto user_exp = ctx.session_manager.sessionOfConnection(input->conn);
+    const auto& env = event->payload.env;
+    if (env.type() != sercom::protocol::Envelope::HUB_LEAVE) {
+        return {};
+    }
+
+    sercom::protocol::command::LeaveHub cmd;
+    if (!cmd.ParseFromString(env.payload())) {
+        return {make_command_error(event->conn_id, env.type(),
+                                   sercom::protocol::event::CommandErrorCode_INVALID_FORMAT,
+                                   "Invalid HUB_LEAVE payload")};
+    }
+
+    auto user_exp = ctx.session_manager.sessionOfConnection(event->conn_id);
     if (!user_exp.has_value()) {
-        return std::unexpected(CommandError{2, "Authenticate first"});
+        return {make_command_error(event->conn_id, env.type(),
+                                   sercom::protocol::event::CommandErrorCode_UNAUTHORIZED,
+                                   "Authenticate first")};
     }
     const UserId user_id = user_exp.value();
 
-    auto hub_raw = commands::read_uint64(input->body, "hub_id");
-    if (!hub_raw.has_value()) {
-        return std::unexpected(CommandError{3, "hub_id is required"});
-    }
-
-    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{hub_raw.value()});
+    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd.hub_id()});
     if (!hub_id_opt.has_value()) {
-        return std::unexpected(CommandError{4, "Hub not found"});
+        return {make_command_error(event->conn_id, env.type(),
+                                   sercom::protocol::event::CommandErrorCode_NOT_FOUND,
+                                   "Hub not found")};
     }
     const HubId hub_id = hub_id_opt.value();
 
     auto role = ctx.hub_service.getMembershipRole(hub_id, user_id);
     if (!role.has_value()) {
-        return std::unexpected(CommandError{5, "Join the hub before leaving it"});
+        return {make_command_error(event->conn_id, env.type(),
+                                   sercom::protocol::event::CommandErrorCode_FORBIDDEN,
+                                   "Join the hub before leaving it")};
     }
     if (*role == Role::OWNER) {
-        return std::unexpected(CommandError{6, "Owners must transfer ownership before leaving"});
+        return {make_command_error(event->conn_id, env.type(),
+                                   sercom::protocol::event::CommandErrorCode_FORBIDDEN,
+                                   "Owners must transfer ownership before leaving")};
     }
 
-    // Remove membership
-    if (!ctx.hub_service.isHubMember(hub_id, user_id)) {
-        return std::unexpected(CommandError{7, "Join the hub before leaving it"});
+    try {
+        ctx.hub_service.removeMember(hub_id, user_id);
+    } catch (const std::exception& ex) {
+        return {make_command_error(event->conn_id, env.type(),
+                                   sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
+                                   ex.what())};
+    } catch (...) {
+        return {make_command_error(event->conn_id, env.type(),
+                                   sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
+                                   "Failed to leave hub")};
     }
-    ctx.hub_service.removeMember(hub_id, user_id);
 
-    // Unsubscribe from hub + channels
-    ctx.subscription_manager.unsubscribe(user_id, Topic::HubTopic(hub_id));
     const auto channels = ctx.channel_service.getHubChannels(hub_id);
+    ctx.subscription_manager.unsubscribe(user_id, Topic::HubTopic(hub_id));
     for (const auto& ch : channels) {
         ctx.subscription_manager.unsubscribe(user_id, Topic::ChannelTopic(hub_id, ch.id));
     }
 
-    const auto public_hub_id = ctx.ids.to_public(hub_id);
-    const auto public_user_id = ctx.ids.to_public(user_id);
-    json payload = {{"type", "hub_left"}, {"hub_id", public_hub_id.value}};
+    const auto public_hub_id = ctx.ids.to_public(hub_id).value;
+    const auto public_user_id = ctx.ids.to_public(user_id).value;
 
-    CommandSuccess res;
-    // Ack requester
-    res.intents.push_back(Unicast{.conn = input->conn, .payload = payload});
-
-    // Notify hub members that this user left (remove from roster)
-    auto hub_subs = ctx.subscription_manager.getSubscribers(Topic::HubTopic(hub_id));
-    if (hub_subs.has_value() && !hub_subs->empty()) {
-        std::vector<GlobalConnId> conns;
-        conns.reserve(hub_subs->size());
-        for (const auto& uid : hub_subs.value()) {
-            if (uid == user_id) continue;
-            auto c = ctx.session_manager.getMainConnection(uid);
-            if (c.has_value()) conns.push_back(c.value());
-        }
-        if (!conns.empty()) {
-            json offline = {{"type", "member_left"},
-                            {"hub_id", public_hub_id.value},
-                            {"user_id", public_user_id.value}};
-            res.intents.push_back(Fanout{.conns = conns, .payload = offline});
-
-            // Backward/compat: also emit member_offline so clients that only handle presence still
-            // update
-            json offline_presence = {{"type", "member_offline"},
-                                     {"hub_id", public_hub_id.value},
-                                     {"user_id", public_user_id.value}};
-            res.intents.push_back(
-                Fanout{.conns = std::move(conns), .payload = std::move(offline_presence)});
+    std::vector<GlobalConnId> conns;
+    auto subs = ctx.subscription_manager.getSubscribers(Topic::HubTopic(hub_id));
+    if (subs.has_value()) {
+        conns.reserve(subs->size() + 1);
+        for (const auto& uid : subs.value()) {
+            auto conn = ctx.session_manager.getMainConnection(uid);
+            if (conn.has_value()) conns.push_back(conn.value());
         }
     }
 
-    return res;
+    auto self_conn = ctx.session_manager.getMainConnection(user_id);
+    if (self_conn.has_value()) {
+        bool exists = false;
+        for (const auto& existing : conns) {
+            if (existing == self_conn.value()) {
+                exists = true;
+                break;
+            }
+        }
+        if (!exists) {
+            conns.push_back(self_conn.value());
+        }
+    }
+
+    if (conns.empty()) {
+        return {};
+    }
+
+    sercom::protocol::event::HubMemberLeft left;
+    left.set_hub_id(public_hub_id);
+    left.set_user_id(public_user_id);
+
+    sercom::protocol::Envelope out_env;
+    out_env.set_version(1);
+    out_env.set_type(sercom::protocol::Envelope::HUB_MEMBER_LEFT);
+    left.SerializeToString(out_env.mutable_payload());
+
+    std::string bytes;
+    out_env.SerializeToString(&bytes);
+
+    return {net::outbound::OutgoingMessage{
+        .target = net::outbound::Target::many(std::move(conns)),
+        .action = net::outbound::SendPayload{
+            .payload = net::outbound::Payload{.data = std::move(bytes), .is_binary = true}}}};
 }
 
 }  // namespace app

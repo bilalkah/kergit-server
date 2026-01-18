@@ -22,6 +22,7 @@ proto_library(
     srcs = ["presence.proto"],
     deps = [
         "//proto/domain:hub_proto",
+        ":hub_proto",
     ],
 )
 
@@ -57,4 +58,21 @@ cc_proto_library(
     name = "message_cc_proto",
     visibility = ["//visibility:public"],
     deps = [":message_proto"],
+)
+
+
+proto_library(
+    name = "hub_proto",
+    srcs = ["hub.proto"],
+    deps = [
+        "//proto/domain:channel_proto",
+        "//proto/domain:hub_proto",
+        "//proto/domain:user_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "hub_cc_proto",
+    visibility = ["//visibility:public"],
+    deps = [":hub_proto"],
 )

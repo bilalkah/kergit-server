@@ -101,6 +101,8 @@ std::vector<net::outbound::OutgoingMessage> BootstrapCommand::execute(CommandCon
             m->set_user_id(ctx.ids.to_public(member_id).value);
             m->set_is_online(online_set.contains(member_id));
             m->set_display_name(name.empty() ? "Member" : name);
+            const auto role = ctx.hub_service.getMembershipRole(hub.id, member_id);
+            m->set_role(converters::to_proto_hub_role(role.value_or(Role::USER)));
         }
 
         // --- presence fanout ---

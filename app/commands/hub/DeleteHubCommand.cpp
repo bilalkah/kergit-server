@@ -1,106 +1,119 @@
 #include "app/commands/hub/DeleteHubCommand.h"
 
-#include "app/commands/CommandJson.h"
+#include "app/commands/utils.h"
 #include "app/dispatcher/CommandContext.h"
 #include "app/managers/subscription/Topic.h"
 #include "domains/Channel.h"
 #include "domains/Hub.h"
+#include "proto/command/hub.pb.h"
+#include "proto/envelope.pb.h"
+#include "proto/event/error.pb.h"
+#include "proto/event/hub.pb.h"
 
-#include <nlohmann/json.hpp>
-#include <string>
 #include <vector>
-
-using nlohmann::json;
 
 namespace app {
 
-CommandResult DeleteHubCommand::execute(CommandContext& ctx, const CommandInput cmd) {
-    const auto* input = std::get_if<JsonInput>(&cmd);
-    if (!input) {
-        return std::unexpected(CommandError{1, "delete_hub expects JSON input"});
+std::vector<net::outbound::OutgoingMessage> DeleteHubCommand::execute(CommandContext& ctx,
+                                                                      const queue::Event& evt) {
+    const auto* event = std::get_if<queue::MessageEvent>(&evt);
+    if (!event) {
+        return {};
     }
 
-    auto user_exp = ctx.session_manager.sessionOfConnection(input->conn);
+    const auto& env = event->payload.env;
+    if (env.type() != sercom::protocol::Envelope::HUB_REMOVE) {
+        return {};
+    }
+
+    sercom::protocol::command::RemoveHub cmd;
+    if (!cmd.ParseFromString(env.payload())) {
+        return {make_command_error(event->conn_id, env.type(),
+                                   sercom::protocol::event::CommandErrorCode_INVALID_FORMAT,
+                                   "Invalid HUB_REMOVE payload")};
+    }
+
+    auto user_exp = ctx.session_manager.sessionOfConnection(event->conn_id);
     if (!user_exp.has_value()) {
-        return std::unexpected(CommandError{2, "Authenticate first"});
+        return {make_command_error(event->conn_id, env.type(),
+                                   sercom::protocol::event::CommandErrorCode_UNAUTHORIZED,
+                                   "Authenticate first")};
     }
     const UserId user_id = user_exp.value();
 
-    auto hub_raw = commands::read_uint64(input->body, "hub_id");
-    if (!hub_raw.has_value()) {
-        return std::unexpected(CommandError{3, "hub_id is required"});
-    }
-
-    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{hub_raw.value()});
+    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd.hub_id()});
     if (!hub_id_opt.has_value()) {
-        return std::unexpected(CommandError{4, "Hub not found"});
+        return {make_command_error(event->conn_id, env.type(),
+                                   sercom::protocol::event::CommandErrorCode_NOT_FOUND,
+                                   "Hub not found")};
     }
     const HubId hub_id = hub_id_opt.value();
 
     if (!ctx.hub_service.isHubMember(hub_id, user_id)) {
-        return std::unexpected(CommandError{5, "Join the hub before deleting it"});
+        return {make_command_error(event->conn_id, env.type(),
+                                   sercom::protocol::event::CommandErrorCode_FORBIDDEN,
+                                   "Join the hub before removing it")};
     }
 
     auto role = ctx.hub_service.getMembershipRole(hub_id, user_id);
     if (!role.has_value() || *role != Role::OWNER) {
-        return std::unexpected(CommandError{6, "Only owners can delete hubs"});
+        return {make_command_error(event->conn_id, env.type(),
+                                   sercom::protocol::event::CommandErrorCode_FORBIDDEN,
+                                   "Only owners can remove hubs")};
     }
 
     const auto channels = ctx.channel_service.getHubChannels(hub_id);
 
-    if (!ctx.hub_service.deleteHub(hub_id, user_id)) {
-        return std::unexpected(CommandError{7, "Unable to delete hub at this time"});
-    }
-
-    const auto public_hub_id = ctx.ids.to_public(hub_id);
-    json payload = {{"type", "hub_deleted"}, {"hub_id", public_hub_id.value}};
-
-    CommandSuccess res;
-
-    // Inform channel subscribers the hub (and channels) are gone
-    for (const auto& ch : channels) {
-        json channel_closed = {{"type", "channel_closed"},
-                               {"channel_id", ctx.ids.to_public(ch.id).value},
-                               {"reason", "hub_deleted"}};
-        auto channel_subs =
-            ctx.subscription_manager.getSubscribers(Topic::ChannelTopic(hub_id, ch.id));
-        if (channel_subs.has_value() && !channel_subs->empty()) {
-            std::vector<GlobalConnId> conns;
-            conns.reserve(channel_subs->size());
-            for (const auto& uid : channel_subs.value()) {
-                auto conn = ctx.session_manager.getMainConnection(uid);
-                if (conn.has_value()) conns.push_back(conn.value());
-            }
-            if (!conns.empty()) {
-                res.intents.push_back(Fanout{.conns = std::move(conns), .payload = channel_closed});
-            }
+    try {
+        if (!ctx.hub_service.deleteHub(hub_id, user_id)) {
+            return {make_command_error(event->conn_id, env.type(),
+                                       sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
+                                       "Unable to remove hub at this time")};
         }
+    } catch (const std::exception& ex) {
+        return {make_command_error(event->conn_id, env.type(),
+                                   sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
+                                   ex.what())};
+    } catch (...) {
+        return {make_command_error(event->conn_id, env.type(),
+                                   sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
+                                   "Unable to remove hub at this time")};
     }
 
-    // Broadcast hub deletion to hub subscribers
     auto subs = ctx.subscription_manager.getSubscribers(Topic::HubTopic(hub_id));
-    if (subs.has_value() && !subs->empty()) {
-        std::vector<GlobalConnId> conns;
+    std::vector<GlobalConnId> conns;
+    if (subs.has_value()) {
         conns.reserve(subs->size());
         for (const auto& uid : subs.value()) {
             auto conn = ctx.session_manager.getMainConnection(uid);
             if (conn.has_value()) conns.push_back(conn.value());
         }
-        if (!conns.empty()) {
-            res.intents.push_back(Fanout{.conns = std::move(conns), .payload = payload});
-        }
     }
 
-    // Ack requester
-    res.intents.push_back(Unicast{.conn = input->conn, .payload = std::move(payload)});
+    sercom::protocol::event::HubRemoved removed;
+    removed.set_hub_id(ctx.ids.to_public(hub_id).value);
 
-    // Unsubscribe owner from hub and its channels locally
-    ctx.subscription_manager.unsubscribe(user_id, Topic::HubTopic(hub_id));
+    sercom::protocol::Envelope out_env;
+    out_env.set_version(1);
+    out_env.set_type(sercom::protocol::Envelope::HUB_REMOVED);
+    removed.SerializeToString(out_env.mutable_payload());
+
+    std::string bytes;
+    out_env.SerializeToString(&bytes);
+
+    ctx.subscription_manager.removeAllForTopic(Topic::HubTopic(hub_id));
     for (const auto& ch : channels) {
-        ctx.subscription_manager.unsubscribe(user_id, Topic::ChannelTopic(hub_id, ch.id));
+        ctx.subscription_manager.removeAllForTopic(Topic::ChannelTopic(hub_id, ch.id));
     }
 
-    return res;
+    if (conns.empty()) {
+        return {};
+    }
+
+    return {net::outbound::OutgoingMessage{
+        .target = net::outbound::Target::many(std::move(conns)),
+        .action = net::outbound::SendPayload{
+            .payload = net::outbound::Payload{.data = std::move(bytes), .is_binary = true}}}};
 }
 
 }  // namespace app
