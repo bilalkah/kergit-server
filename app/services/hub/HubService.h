@@ -47,6 +47,7 @@ class HubService {
     HubRepository& repo_;
     ChannelRepository& channel_repo_;
     std::unique_ptr<IHubCache> cache_;
+    // HubSnapshot is whole-hub topology only; reads are read-only and writes invalidate snapshots.
     mutable std::shared_mutex snapshot_mutex_;
     std::unordered_map<HubId, HubSnapshot> snapshots_;
 };

@@ -92,8 +92,8 @@ std::vector<net::outbound::OutgoingMessage> JoinHubByInviteCommand::execute(
     }
     const HubId hub_id = hub_id_opt.value();
 
-    auto hub_opt = ctx.hub_service.getHub(hub_id);
-    if (!hub_opt.has_value()) {
+    const auto snapshot = ctx.hub_service.getOrBuildSnapshot(hub_id);
+    if (snapshot.name.empty()) {
         return {make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_NOT_FOUND,
                                    "Hub not found")};
@@ -150,7 +150,7 @@ std::vector<net::outbound::OutgoingMessage> JoinHubByInviteCommand::execute(
 
     auto* hub_state = bootstrap.add_hubs();
     hub_state->mutable_hub()->set_id(public_hub_id);
-    hub_state->mutable_hub()->set_name(hub_opt->name);
+    hub_state->mutable_hub()->set_name(snapshot.name);
 
     const auto channels = ctx.channel_service.getHubChannels(hub_id);
     for (const auto& channel : channels) {
