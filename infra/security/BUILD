@@ -42,6 +42,7 @@ cc_library(
     deps = [
         "//proto:envelope_cc_proto",
         "//proto/command:activity_cc_proto",
+        "//proto/command:channel_cc_proto",
         "//proto/command:hub_cc_proto",
         "//proto/command:message_cc_proto",
         "//proto/command:session_cc_proto",

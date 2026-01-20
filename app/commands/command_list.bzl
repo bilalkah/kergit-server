@@ -17,6 +17,8 @@ COMMAND_LIST = [
     "//app/commands/hub:rename_hub_command",
     "//app/commands/hub:update_hub_command",
     "//app/commands/user:update_user_command",
+    "//app/commands/channel:create_channel_command",
+    "//app/commands/channel:rename_channel_command",
     # "//app/commands/system:connection_command",
     # "//app/commands:join_channel_command",
     # "//app/commands:send_message_command",

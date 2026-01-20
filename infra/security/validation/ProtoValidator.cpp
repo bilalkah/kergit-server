@@ -70,6 +70,20 @@ std::expected<void, ValidationError> ProtoMessageValidator::validate_envelope(
             }
             return validate_create_hub(create_hub);
         }
+        case sercom::protocol::Envelope::CHANNEL_CREATE: {
+            sercom::protocol::command::CreateChannel create_channel;
+            if (!create_channel.ParseFromArray(env.payload().data(), env.payload().size())) {
+                return std::unexpected("Invalid CHANNEL_CREATE payload");
+            }
+            return validate_create_channel(create_channel);
+        }
+        case sercom::protocol::Envelope::CHANNEL_RENAME: {
+            sercom::protocol::command::RenameChannel rename_channel;
+            if (!rename_channel.ParseFromArray(env.payload().data(), env.payload().size())) {
+                return std::unexpected("Invalid CHANNEL_RENAME payload");
+            }
+            return validate_rename_channel(rename_channel);
+        }
         case sercom::protocol::Envelope::HUB_JOIN: {
             sercom::protocol::command::JoinHub join_hub;
             if (!join_hub.ParseFromArray(env.payload().data(), env.payload().size())) {
@@ -137,6 +151,8 @@ std::expected<void, ValidationError> ProtoMessageValidator::validate_envelope(
         case sercom::protocol::Envelope::HUB_RENAMED:
         case sercom::protocol::Envelope::HUB_AVATAR_CHANGED:
         case sercom::protocol::Envelope::USER_PROFILE_UPDATED:
+        case sercom::protocol::Envelope::CHANNEL_CREATED:
+        case sercom::protocol::Envelope::CHANNEL_RENAMED:
             return std::unexpected("Server-only message type");
 
         default:
@@ -264,6 +280,35 @@ std::expected<void, ValidationError> ProtoMessageValidator::validate_fetch_messa
 
 std::expected<void, ValidationError> ProtoMessageValidator::validate_create_hub(
     const sercom::protocol::command::CreateHub& msg) {
+    if (msg.name().empty()) {
+        return std::unexpected("name is empty");
+    }
+    return {};
+}
+
+// ---------- CHANNEL_CREATE validation ----------
+
+std::expected<void, ValidationError> ProtoMessageValidator::validate_create_channel(
+    const sercom::protocol::command::CreateChannel& msg) {
+    if (msg.hub_id() == 0) {
+        return std::unexpected("hub_id is empty");
+    }
+    if (msg.name().empty()) {
+        return std::unexpected("name is empty");
+    }
+    return {};
+}
+
+// ---------- CHANNEL_RENAME validation ----------
+
+std::expected<void, ValidationError> ProtoMessageValidator::validate_rename_channel(
+    const sercom::protocol::command::RenameChannel& msg) {
+    if (msg.hub_id() == 0) {
+        return std::unexpected("hub_id is empty");
+    }
+    if (msg.channel_id() == 0) {
+        return std::unexpected("channel_id is empty");
+    }
     if (msg.name().empty()) {
         return std::unexpected("name is empty");
     }
