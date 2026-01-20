@@ -28,6 +28,7 @@ std::optional<Hub> HubService::getHub(const HubId& hubId) {
     if (cached) {
         return cached.value();
     }
+    // HubSnapshot does not include owner_id; DB read is required for full Hub aggregate.
     auto hub = repo_.getHub(hubId);
     if (hub) {
         cache_->put(*hub);
@@ -35,7 +36,10 @@ std::optional<Hub> HubService::getHub(const HubId& hubId) {
     return hub;
 }
 
-std::vector<Hub> HubService::getUserHubs(const UserId& userId) { return repo_.getUserHubs(userId); }
+std::vector<Hub> HubService::getUserHubs(const UserId& userId) {
+    // Snapshot is per-hub; there's no in-memory user→hub index to query here.
+    return repo_.getUserHubs(userId);
+}
 
 std::vector<std::pair<UserId, std::string>> HubService::getHubMembers(const HubId& hubId) {
     auto snapshot = getOrBuildSnapshot(hubId);
