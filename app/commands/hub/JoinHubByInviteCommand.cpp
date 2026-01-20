@@ -120,6 +120,7 @@ std::vector<net::outbound::OutgoingMessage> JoinHubByInviteCommand::execute(
     const auto public_user_id = ctx.ids.to_public(user_id).value;
 
     if (already_member) {
+        auto user = ctx.user_service.getUser(user_id);
         sercom::protocol::event::HubAlreadyMember already;
         auto* member = already.mutable_self_member();
         member->set_hub_id(public_hub_id);
@@ -127,6 +128,9 @@ std::vector<net::outbound::OutgoingMessage> JoinHubByInviteCommand::execute(
         member->set_is_online(true);
         member->set_role(role_to_proto(ctx.hub_service.getMembershipRole(hub_id, user_id)));
         member->set_display_name(resolve_display_name(ctx, user_id, ""));
+        if (user) {
+            member->set_avatar_seed(user->avatar_seed);
+        }
 
         sercom::protocol::Envelope already_env;
         already_env.set_version(1);
@@ -147,10 +151,14 @@ std::vector<net::outbound::OutgoingMessage> JoinHubByInviteCommand::execute(
     auto* self = bootstrap.mutable_self();
     self->set_id(public_user_id);
     self->set_username(resolve_display_name(ctx, user_id, ""));
+    if (auto user = ctx.user_service.getUser(user_id)) {
+        self->set_avatar_seed(user->avatar_seed);
+    }
 
     auto* hub_state = bootstrap.add_hubs();
     hub_state->mutable_hub()->set_id(public_hub_id);
     hub_state->mutable_hub()->set_name(snapshot.name);
+    hub_state->mutable_hub()->set_avatar_seed(snapshot.avatar_seed);
 
     const auto channels = ctx.channel_service.getHubChannels(hub_id);
     for (const auto& channel : channels) {
@@ -161,13 +169,15 @@ std::vector<net::outbound::OutgoingMessage> JoinHubByInviteCommand::execute(
     }
 
     const auto members = ctx.hub_service.getHubMembers(hub_id);
-    for (const auto& [member_id, display] : members) {
+    for (const auto& member : members) {
+        const auto& member_id = member.user_id;
         auto* m = hub_state->add_members();
         m->set_hub_id(public_hub_id);
         m->set_user_id(ctx.ids.to_public(member_id).value);
         m->set_is_online(ctx.presence_manager.isUserOnline(member_id) || member_id == user_id);
         m->set_role(role_to_proto(ctx.hub_service.getMembershipRole(hub_id, member_id)));
-        m->set_display_name(resolve_display_name(ctx, member_id, display));
+        m->set_display_name(resolve_display_name(ctx, member_id, member.display_name));
+        m->set_avatar_seed(member.avatar_seed);
     }
 
     sercom::protocol::Envelope joined_env;
@@ -202,6 +212,9 @@ std::vector<net::outbound::OutgoingMessage> JoinHubByInviteCommand::execute(
                 member->set_is_online(true);
                 member->set_role(role_to_proto(ctx.hub_service.getMembershipRole(hub_id, user_id)));
                 member->set_display_name(resolve_display_name(ctx, user_id, ""));
+                if (auto user = ctx.user_service.getUser(user_id)) {
+                    member->set_avatar_seed(user->avatar_seed);
+                }
 
                 sercom::protocol::Envelope env_out;
                 env_out.set_version(1);

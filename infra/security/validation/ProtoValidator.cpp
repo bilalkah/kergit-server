@@ -105,6 +105,13 @@ std::expected<void, ValidationError> ProtoMessageValidator::validate_envelope(
             }
             return validate_rename_hub(rename_hub);
         }
+        case sercom::protocol::Envelope::HUB_UPDATE: {
+            sercom::protocol::command::UpdateHub update_hub;
+            if (!update_hub.ParseFromArray(env.payload().data(), env.payload().size())) {
+                return std::unexpected("Invalid HUB_UPDATE payload");
+            }
+            return validate_update_hub(update_hub);
+        }
 
         case sercom::protocol::Envelope::UNKNOWN:
             return std::unexpected("Unknown message type");
@@ -121,6 +128,7 @@ std::expected<void, ValidationError> ProtoMessageValidator::validate_envelope(
         case sercom::protocol::Envelope::HUB_REMOVED:
         case sercom::protocol::Envelope::HUB_JOIN_CODE_CREATED:
         case sercom::protocol::Envelope::HUB_RENAMED:
+        case sercom::protocol::Envelope::HUB_AVATAR_CHANGED:
             return std::unexpected("Server-only message type");
 
         default:
@@ -303,6 +311,40 @@ std::expected<void, ValidationError> ProtoMessageValidator::validate_rename_hub(
     }
     if (msg.name().empty()) {
         return std::unexpected("name is empty");
+    }
+    return {};
+}
+
+// ---------- HUB_UPDATE validation ----------
+
+std::expected<void, ValidationError> ProtoMessageValidator::validate_update_hub(
+    const sercom::protocol::command::UpdateHub& msg) {
+    if (msg.hub_id() == 0) {
+        return std::unexpected("hub_id is empty");
+    }
+    if (msg.changes().empty()) {
+        return std::unexpected("changes are empty");
+    }
+    bool has_name = false;
+    bool has_avatar = false;
+    for (const auto& change : msg.changes()) {
+        switch (change) {
+            case sercom::protocol::command::UpdateHub::NAME:
+                has_name = true;
+                break;
+            case sercom::protocol::command::UpdateHub::AVATAR:
+                has_avatar = true;
+                break;
+            case sercom::protocol::command::UpdateHub::CHANGE_UNSPECIFIED:
+            default:
+                return std::unexpected("invalid change");
+        }
+    }
+    if (has_name && msg.name().empty()) {
+        return std::unexpected("name is empty");
+    }
+    if (has_avatar && msg.avatar_seed().empty()) {
+        return std::unexpected("avatar_seed is empty");
     }
     return {};
 }

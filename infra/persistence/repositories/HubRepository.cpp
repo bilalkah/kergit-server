@@ -34,7 +34,7 @@ void HubRepository::removeMember(const HubId& hubId, const UserId& userUuid) {
 std::vector<Hub> HubRepository::getUserHubs(const UserId& userUuid) {
     return db_.read("HubRepository.getUserHubs", [&](pqxx::work& txn) {
         auto res = txn.exec(
-            "SELECT h.id::text, h.name, h.owner_id::text, m.role "
+            "SELECT h.id::text, h.name, h.owner_id::text, h.avatar_seed, m.role "
             "FROM public.hubs h "
             "JOIN public.hub_members m ON h.id = m.hub_id "
             "WHERE m.user_id = $1::uuid ORDER BY h.created_at DESC",
@@ -45,7 +45,8 @@ std::vector<Hub> HubRepository::getUserHubs(const UserId& userUuid) {
         for (const auto& row : res) {
             Hub hub(row[1].as<std::string>(), HubId{row[0].as<std::string>()},
                     UserId{row[2].as<std::string>()});
-            hub.setMemberRole(userUuid, role_from_string(row[3].as<std::string>()));
+            hub.avatar_seed = row[3].as<std::string>("");
+            hub.setMemberRole(userUuid, role_from_string(row[4].as<std::string>()));
             hubs.push_back(std::move(hub));
         }
         return hubs;
@@ -55,13 +56,14 @@ std::vector<Hub> HubRepository::getUserHubs(const UserId& userUuid) {
 std::optional<Hub> HubRepository::getHub(const HubId& hubId) {
     return db_.read("HubRepository.getHub", [&](pqxx::work& txn) -> std::optional<Hub> {
         auto res = txn.exec(
-            "SELECT h.id::text, h.name, h.owner_id::text "
+            "SELECT h.id::text, h.name, h.owner_id::text, h.avatar_seed "
             "FROM public.hubs h WHERE h.id = $1::uuid LIMIT 1",
             pqxx::params{hubId.value});
         if (res.empty()) return std::nullopt;
 
         Hub hub(res[0][1].as<std::string>(), HubId{res[0][0].as<std::string>()},
                 UserId{res[0][2].as<std::string>()});
+        hub.avatar_seed = res[0][3].as<std::string>("");
 
         auto members =
             txn.exec("SELECT user_id::text, role FROM public.hub_members WHERE hub_id = $1::uuid",
@@ -96,20 +98,23 @@ std::optional<Role> HubRepository::getMembershipRole(const HubId& hubId, const U
     });
 }
 
-std::vector<std::pair<UserId, std::string>> HubRepository::getHubMembers(const HubId& hubId) {
+std::vector<HubRepository::MemberSummary> HubRepository::getHubMembers(const HubId& hubId) {
     return db_.read("HubRepository.getHubMembers", [&](pqxx::work& txn) {
         auto res = txn.exec(
             "SELECT hm.user_id::text, COALESCE(u.raw_user_meta_data->>'username',"
             " u.raw_user_meta_data->>'preferred_username', u.raw_user_meta_data->>'full_name', '') "
-            "AS display "
+            "AS display, COALESCE(p.avatar_seed, '') AS avatar_seed "
             "FROM public.hub_members hm "
             "LEFT JOIN auth.users u ON u.id = hm.user_id "
+            "LEFT JOIN public.profiles p ON p.user_id = hm.user_id "
             "WHERE hm.hub_id = $1::uuid ORDER BY hm.joined_at ASC",
             pqxx::params{hubId.value});
-        std::vector<std::pair<UserId, std::string>> members;
+        std::vector<MemberSummary> members;
         members.reserve(res.size());
         for (const auto& row : res) {
-            members.emplace_back(UserId{row[0].as<std::string>()}, row[1].as<std::string>());
+            members.push_back(MemberSummary{UserId{row[0].as<std::string>()},
+                                            row[1].as<std::string>(),
+                                            row[2].as<std::string>("")});
         }
         return members;
     });
@@ -121,17 +126,19 @@ std::vector<HubRepository::MemberWithRole> HubRepository::getHubMembersWithRoles
         auto res = txn.exec(
             "SELECT hm.user_id::text, COALESCE(u.raw_user_meta_data->>'username',"
             " u.raw_user_meta_data->>'preferred_username', u.raw_user_meta_data->>'full_name', '') "
-            "AS display, hm.role "
+            "AS display, COALESCE(p.avatar_seed, '') AS avatar_seed, hm.role "
             "FROM public.hub_members hm "
             "LEFT JOIN auth.users u ON u.id = hm.user_id "
+            "LEFT JOIN public.profiles p ON p.user_id = hm.user_id "
             "WHERE hm.hub_id = $1::uuid ORDER BY hm.joined_at ASC",
             pqxx::params{hubId.value});
         std::vector<MemberWithRole> members;
         members.reserve(res.size());
         for (const auto& row : res) {
-            const auto role_str = row[2].as<std::string>("");
+            const auto role_str = row[3].as<std::string>("");
             members.push_back(MemberWithRole{UserId{row[0].as<std::string>()},
                                              row[1].as<std::string>(),
+                                             row[2].as<std::string>(""),
                                              role_from_string(role_str)});
         }
         return members;
@@ -141,7 +148,8 @@ std::vector<HubRepository::MemberWithRole> HubRepository::getHubMembersWithRoles
 std::optional<Hub> HubRepository::getHubWithMembers(const HubId& hubId) {
     return db_.read("HubRepository.getHubWithMembers", [&](pqxx::work& txn) -> std::optional<Hub> {
         auto res = txn.exec(
-            "SELECT h.id::text, h.name, h.owner_id::text, hm.user_id::text, hm.role "
+            "SELECT h.id::text, h.name, h.owner_id::text, h.avatar_seed, hm.user_id::text, "
+            "hm.role "
             "FROM public.hubs h "
             "LEFT JOIN public.hub_members hm ON hm.hub_id = h.id "
             "WHERE h.id = $1::uuid ORDER BY hm.joined_at ASC",
@@ -151,11 +159,12 @@ std::optional<Hub> HubRepository::getHubWithMembers(const HubId& hubId) {
         const auto& first = res[0];
         Hub hub(first[1].as<std::string>(), HubId{first[0].as<std::string>()},
                 UserId{first[2].as<std::string>()});
+        hub.avatar_seed = first[3].as<std::string>("");
 
         for (const auto& row : res) {
-            if (row[3].is_null()) continue;
-            hub.setMemberRole(UserId{row[3].as<std::string>()},
-                              role_from_string(row[4].as<std::string>("")));
+            if (row[4].is_null()) continue;
+            hub.setMemberRole(UserId{row[4].as<std::string>()},
+                              role_from_string(row[5].as<std::string>("")));
         }
         return hub;
     });
@@ -170,6 +179,15 @@ bool HubRepository::renameHub(const HubId& hubId, const std::string& name) {
     return db_.write("HubRepository.renameHub", [&](pqxx::work& txn) {
         auto res = txn.exec("UPDATE public.hubs SET name = $2 WHERE id = $1::uuid RETURNING id",
                             pqxx::params{hubId.value, name});
+        return !res.empty();
+    });
+}
+
+bool HubRepository::updateHubAvatarSeed(const HubId& hubId, const std::string& avatar_seed) {
+    return db_.write("HubRepository.updateHubAvatarSeed", [&](pqxx::work& txn) {
+        auto res = txn.exec(
+            "UPDATE public.hubs SET avatar_seed = $2 WHERE id = $1::uuid RETURNING id",
+            pqxx::params{hubId.value, avatar_seed});
         return !res.empty();
     });
 }

@@ -14,6 +14,7 @@ enum HubRole {
 message Hub {
     uint64 id = 1;
     string name = 2;
+    string avatar_seed = 3;
 }
 
 message HubMember {
@@ -22,6 +23,7 @@ message HubMember {
     bool is_online = 3;
     HubRole role = 4;
     string display_name = 5;
+    string avatar_seed = 6;
 }
 
 message HubState {

@@ -41,12 +41,13 @@ std::vector<Hub> HubService::getUserHubs(const UserId& userId) {
     return repo_.getUserHubs(userId);
 }
 
-std::vector<std::pair<UserId, std::string>> HubService::getHubMembers(const HubId& hubId) {
+std::vector<HubMemberSummary> HubService::getHubMembers(const HubId& hubId) {
     auto snapshot = getOrBuildSnapshot(hubId);
-    std::vector<std::pair<UserId, std::string>> members;
+    std::vector<HubMemberSummary> members;
     members.reserve(snapshot.members.size());
     for (const auto& member : snapshot.members) {
-        members.emplace_back(member.user_id, member.display_name);
+        members.push_back(
+            HubMemberSummary{member.user_id, member.display_name, member.avatar_seed});
     }
     return members;
 }
@@ -70,6 +71,15 @@ HubId HubService::createHub(const std::string& name, const UserId& owner) {
 }
 bool HubService::renameHub(const HubId& hubId, const std::string& name) {
     auto result = repo_.renameHub(hubId, name);
+    if (result) {
+        cache_->invalidate(hubId);
+        invalidateSnapshot(hubId);
+    }
+    return result;
+}
+
+bool HubService::updateHubAvatarSeed(const HubId& hubId, const std::string& avatar_seed) {
+    auto result = repo_.updateHubAvatarSeed(hubId, avatar_seed);
     if (result) {
         cache_->invalidate(hubId);
         invalidateSnapshot(hubId);
@@ -103,6 +113,7 @@ HubSnapshot HubService::buildSnapshot(const HubId& hubId) {
 
     if (auto hub = getHub(hubId)) {
         snapshot.name = hub->name;
+        snapshot.avatar_seed = hub->avatar_seed;
     }
 
     const auto channels = channel_repo_.getHubChannels(hubId);
@@ -115,7 +126,7 @@ HubSnapshot HubService::buildSnapshot(const HubId& hubId) {
     snapshot.members.reserve(members.size());
     for (const auto& member : members) {
         snapshot.members.push_back(
-            HubSnapshotMember{member.user_id, member.display_name, member.role});
+            HubSnapshotMember{member.user_id, member.display_name, member.avatar_seed, member.role});
     }
 
     {

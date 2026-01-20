@@ -21,8 +21,11 @@ std::optional<std::string> UserRepository::getUserDisplayName(const UserId& user
 std::optional<User> UserRepository::getUser(const UserId& userUuid) {
     return db_.read("UserRepository.getUser", [&](pqxx::work& txn) -> std::optional<User> {
         auto res = txn.exec(
-            "SELECT id, COALESCE(raw_user_meta_data::text, '{}') FROM auth.users WHERE id = "
-            "$1::uuid",
+            "SELECT u.id, COALESCE(u.raw_user_meta_data::text, '{}'), "
+            "COALESCE(p.avatar_seed, '') "
+            "FROM auth.users u "
+            "LEFT JOIN public.profiles p ON p.user_id = u.id "
+            "WHERE u.id = $1::uuid",
             pqxx::params{userUuid.value});
         if (res.empty()) return std::nullopt;
 
@@ -39,6 +42,7 @@ std::optional<User> UserRepository::getUser(const UserId& userUuid) {
         user.username = meta.value("username", std::string{});
         user.full_name = meta.value("full_name", std::string{});
         user.email = meta.value("email", std::string{});
+        user.avatar_seed = res[0][2].as<std::string>("");
 
         return user;
     });
