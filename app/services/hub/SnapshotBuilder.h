@@ -14,6 +14,7 @@ namespace app::services {
 
 class HubSnapshotBuilder {
    public:
+    // Deprecated: legacy JSON snapshot builder; use HubService HubSnapshot instead.
     HubSnapshotBuilder(ChannelService& channel_servise, HubService& hub_service,
                        PresenceService& presence, PublicIdService& ids);
 
