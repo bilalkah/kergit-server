@@ -10,6 +10,7 @@
 #include "app/commands/hub/JoinHubByInviteCommand.h"
 #include "app/commands/hub/LeaveHubCommand.h"
 #include "app/commands/hub/RenameHubCommand.h"
+#include "app/commands/hub/UpdateHubCommand.h"
 // #include "app/commands/member/UpdateMemberRoleCommand.h"
 #include "app/commands/activity/SelectActiveChannelCommand.h"
 #include "app/commands/activity/TypingCommand.h"
@@ -77,6 +78,8 @@ void Dispatcher::register_all() {
         std::make_unique<DeleteHubCommand>();
     map_proto_[sercom::protocol::Envelope_Type_HUB_RENAME] =
         std::make_unique<RenameHubCommand>();
+    map_proto_[sercom::protocol::Envelope_Type_HUB_UPDATE] =
+        std::make_unique<UpdateHubCommand>();
     // register_cmd("join_channel", std::make_unique<JoinChannelCommand>());
     // register_cmd("send_message", std::make_unique<SendMessageCommand>());
     // register_cmd("create_channel", std::make_unique<CreateChannelCommand>());

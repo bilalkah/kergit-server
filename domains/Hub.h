@@ -29,6 +29,7 @@ struct Hub {
     std::string name{""};
     HubId id{""};
     UserId owner{""};
+    std::string avatar_seed{};
 
     std::unordered_map<UserId, Role, UserIdHash, UserIdEq> members{};
 };

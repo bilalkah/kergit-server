@@ -37,12 +37,14 @@ nlohmann::json HubSnapshotBuilder::build_members(const HubId& hub_id) {
     }
 
     const auto members = hub_service_.getHubMembers(hub_id);
-    for (const auto& [user_id, stored_display] : members) {
-        std::string display = stored_display;
+    for (const auto& member : members) {
+        const auto& user_id = member.user_id;
+        std::string display = member.display_name;
 
         arr.push_back({{"user_id", ids_.to_public(user_id).value},
-                       {"display_name", stored_display},
-                       {"online", online.contains(user_id)}});
+                       {"display_name", display},
+                       {"online", online.contains(user_id)},
+                       {"avatar_seed", member.avatar_seed}});
     }
 
     return arr;

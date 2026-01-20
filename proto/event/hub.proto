@@ -62,6 +62,15 @@ message HubRenamed {
 }
 
 /*
+ * Hub avatar updated.
+ * Fanout to all members.
+ */
+message HubAvatarChanged {
+  uint64 hub_id = 1;
+  string avatar_seed = 2;
+}
+
+/*
  * Already member of hub.
  * Sent only to requester.
  */

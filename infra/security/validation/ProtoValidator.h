@@ -57,6 +57,8 @@ class ProtoMessageValidator {
         const sercom::protocol::command::RemoveHub& msg);
     std::expected<void, ValidationError> validate_rename_hub(
         const sercom::protocol::command::RenameHub& msg);
+    std::expected<void, ValidationError> validate_update_hub(
+        const sercom::protocol::command::UpdateHub& msg);
     std::expected<void, ValidationError> validate_ping(const sercom::protocol::system::Ping& msg);
 };
 

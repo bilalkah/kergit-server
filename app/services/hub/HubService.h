@@ -15,6 +15,12 @@
 
 namespace app::services {
 
+struct HubMemberSummary {
+    UserId user_id;
+    std::string display_name;
+    std::string avatar_seed;
+};
+
 class HubService {
    public:
     HubService(HubRepository& repo, ChannelRepository& channel_repo);
@@ -22,7 +28,7 @@ class HubService {
     // ---- Reads ----
     std::optional<Hub> getHub(const HubId& hubId);
     std::vector<Hub> getUserHubs(const UserId& userId);
-    std::vector<std::pair<UserId, std::string>> getHubMembers(const HubId& hubId);
+    std::vector<HubMemberSummary> getHubMembers(const HubId& hubId);
 
     bool isHubMember(const HubId& hubId, const UserId& userId);
     std::optional<Role> getMembershipRole(const HubId& hubId, const UserId& userId);
@@ -30,6 +36,7 @@ class HubService {
     // ---- Writes ----
     HubId createHub(const std::string& name, const UserId& owner);
     bool renameHub(const HubId& hubId, const std::string& name);
+    bool updateHubAvatarSeed(const HubId& hubId, const std::string& avatar_seed);
     bool deleteHub(const HubId& hubId, const UserId& owner);
 
     void addMember(const HubId& hubId, const UserId& userId, Role role);

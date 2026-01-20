@@ -112,6 +112,9 @@ std::vector<net::outbound::OutgoingMessage> CreateHubCommand::execute(CommandCon
     sercom::protocol::event::HubCreated created;
     created.mutable_hub()->set_id(public_hub_id);
     created.mutable_hub()->set_name(name);
+    if (auto hub = ctx.hub_service.getHub(hub_id)) {
+        created.mutable_hub()->set_avatar_seed(hub->avatar_seed);
+    }
 
     auto* self = created.mutable_self_member();
     self->set_hub_id(public_hub_id);
@@ -119,6 +122,9 @@ std::vector<net::outbound::OutgoingMessage> CreateHubCommand::execute(CommandCon
     self->set_is_online(true);
     self->set_role(role_to_proto(ctx.hub_service.getMembershipRole(hub_id, user_id)));
     self->set_display_name(resolve_display_name(ctx, user_id, ""));
+    if (auto user = ctx.user_service.getUser(user_id)) {
+        self->set_avatar_seed(user->avatar_seed);
+    }
 
     const auto channels = ctx.channel_service.getHubChannels(hub_id);
     if (!channels.empty()) {
