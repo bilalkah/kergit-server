@@ -22,6 +22,8 @@ struct DataBaseConfig {
     std::string db_name;
     bool ssl{false};
     std::size_t pool_size{1};
+    std::size_t read_pool_size{0};
+    std::size_t write_pool_size{0};
     std::string to_connection_string() const {
         if (!url.empty()) return url;
 
@@ -73,6 +75,12 @@ class ServerConfigFiller {
         cfg.database.ssl = utils::EnvLoader::get_env("DB_SSL", "false") == "true";
         cfg.database.pool_size =
             static_cast<std::size_t>(std::stoul(utils::EnvLoader::get_env("DB_POOL_SIZE", "3")));
+        cfg.database.read_pool_size = static_cast<std::size_t>(std::stoul(
+            utils::EnvLoader::get_env("DB_READ_POOL_SIZE",
+                                      std::to_string(cfg.database.pool_size))));
+        cfg.database.write_pool_size = static_cast<std::size_t>(std::stoul(
+            utils::EnvLoader::get_env("DB_WRITE_POOL_SIZE",
+                                      std::to_string(cfg.database.pool_size))));
     }
 };
 

@@ -22,6 +22,7 @@ cc_library(
         ":channel_cache",
         "//domains:channel_domain",
         "//domains:message_domain",
+        "//app/services/hub:hub_service",
         "//infra/persistence:persistence_gateway_lib",
     ],
 )

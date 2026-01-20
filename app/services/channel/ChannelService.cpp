@@ -1,17 +1,62 @@
 #include "app/services/channel/ChannelService.h"
 
+#include "app/services/hub/HubService.h"
+#include "utils/Logger.h"
+
 namespace app::services {
 
 ChannelService::ChannelService(ChannelRepository& repo)
     : repo_(repo), cache_(std::make_unique<ChannelCache>()) {}
 
+void ChannelService::setHubService(HubService& hub_service) { hub_service_ = &hub_service; }
+
 std::optional<Channel> ChannelService::getChannel(const ChannelId& channelId) {
-    // Try to get from cache first
+    if (hub_service_) {
+        if (auto hit = hub_service_->tryGetSnapshotChannel(channelId)) {
+            const auto& [hub_id, ch] = *hit;
+            utils::log_line(utils::LogLevel::INFO,
+                            "channel_snapshot hit channel_id=" + channelId.value +
+                                " hub_id=" + hub_id.value);
+            Channel channel{ch.name, ch.id, hub_id, ch.type};
+            cache_->put(channel);
+            return channel;
+        }
+
+        utils::log_line(utils::LogLevel::INFO,
+                        "channel_snapshot miss channel_id=" + channelId.value + " build=true");
+
+        auto cachedChannel = cache_->get(channelId);
+        if (cachedChannel) {
+            const auto snapshot = hub_service_->getOrBuildSnapshot(cachedChannel->hub_id);
+            for (const auto& ch : snapshot.channels) {
+                if (ch.id == channelId) {
+                    Channel channel{ch.name, ch.id, snapshot.id, ch.type};
+                    cache_->put(channel);
+                    return channel;
+                }
+            }
+            return std::nullopt;
+        }
+
+        auto channelOpt = repo_.getChannel(channelId);
+        if (!channelOpt) return std::nullopt;
+        const auto snapshot = hub_service_->getOrBuildSnapshot(channelOpt->hub_id);
+        for (const auto& ch : snapshot.channels) {
+            if (ch.id == channelId) {
+                Channel channel{ch.name, ch.id, snapshot.id, ch.type};
+                cache_->put(channel);
+                return channel;
+            }
+        }
+        return std::nullopt;
+    }
+
+    utils::log_line(utils::LogLevel::INFO,
+                    "channel_snapshot fallback channel_id=" + channelId.value + " source=db");
     auto cachedChannel = cache_->get(channelId);
     if (cachedChannel) {
         return cachedChannel.value();
     }
-    // Fallback to repository
     auto channelOpt = repo_.getChannel(channelId);
     if (channelOpt) {
         cache_->put(*channelOpt);
@@ -20,18 +65,49 @@ std::optional<Channel> ChannelService::getChannel(const ChannelId& channelId) {
 }
 
 std::vector<Channel> ChannelService::getHubChannels(const HubId& hubId) {
+    if (hub_service_) {
+        if (auto cached = hub_service_->tryGetSnapshot(hubId)) {
+            utils::log_line(utils::LogLevel::INFO,
+                            "channel_snapshot hit hub_id=" + hubId.value);
+            std::vector<Channel> chans;
+            chans.reserve(cached->channels.size());
+            for (const auto& ch : cached->channels) {
+                chans.emplace_back(ch.name, ch.id, hubId, ch.type);
+            }
+            return chans;
+        }
+        utils::log_line(utils::LogLevel::INFO,
+                        "channel_snapshot miss hub_id=" + hubId.value + " build=true");
+        const auto snapshot = hub_service_->getOrBuildSnapshot(hubId);
+        std::vector<Channel> chans;
+        chans.reserve(snapshot.channels.size());
+        for (const auto& ch : snapshot.channels) {
+            chans.emplace_back(ch.name, ch.id, hubId, ch.type);
+        }
+        return chans;
+    }
+
+    utils::log_line(utils::LogLevel::INFO,
+                    "channel_snapshot fallback hub_id=" + hubId.value + " source=db");
     return repo_.getHubChannels(hubId);
 }
 
 ChannelId ChannelService::createChannel(const HubId& hubId, const std::string& name,
                                         const std::string& type) {
-    return repo_.createChannel(hubId, name, type);
+    auto id = repo_.createChannel(hubId, name, type);
+    if (hub_service_) {
+        hub_service_->invalidateSnapshot(hubId);
+    }
+    return id;
 }
 
 bool ChannelService::renameChannel(const ChannelId& channelId, const std::string& newName) {
     auto success = repo_.renameChannel(channelId, newName);
     if (success) {
         cache_->invalidate(channelId);
+        if (hub_service_) {
+            hub_service_->invalidateSnapshotsForChannel(channelId);
+        }
     }
     return success;
 }
@@ -39,6 +115,9 @@ bool ChannelService::deleteChannel(const ChannelId& channelId, const HubId& hubI
     auto success = repo_.deleteChannel(channelId, hubId);
     if (success) {
         cache_->invalidate(channelId);
+        if (hub_service_) {
+            hub_service_->invalidateSnapshot(hubId);
+        }
     }
     return success;
 }

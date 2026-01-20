@@ -83,26 +83,24 @@ std::vector<net::outbound::OutgoingMessage> BootstrapCommand::execute(CommandCon
         hub_state->mutable_hub()->set_id(public_hub_id.value);
         hub_state->mutable_hub()->set_name(hub.name);
 
-        const auto channels = ctx.channel_service.getHubChannels(hub.id);
-        for (const auto& channel : channels) {
+        const auto snapshot = ctx.hub_service.getOrBuildSnapshot(hub.id);
+        for (const auto& channel : snapshot.channels) {
             auto* ch = hub_state->add_channels();
             ch->set_id(ctx.ids.to_public(channel.id).value);
             ch->set_name(channel.name);
             ch->set_type(converters::to_proto_channel_type(channel.type));
         }
 
-        const auto members = ctx.hub_service.getHubMembers(hub.id);
         const auto online = ctx.presence_manager.onlineUsersInHub(hub.id);
         std::unordered_set<UserId> online_set(online.begin(), online.end());
 
-        for (const auto& [member_id, name] : members) {
+        for (const auto& member : snapshot.members) {
             auto* m = hub_state->add_members();
             m->set_hub_id(public_hub_id.value);
-            m->set_user_id(ctx.ids.to_public(member_id).value);
-            m->set_is_online(online_set.contains(member_id));
-            m->set_display_name(name.empty() ? "Member" : name);
-            const auto role = ctx.hub_service.getMembershipRole(hub.id, member_id);
-            m->set_role(converters::to_proto_hub_role(role.value_or(Role::USER)));
+            m->set_user_id(ctx.ids.to_public(member.user_id).value);
+            m->set_is_online(online_set.contains(member.user_id));
+            m->set_display_name(member.display_name.empty() ? "Member" : member.display_name);
+            m->set_role(converters::to_proto_hub_role(member.role));
         }
 
         // --- presence fanout ---

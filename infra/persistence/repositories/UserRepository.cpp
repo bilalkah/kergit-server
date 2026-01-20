@@ -4,7 +4,8 @@
 #include <stdexcept>
 
 std::optional<std::string> UserRepository::getUserDisplayName(const UserId& userUuid) {
-    return mux_.run(Repository::User, [&](pqxx::work& txn) -> std::optional<std::string> {
+    return db_.read("UserRepository.getUserDisplayName",
+                    [&](pqxx::work& txn) -> std::optional<std::string> {
         auto res = txn.exec(
             "SELECT COALESCE(raw_user_meta_data->>'username', "
             "raw_user_meta_data->>'preferred_username',"
@@ -18,7 +19,7 @@ std::optional<std::string> UserRepository::getUserDisplayName(const UserId& user
 }
 
 std::optional<User> UserRepository::getUser(const UserId& userUuid) {
-    return mux_.run(Repository::User, [&](pqxx::work& txn) -> std::optional<User> {
+    return db_.read("UserRepository.getUser", [&](pqxx::work& txn) -> std::optional<User> {
         auto res = txn.exec(
             "SELECT id, COALESCE(raw_user_meta_data::text, '{}') FROM auth.users WHERE id = "
             "$1::uuid",
@@ -48,7 +49,7 @@ std::pair<std::string, std::string> UserRepository::updateUserProfile(
     const std::optional<std::string>& full_name) {
     if (!username.has_value() && !full_name.has_value()) return {std::string{}, std::string{}};
 
-    return mux_.run(Repository::User, [&](pqxx::work& txn) {
+    return db_.write("UserRepository.updateUserProfile", [&](pqxx::work& txn) {
         auto res = txn.exec(
             "SELECT COALESCE(raw_user_meta_data::text, '{}') FROM auth.users WHERE id = $1::uuid "
             "FOR UPDATE",
