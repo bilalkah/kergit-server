@@ -15,13 +15,18 @@ cc_library(
 cc_library(
     name = "hub_service",
     srcs = ["HubService.cpp"],
-    hdrs = ["HubService.h"],
+    hdrs = [
+        "HubService.h",
+        "HubSnapshot.h",
+    ],
     copts = ["-std=gnu++23"],
     visibility = ["//app:__subpackages__"],
     deps = [
         ":hub_cache",
+        "//domains:channel_domain",
         "//domains:hub_domain",
         "//infra/persistence:persistence_gateway_lib",
+        "//utils:loggable",
     ],
 )
 

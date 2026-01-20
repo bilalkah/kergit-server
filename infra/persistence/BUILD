@@ -3,6 +3,7 @@ load("@rules_cc//cc:defs.bzl", "cc_library")
 cc_library(
     name = "persistence_gateway_lib",
     srcs = [
+        "DatabaseExecutor.cpp",
         "ConnectionPool.cpp",
         "PersistenceGateway.cpp",
         "repositories/ChannelRepository.cpp",
@@ -10,6 +11,7 @@ cc_library(
         "repositories/UserRepository.cpp",
     ],
     hdrs = [
+        "DatabaseExecutor.h",
         "ConnectionPool.h",
         "PersistenceGateway.h",
         "RepositoryMux.h",
@@ -25,6 +27,7 @@ cc_library(
         "//domains:message_domain",
         "//domains:user_domain",
         "//domains/ids:domain_ids",
+        "//utils:loggable",
         "@libpqxx",
         "@nlohmann_json",
     ],

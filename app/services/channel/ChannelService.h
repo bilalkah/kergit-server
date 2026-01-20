@@ -9,9 +9,12 @@
 
 namespace app::services {
 
+class HubService;
+
 class ChannelService {
    public:
     explicit ChannelService(ChannelRepository& repo);
+    void setHubService(HubService& hub_service);
 
     // ---- Channel reads ----
     std::optional<Channel> getChannel(const ChannelId& channelId);
@@ -34,6 +37,7 @@ class ChannelService {
    private:
     ChannelRepository& repo_;
     std::unique_ptr<IChannelCache> cache_;
+    HubService* hub_service_{nullptr};
 };
 
 }  // namespace app::services
