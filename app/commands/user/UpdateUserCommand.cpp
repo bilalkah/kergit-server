@@ -1,0 +1,171 @@
+#include "app/commands/user/UpdateUserCommand.h"
+
+#include "app/commands/utils.h"
+#include "app/dispatcher/CommandContext.h"
+#include "app/managers/subscription/Topic.h"
+#include "proto/command/user.pb.h"
+#include "proto/envelope.pb.h"
+#include "proto/event/error.pb.h"
+#include "proto/event/user.pb.h"
+
+#include <algorithm>
+#include <cctype>
+#include <string>
+#include <unordered_set>
+#include <vector>
+
+namespace app {
+
+std::string UpdateUserCommand::sanitize(std::string value) {
+    auto trim = [](std::string& s) {
+        s.erase(s.begin(), std::find_if(s.begin(), s.end(),
+                                        [](unsigned char ch) { return !std::isspace(ch); }));
+        s.erase(
+            std::find_if(s.rbegin(), s.rend(), [](unsigned char ch) { return !std::isspace(ch); })
+                .base(),
+            s.end());
+    };
+    trim(value);
+    return value;
+}
+
+std::vector<net::outbound::OutgoingMessage> UpdateUserCommand::execute(CommandContext& ctx,
+                                                                       const queue::Event& evt) {
+    const auto* event = std::get_if<queue::MessageEvent>(&evt);
+    if (!event) {
+        return {};
+    }
+
+    const auto& env = event->payload.env;
+    if (env.type() != sercom::protocol::Envelope::USER_UPDATE) {
+        return {};
+    }
+
+    sercom::protocol::command::UpdateUser cmd;
+    if (!cmd.ParseFromString(env.payload())) {
+        return {make_command_error(event->conn_id, env.type(),
+                                   sercom::protocol::event::CommandErrorCode_INVALID_FORMAT,
+                                   "Invalid USER_UPDATE payload")};
+    }
+
+    auto user_exp = ctx.session_manager.sessionOfConnection(event->conn_id);
+    if (!user_exp.has_value()) {
+        return {make_command_error(event->conn_id, env.type(),
+                                   sercom::protocol::event::CommandErrorCode_UNAUTHORIZED,
+                                   "Authenticate first")};
+    }
+    const UserId user_id = user_exp.value();
+
+    bool change_username = false;
+    bool change_avatar = false;
+    for (int i = 0; i < cmd.changes_size(); ++i) {
+        switch (cmd.changes(i)) {
+            case sercom::protocol::command::UpdateUser::USERNAME:
+                change_username = true;
+                break;
+            case sercom::protocol::command::UpdateUser::AVATAR:
+                change_avatar = true;
+                break;
+            case sercom::protocol::command::UpdateUser::CHANGE_UNSPECIFIED:
+            default:
+                return {make_command_error(event->conn_id, env.type(),
+                                           sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
+                                           "Invalid change type")};
+        }
+    }
+
+    if (!change_username && !change_avatar) {
+        return {make_command_error(event->conn_id, env.type(),
+                                   sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
+                                   "No changes requested")};
+    }
+
+    std::optional<std::string> username_opt;
+    if (change_username) {
+        auto username = sanitize(cmd.username());
+        if (username.size() > 48) username.resize(48);
+        if (username.empty()) {
+            return {make_command_error(event->conn_id, env.type(),
+                                       sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
+                                       "Username is required")};
+        }
+        username_opt = std::move(username);
+    }
+
+    std::optional<std::string> avatar_seed_opt;
+    if (change_avatar) {
+        auto seed = sanitize(cmd.avatar_seed());
+        if (seed.size() > 64) seed.resize(64);
+        if (seed.empty()) {
+            return {make_command_error(event->conn_id, env.type(),
+                                       sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
+                                       "Avatar seed is required")};
+        }
+        avatar_seed_opt = std::move(seed);
+    }
+
+    try {
+        ctx.user_service.updateSettings(user_id, username_opt, avatar_seed_opt);
+    } catch (const std::exception& ex) {
+        return {make_command_error(event->conn_id, env.type(),
+                                   sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
+                                   ex.what())};
+    } catch (...) {
+        return {make_command_error(event->conn_id, env.type(),
+                                   sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
+                                   "Unable to update user settings")};
+    }
+
+    std::string final_username;
+    std::string final_avatar_seed;
+    if (auto user = ctx.user_service.getUser(user_id)) {
+        final_username = user->username;
+        final_avatar_seed = user->avatar_seed;
+    } else {
+        final_username = username_opt.value_or(std::string{});
+        final_avatar_seed = avatar_seed_opt.value_or(std::string{});
+    }
+
+    sercom::protocol::event::UserProfileUpdated updated;
+    updated.set_user_id(ctx.ids.to_public(user_id).value);
+    updated.set_username(final_username);
+    updated.set_avatar_seed(final_avatar_seed);
+
+    sercom::protocol::Envelope out_env;
+    out_env.set_version(1);
+    out_env.set_type(sercom::protocol::Envelope::USER_PROFILE_UPDATED);
+    updated.SerializeToString(out_env.mutable_payload());
+
+    std::string bytes;
+    out_env.SerializeToString(&bytes);
+
+    std::unordered_set<GlobalConnId> conn_set;
+    conn_set.insert(event->conn_id);
+
+    const auto hubs = ctx.hub_service.getUserHubs(user_id);
+    for (const auto& hub : hubs) {
+        auto subs = ctx.subscription_manager.getSubscribers(Topic::HubTopic(hub.id));
+        if (!subs.has_value()) continue;
+        for (const auto& uid : subs.value()) {
+            auto conn = ctx.session_manager.getMainConnection(uid);
+            if (conn.has_value()) conn_set.insert(conn.value());
+        }
+    }
+
+    if (conn_set.empty()) {
+        return {};
+    }
+
+    std::vector<GlobalConnId> conns;
+    conns.reserve(conn_set.size());
+    for (const auto& conn : conn_set) {
+        conns.push_back(conn);
+    }
+
+    return {net::outbound::OutgoingMessage{
+        .target = net::outbound::Target::many(std::move(conns)),
+        .action = net::outbound::SendPayload{
+            .payload = net::outbound::Payload{.data = std::move(bytes), .is_binary = true}}}};
+}
+
+}  // namespace app

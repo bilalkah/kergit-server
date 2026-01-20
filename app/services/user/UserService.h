@@ -24,6 +24,8 @@ class UserService {
     // Updates username / full_name and invalidates cache
     void updateProfile(const UserId& userId, const std::optional<std::string>& username,
                        const std::optional<std::string>& full_name);
+    void updateSettings(const UserId& userId, const std::optional<std::string>& username,
+                        const std::optional<std::string>& avatar_seed);
 
    private:
     UserRepository& repo_;

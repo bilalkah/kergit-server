@@ -1,6 +1,7 @@
 """Bazel extension for uWebSockets (http_archive)."""
+
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
-load("//third_party:versions.bzl", "UWEBSOCKETS_VERSION", "UWEBSOCKETS_SHA256")
+load("//third_party:versions.bzl", "UWEBSOCKETS_SHA256", "UWEBSOCKETS_VERSION")
 
 def _uwebsockets_impl(ctx):
     http_archive(
@@ -9,6 +10,8 @@ def _uwebsockets_impl(ctx):
         strip_prefix = "uWebSockets-{}".format(UWEBSOCKETS_VERSION),
         sha256 = "{}".format(UWEBSOCKETS_SHA256),
         build_file_content = r"""
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
 # === Feature toggles (match upstream build.c env flags) ===
 config_setting(name = "with_zlib",       define_values = {"WITH_ZLIB": "1"})
 config_setting(name = "with_boringssl",  define_values = {"WITH_BORINGSSL": "1"})

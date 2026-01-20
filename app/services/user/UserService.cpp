@@ -30,4 +30,10 @@ void UserService::updateProfile(const UserId& userId, const std::optional<std::s
     repo_.updateUserProfile(userId, username, full_name);
     cache_->invalidate(userId);
 }
+
+void UserService::updateSettings(const UserId& userId, const std::optional<std::string>& username,
+                                 const std::optional<std::string>& avatar_seed) {
+    repo_.updateUserSettings(userId, username, avatar_seed);
+    cache_->invalidate(userId);
+}
 }  // namespace app::services
