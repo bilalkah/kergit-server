@@ -19,12 +19,14 @@ struct HubSnapshotChannel {
 struct HubSnapshotMember {
     UserId user_id;
     std::string display_name;
+    std::string avatar_seed;
     Role role{Role::USER};
 };
 
 struct HubSnapshot {
     HubId id;
     std::string name;
+    std::string avatar_seed;
     std::vector<HubSnapshotChannel> channels;
     std::vector<HubSnapshotMember> members;
 };

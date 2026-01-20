@@ -112,3 +112,20 @@ cc_library(
         "//proto/event:hub_cc_proto",
     ],
 )
+
+cc_library(
+    name = "update_hub_command",
+    srcs = ["UpdateHubCommand.cpp"],
+    hdrs = ["UpdateHubCommand.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//app/commands:i_command",
+        "//app/dispatcher:command_context",
+        "//app/managers/subscription:topic",
+        "//domains:hub_domain",
+        "//proto:envelope_cc_proto",
+        "//proto/command:hub_cc_proto",
+        "//proto/event:error_cc_proto",
+        "//proto/event:hub_cc_proto",
+    ],
+)

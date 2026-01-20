@@ -24,6 +24,7 @@ struct User {
     std::string username{};
     std::string full_name{};
     std::string email{};
+    std::string avatar_seed{};
     UserPreferences prefs{};
 };
 

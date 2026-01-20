@@ -68,6 +68,7 @@ std::vector<net::outbound::OutgoingMessage> ConnectionCommand::execute(CommandCo
         const auto hub_channels = ctx.channel_service.getHubChannels(hub.id);
         hubs_meta.push_back({{"id", public_hub_id.value},
                              {"name", hub.name},
+                             {"avatar_seed", hub.avatar_seed},
                              {"role", role},
                              {"channels_count", hub_channels.size()}});
 
@@ -85,11 +86,12 @@ std::vector<net::outbound::OutgoingMessage> ConnectionCommand::execute(CommandCo
         const auto online_users = ctx.presence_manager.onlineUsersInHub(hub.id);
         std::unordered_set<UserId> online_set(online_users.begin(), online_users.end());
         const auto members = ctx.hub_service.getHubMembers(hub.id);
-        for (const auto& [member_id, stored_display] : members) {
+        for (const auto& member : members) {
+            const auto& member_id = member.user_id;
             const auto public_member = ctx.ids.to_public(member_id);
             const bool is_online = online_set.find(member_id) != online_set.end();
 
-            std::string name = stored_display;
+            std::string name = member.display_name;
             if (name.empty()) {
                 if (auto member_user = ctx.user_service.getUser(member_id)) {
                     if (!member_user->username.empty())
@@ -101,8 +103,10 @@ std::vector<net::outbound::OutgoingMessage> ConnectionCommand::execute(CommandCo
             if (name.empty() && member_id == user_id) name = display_name;
             if (name.empty()) name = "Member";
 
-            members_json.push_back(
-                {{"user_id", public_member.value}, {"display_name", name}, {"online", is_online}});
+            members_json.push_back({{"user_id", public_member.value},
+                                    {"display_name", name},
+                                    {"online", is_online},
+                                    {"avatar_seed", member.avatar_seed}});
         }
         members_by_hub[hub_key] = std::move(members_json);
     }

@@ -75,6 +75,7 @@ std::vector<net::outbound::OutgoingMessage> BootstrapCommand::execute(CommandCon
                                    : (!db_user->full_name.empty() ? db_user->full_name : "Member");
 
     self->set_username(display_name);
+    self->set_avatar_seed(db_user->avatar_seed);
 
     for (const auto& hub : hubs) {
         auto* hub_state = bootstrap.add_hubs();
@@ -82,6 +83,7 @@ std::vector<net::outbound::OutgoingMessage> BootstrapCommand::execute(CommandCon
 
         hub_state->mutable_hub()->set_id(public_hub_id.value);
         hub_state->mutable_hub()->set_name(hub.name);
+        hub_state->mutable_hub()->set_avatar_seed(hub.avatar_seed);
 
         const auto snapshot = ctx.hub_service.getOrBuildSnapshot(hub.id);
         for (const auto& channel : snapshot.channels) {
@@ -101,6 +103,7 @@ std::vector<net::outbound::OutgoingMessage> BootstrapCommand::execute(CommandCon
             m->set_is_online(online_set.contains(member.user_id));
             m->set_display_name(member.display_name.empty() ? "Member" : member.display_name);
             m->set_role(converters::to_proto_hub_role(member.role));
+            m->set_avatar_seed(member.avatar_seed);
         }
 
         // --- presence fanout ---
