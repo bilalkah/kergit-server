@@ -112,6 +112,13 @@ std::expected<void, ValidationError> ProtoMessageValidator::validate_envelope(
             }
             return validate_update_hub(update_hub);
         }
+        case sercom::protocol::Envelope::USER_UPDATE: {
+            sercom::protocol::command::UpdateUser update_user;
+            if (!update_user.ParseFromArray(env.payload().data(), env.payload().size())) {
+                return std::unexpected("Invalid USER_UPDATE payload");
+            }
+            return validate_update_user(update_user);
+        }
 
         case sercom::protocol::Envelope::UNKNOWN:
             return std::unexpected("Unknown message type");
@@ -129,6 +136,7 @@ std::expected<void, ValidationError> ProtoMessageValidator::validate_envelope(
         case sercom::protocol::Envelope::HUB_JOIN_CODE_CREATED:
         case sercom::protocol::Envelope::HUB_RENAMED:
         case sercom::protocol::Envelope::HUB_AVATAR_CHANGED:
+        case sercom::protocol::Envelope::USER_PROFILE_UPDATED:
             return std::unexpected("Server-only message type");
 
         default:
@@ -342,6 +350,39 @@ std::expected<void, ValidationError> ProtoMessageValidator::validate_update_hub(
     }
     if (has_name && msg.name().empty()) {
         return std::unexpected("name is empty");
+    }
+    if (has_avatar && msg.avatar_seed().empty()) {
+        return std::unexpected("avatar_seed is empty");
+    }
+    return {};
+}
+
+// ---------- USER_UPDATE validation ----------
+
+std::expected<void, ValidationError> ProtoMessageValidator::validate_update_user(
+    const sercom::protocol::command::UpdateUser& msg) {
+    if (msg.changes().empty()) {
+        return std::unexpected("changes are empty");
+    }
+
+    bool has_username = false;
+    bool has_avatar = false;
+    for (const auto& change : msg.changes()) {
+        switch (change) {
+            case sercom::protocol::command::UpdateUser::USERNAME:
+                has_username = true;
+                break;
+            case sercom::protocol::command::UpdateUser::AVATAR:
+                has_avatar = true;
+                break;
+            case sercom::protocol::command::UpdateUser::CHANGE_UNSPECIFIED:
+            default:
+                return std::unexpected("invalid change");
+        }
+    }
+
+    if (has_username && msg.username().empty()) {
+        return std::unexpected("username is empty");
     }
     if (has_avatar && msg.avatar_seed().empty()) {
         return std::unexpected("avatar_seed is empty");

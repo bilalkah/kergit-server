@@ -42,6 +42,9 @@ message Envelope {
         HUB_RENAMED = 65;
         HUB_ALREADY_MEMBER = 66;
         HUB_AVATAR_CHANGED = 67;
+
+        USER_UPDATE = 70;
+        USER_PROFILE_UPDATED = 71;
     }
 
     Type type = 3;

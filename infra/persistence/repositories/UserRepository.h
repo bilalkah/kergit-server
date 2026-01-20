@@ -18,6 +18,8 @@ class UserRepository {
     std::pair<std::string, std::string> updateUserProfile(
         const UserId& userUuid, const std::optional<std::string>& username,
         const std::optional<std::string>& full_name);
+    void updateUserSettings(const UserId& userUuid, const std::optional<std::string>& username,
+                            const std::optional<std::string>& avatar_seed);
 
    private:
     DatabaseExecutor& db_;

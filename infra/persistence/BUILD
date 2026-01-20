@@ -1,18 +1,18 @@
-load("@rules_cc//cc:defs.bzl", "cc_library")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
 cc_library(
     name = "persistence_gateway_lib",
     srcs = [
-        "DatabaseExecutor.cpp",
         "ConnectionPool.cpp",
+        "DatabaseExecutor.cpp",
         "PersistenceGateway.cpp",
         "repositories/ChannelRepository.cpp",
         "repositories/HubRepository.cpp",
         "repositories/UserRepository.cpp",
     ],
     hdrs = [
-        "DatabaseExecutor.h",
         "ConnectionPool.h",
+        "DatabaseExecutor.h",
         "PersistenceGateway.h",
         "RepositoryMux.h",
         "repositories/ChannelRepository.h",
