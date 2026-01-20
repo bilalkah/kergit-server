@@ -3,7 +3,7 @@
 
 #include "domains/Channel.h"
 #include "domains/Message.h"
-#include "infra/persistence/RepositoryMux.h"
+#include "infra/persistence/DatabaseExecutor.h"
 
 #include <optional>
 #include <string>
@@ -11,7 +11,7 @@
 
 class ChannelRepository {
    public:
-    explicit ChannelRepository(RepositoryMux& mux) : mux_(mux) {}
+    explicit ChannelRepository(DatabaseExecutor& db) : db_(db) {}
 
     ChannelId createChannel(const HubId& hubId, const std::string& channelName,
                             const std::string& type);
@@ -28,7 +28,7 @@ class ChannelRepository {
     bool renameChannel(const ChannelId& channelId, const std::string& name);
 
    private:
-    RepositoryMux& mux_;
+    DatabaseExecutor& db_;
 };
 
 #endif  // INFRA_PERSISTENCE_REPOSITORIES_CHANNEL_REPOSITORY_H

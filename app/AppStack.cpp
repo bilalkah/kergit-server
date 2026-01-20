@@ -31,7 +31,8 @@ void AppStack::attach_outbound_sink(net::outbound::IOutboundSink& sink) { out_qu
 
 void AppStack::init_database() {
     persistence_gateway_ = std::make_unique<PersistenceGateway>(
-        config_.database.to_connection_string(), config_.database.pool_size);
+        config_.database.to_connection_string(), config_.database.read_pool_size,
+        config_.database.write_pool_size);
     log(utils::LogLevel::INFO, "Database is inited.");
 }
 
@@ -56,7 +57,9 @@ void AppStack::init_services() {
         channel_service_ =
             std::make_unique<services::ChannelService>(persistence_gateway_->channels());
         log(utils::LogLevel::INFO, "channel_service_ done.");
-        hub_service_ = std::make_unique<services::HubService>(persistence_gateway_->hubs());
+        hub_service_ = std::make_unique<services::HubService>(persistence_gateway_->hubs(),
+                                                              persistence_gateway_->channels());
+        channel_service_->setHubService(*hub_service_);
         log(utils::LogLevel::INFO, "hub_service_ done.");
         hub_notifier_ = std::make_unique<services::HubNotifier>(*public_id_service_);
         log(utils::LogLevel::INFO, "hub_notifier_ done.");

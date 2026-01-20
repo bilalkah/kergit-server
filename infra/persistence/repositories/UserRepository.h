@@ -3,7 +3,7 @@
 
 #include "domains/User.h"
 #include "domains/ids/Ids.h"
-#include "infra/persistence/RepositoryMux.h"
+#include "infra/persistence/DatabaseExecutor.h"
 
 #include <optional>
 #include <string>
@@ -11,7 +11,7 @@
 
 class UserRepository {
    public:
-    explicit UserRepository(RepositoryMux& mux) : mux_(mux) {}
+    explicit UserRepository(DatabaseExecutor& db) : db_(db) {}
 
     std::optional<User> getUser(const UserId& userUuid);
     std::optional<std::string> getUserDisplayName(const UserId& userUuid);
@@ -20,7 +20,7 @@ class UserRepository {
         const std::optional<std::string>& full_name);
 
    private:
-    RepositoryMux& mux_;
+    DatabaseExecutor& db_;
 };
 
 #endif  // INFRA_PERSISTENCE_REPOSITORIES_USER_REPOSITORY_H

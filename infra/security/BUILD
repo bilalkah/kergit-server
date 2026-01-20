@@ -37,6 +37,7 @@ cc_library(
     srcs = ["validation/ProtoValidator.cpp"],
     hdrs = ["validation/ProtoValidator.h"],
     includes = ["."],
+    copts = ["-std=gnu++23"],
     visibility = ["//visibility:public"],
     deps = [
         "//proto:envelope_cc_proto",

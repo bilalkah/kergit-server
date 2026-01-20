@@ -6,7 +6,7 @@
 
 ChannelId ChannelRepository::createChannel(const HubId& hubId, const std::string& channelName,
                                            const std::string& type) {
-    return mux_.run(Repository::Channel, [&](pqxx::work& txn) {
+    return db_.write("ChannelRepository.createChannel", [&](pqxx::work& txn) {
         auto res = txn.exec(
             "INSERT INTO public.channels (hub_id, name, type) VALUES ($1::uuid, $2, $3) "
             "RETURNING id::text",
@@ -17,7 +17,7 @@ ChannelId ChannelRepository::createChannel(const HubId& hubId, const std::string
 }
 
 bool ChannelRepository::deleteChannel(const ChannelId& channelId, const HubId& hubId) {
-    return mux_.run(Repository::Channel, [&](pqxx::work& txn) {
+    return db_.write("ChannelRepository.deleteChannel", [&](pqxx::work& txn) {
         auto res = txn.exec(
             "DELETE FROM public.channels WHERE id = $1::uuid AND hub_id = $2::uuid RETURNING id",
             pqxx::params{channelId.value, hubId.value});
@@ -27,7 +27,7 @@ bool ChannelRepository::deleteChannel(const ChannelId& channelId, const HubId& h
 
 Message ChannelRepository::sendMessage(const ChannelId& channelId, const UserId& senderUuid,
                                        const std::string& content) {
-    return mux_.run(Repository::Message, [&](pqxx::work& txn) {
+    return db_.write("ChannelRepository.sendMessage", [&](pqxx::work& txn) {
         auto res = txn.exec(
             "INSERT INTO public.messages (channel_id, sender_id, content) "
             "VALUES ($1::uuid, $2::uuid, $3) "
@@ -45,7 +45,7 @@ Message ChannelRepository::sendMessage(const ChannelId& channelId, const UserId&
 }
 
 std::vector<Message> ChannelRepository::fetchMessages(const ChannelId& channelId, int limit) {
-    return mux_.run(Repository::Message, [&](pqxx::work& txn) {
+    return db_.read("ChannelRepository.fetchMessages", [&](pqxx::work& txn) {
         auto res = txn.exec(
             "SELECT id::text, channel_id::text, sender_id::text, content, created_at "
             "FROM public.messages WHERE channel_id = $1::uuid "
@@ -69,7 +69,7 @@ std::vector<Message> ChannelRepository::fetchMessages(const ChannelId& channelId
 
 std::vector<Message> ChannelRepository::fetchMessagesAfter(const ChannelId& channelId,
                                                            const MessageId& afterId, int limit) {
-    return mux_.run(Repository::Message, [&](pqxx::work& txn) {
+    return db_.read("ChannelRepository.fetchMessagesAfter", [&](pqxx::work& txn) {
         auto res = txn.exec(
             "SELECT id::text, channel_id::text, sender_id::text, content, created_at "
             "FROM public.messages WHERE channel_id = $1::uuid "
@@ -94,7 +94,7 @@ std::vector<Message> ChannelRepository::fetchMessagesAfter(const ChannelId& chan
 
 std::vector<Message> ChannelRepository::fetchMessagesBefore(const ChannelId& channelId,
                                                             const MessageId& beforeId, int limit) {
-    return mux_.run(Repository::Message, [&](pqxx::work& txn) {
+    return db_.read("ChannelRepository.fetchMessagesBefore", [&](pqxx::work& txn) {
         auto res = txn.exec(
             "SELECT id::text, channel_id::text, sender_id::text, content, created_at "
             "FROM public.messages WHERE channel_id = $1::uuid "
@@ -118,7 +118,7 @@ std::vector<Message> ChannelRepository::fetchMessagesBefore(const ChannelId& cha
 }
 
 std::vector<Channel> ChannelRepository::getHubChannels(const HubId& hubId) {
-    return mux_.run(Repository::Channel, [&](pqxx::work& txn) {
+    return db_.read("ChannelRepository.getHubChannels", [&](pqxx::work& txn) {
         auto res = txn.exec(
             "SELECT id::text, hub_id::text, name, type "
             "FROM public.channels WHERE hub_id = $1::uuid ORDER BY created_at ASC",
@@ -137,7 +137,8 @@ std::vector<Channel> ChannelRepository::getHubChannels(const HubId& hubId) {
 }
 
 std::optional<Channel> ChannelRepository::getChannel(const ChannelId& channelId) {
-    return mux_.run(Repository::Channel, [&](pqxx::work& txn) -> std::optional<Channel> {
+    return db_.read("ChannelRepository.getChannel",
+                    [&](pqxx::work& txn) -> std::optional<Channel> {
         auto res = txn.exec(
             "SELECT id::text, hub_id::text, name, type "
             "FROM public.channels WHERE id = $1::uuid LIMIT 1",
@@ -151,7 +152,7 @@ std::optional<Channel> ChannelRepository::getChannel(const ChannelId& channelId)
 }
 
 bool ChannelRepository::renameChannel(const ChannelId& channelId, const std::string& name) {
-    return mux_.run(Repository::Channel, [&](pqxx::work& txn) {
+    return db_.write("ChannelRepository.renameChannel", [&](pqxx::work& txn) {
         auto res = txn.exec("UPDATE public.channels SET name = $2 WHERE id = $1::uuid RETURNING id",
                             pqxx::params{channelId.value, name});
         return !res.empty();
