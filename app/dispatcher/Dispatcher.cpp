@@ -18,6 +18,7 @@
 #include "app/commands/message/FetchMessagesBeforeCommand.h"
 #include "app/commands/message/SendMessageCommand.h"
 // #include "app/commands/profile/UpdateProfileCommand.h"
+#include "app/commands/user/UpdateUserCommand.h"
 #include "app/commands/session/AuthenticateCommand.h"
 #include "app/commands/session/BootstrapCommand.h"
 #include "app/commands/system/DisconnectionCommand.h"
@@ -80,6 +81,8 @@ void Dispatcher::register_all() {
         std::make_unique<RenameHubCommand>();
     map_proto_[sercom::protocol::Envelope_Type_HUB_UPDATE] =
         std::make_unique<UpdateHubCommand>();
+    map_proto_[sercom::protocol::Envelope_Type_USER_UPDATE] =
+        std::make_unique<UpdateUserCommand>();
     // register_cmd("join_channel", std::make_unique<JoinChannelCommand>());
     // register_cmd("send_message", std::make_unique<SendMessageCommand>());
     // register_cmd("create_channel", std::make_unique<CreateChannelCommand>());

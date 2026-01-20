@@ -5,6 +5,7 @@
 #include "proto/command/hub.pb.h"
 #include "proto/command/message.pb.h"
 #include "proto/command/session.pb.h"
+#include "proto/command/user.pb.h"
 #include "proto/envelope.pb.h"
 #include "proto/system/heartbeat.pb.h"
 
@@ -59,6 +60,8 @@ class ProtoMessageValidator {
         const sercom::protocol::command::RenameHub& msg);
     std::expected<void, ValidationError> validate_update_hub(
         const sercom::protocol::command::UpdateHub& msg);
+    std::expected<void, ValidationError> validate_update_user(
+        const sercom::protocol::command::UpdateUser& msg);
     std::expected<void, ValidationError> validate_ping(const sercom::protocol::system::Ping& msg);
 };
 

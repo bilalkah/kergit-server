@@ -1,0 +1,17 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
+cc_library(
+    name = "update_user_command",
+    srcs = ["UpdateUserCommand.cpp"],
+    hdrs = ["UpdateUserCommand.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//app/commands:i_command",
+        "//app/dispatcher:command_context",
+        "//app/managers/subscription:topic",
+        "//proto:envelope_cc_proto",
+        "//proto/command:user_cc_proto",
+        "//proto/event:error_cc_proto",
+        "//proto/event:user_cc_proto",
+    ],
+)

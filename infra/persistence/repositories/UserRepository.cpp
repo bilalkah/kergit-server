@@ -80,3 +80,41 @@ std::pair<std::string, std::string> UserRepository::updateUserProfile(
         return std::make_pair(std::move(final_username), std::move(final_full_name));
     });
 }
+
+void UserRepository::updateUserSettings(const UserId& userUuid,
+                                        const std::optional<std::string>& username,
+                                        const std::optional<std::string>& avatar_seed) {
+    if (!username.has_value() && !avatar_seed.has_value()) return;
+
+    db_.write("UserRepository.updateUserSettings", [&](pqxx::work& txn) {
+        if (username.has_value()) {
+            auto res = txn.exec(
+                "SELECT COALESCE(raw_user_meta_data::text, '{}') FROM auth.users WHERE id = $1::uuid "
+                "FOR UPDATE",
+                pqxx::params{userUuid.value});
+            if (res.empty()) throw std::runtime_error("User not found");
+
+            nlohmann::json meta;
+            try {
+                meta = nlohmann::json::parse(res[0][0].as<std::string>(), nullptr, false);
+                if (!meta.is_object()) meta = nlohmann::json::object();
+            } catch (...) {
+                meta = nlohmann::json::object();
+            }
+
+            meta["username"] = *username;
+            const std::string payload = meta.dump();
+            txn.exec("UPDATE auth.users SET raw_user_meta_data = $2::jsonb WHERE id = $1::uuid",
+                     pqxx::params{userUuid.value, payload});
+        }
+
+        if (avatar_seed.has_value()) {
+            txn.exec(
+                "INSERT INTO public.profiles (user_id, avatar_seed, updated_at) "
+                "VALUES ($1::uuid, $2::text, now()) "
+                "ON CONFLICT (user_id) DO UPDATE "
+                "SET avatar_seed = EXCLUDED.avatar_seed, updated_at = now()",
+                pqxx::params{userUuid.value, *avatar_seed});
+        }
+    });
+}

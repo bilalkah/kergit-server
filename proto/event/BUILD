@@ -76,3 +76,14 @@ cc_proto_library(
     visibility = ["//visibility:public"],
     deps = [":hub_proto"],
 )
+
+proto_library(
+    name = "user_proto",
+    srcs = ["user.proto"],
+)
+
+cc_proto_library(
+    name = "user_cc_proto",
+    visibility = ["//visibility:public"],
+    deps = [":user_proto"],
+)
