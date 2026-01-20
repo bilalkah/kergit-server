@@ -33,6 +33,8 @@ message Envelope {
         HUB_REMOVE = 54;
         HUB_RENAME = 55;
         HUB_UPDATE = 56;
+        CHANNEL_CREATE = 80;
+        CHANNEL_RENAME = 81;
 
         HUB_CREATED = 60;
         HUB_MEMBER_JOINED = 61;
@@ -42,6 +44,8 @@ message Envelope {
         HUB_RENAMED = 65;
         HUB_ALREADY_MEMBER = 66;
         HUB_AVATAR_CHANGED = 67;
+        CHANNEL_CREATED = 82;
+        CHANNEL_RENAMED = 83;
 
         USER_UPDATE = 70;
         USER_PROFILE_UPDATED = 71;

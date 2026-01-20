@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package sercom.protocol.command;
+
+import "proto/domain/channel.proto";
+
+/*
+ * Create a channel inside a hub.
+ * Only OWNER / ADMIN.
+ */
+message CreateChannel {
+  uint64 hub_id = 1;
+  string name = 2;
+  sercom.protocol.domain.ChannelType type = 3;
+}
+
+/*
+ * Rename an existing channel.
+ * Only OWNER / ADMIN.
+ */
+message RenameChannel {
+  uint64 hub_id = 1;
+  uint64 channel_id = 2;
+  string name = 3;
+}
