@@ -138,6 +138,34 @@ std::vector<HubRepository::MemberWithRole> HubRepository::getHubMembersWithRoles
     });
 }
 
+std::optional<Hub> HubRepository::getHubWithMembers(const HubId& hubId) {
+    return db_.read("HubRepository.getHubWithMembers", [&](pqxx::work& txn) -> std::optional<Hub> {
+        auto res = txn.exec(
+            "SELECT h.id::text, h.name, h.owner_id::text, hm.user_id::text, hm.role "
+            "FROM public.hubs h "
+            "LEFT JOIN public.hub_members hm ON hm.hub_id = h.id "
+            "WHERE h.id = $1::uuid ORDER BY hm.joined_at ASC",
+            pqxx::params{hubId.value});
+        if (res.empty()) return std::nullopt;
+
+        const auto& first = res[0];
+        Hub hub(first[1].as<std::string>(), HubId{first[0].as<std::string>()},
+                UserId{first[2].as<std::string>()});
+
+        for (const auto& row : res) {
+            if (row[3].is_null()) continue;
+            hub.setMemberRole(UserId{row[3].as<std::string>()},
+                              role_from_string(row[4].as<std::string>("")));
+        }
+        return hub;
+    });
+}
+
+std::vector<HubRepository::MemberWithRole> HubRepository::getHubMembersFull(const HubId& hubId) {
+    // Reuses the single-query path for display + role.
+    return getHubMembersWithRoles(hubId);
+}
+
 bool HubRepository::renameHub(const HubId& hubId, const std::string& name) {
     return db_.write("HubRepository.renameHub", [&](pqxx::work& txn) {
         auto res = txn.exec("UPDATE public.hubs SET name = $2 WHERE id = $1::uuid RETURNING id",

@@ -23,6 +23,10 @@ class ChannelRepository {
                                             int limit);
     std::vector<Message> fetchMessagesBefore(const ChannelId& channelId, const MessageId& beforeId,
                                              int limit);
+    // Preferred for hot paths: single query for initial/after/before pagination.
+    std::vector<Message> fetchMessagesPage(const ChannelId& channelId,
+                                           std::optional<MessageId> after,
+                                           std::optional<MessageId> before, int limit);
     std::vector<Channel> getHubChannels(const HubId& hubId);
     std::optional<Channel> getChannel(const ChannelId& channelId);
     bool renameChannel(const ChannelId& channelId, const std::string& name);
