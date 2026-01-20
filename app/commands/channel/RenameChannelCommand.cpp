@@ -1,24 +1,28 @@
 #include "app/commands/channel/RenameChannelCommand.h"
 
-#include "app/commands/CommandJson.h"
+#include "app/commands/utils.h"
+#include "app/converters/ProtoConverters.h"
 #include "app/dispatcher/CommandContext.h"
 #include "app/managers/subscription/Topic.h"
 #include "domains/Channel.h"
 #include "domains/Hub.h"
+#include "proto/command/channel.pb.h"
+#include "proto/envelope.pb.h"
+#include "proto/event/channel.pb.h"
+#include "proto/event/error.pb.h"
 
 #include <algorithm>
 #include <cctype>
-#include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
-
-using nlohmann::json;
 
 namespace app {
 
 namespace {
-std::string channel_type_to_string(ChannelType type) {
-    return type == ChannelType::VOICE ? "voice" : "text";
+std::string normalize_name(std::string name) {
+    std::transform(name.begin(), name.end(), name.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return name;
 }
 }  // namespace
 
@@ -36,87 +40,127 @@ std::string RenameChannelCommand::sanitize(std::string name) {
     return name;
 }
 
-CommandResult RenameChannelCommand::execute(CommandContext& ctx, const CommandInput cmd) {
-    const auto* input = std::get_if<JsonInput>(&cmd);
-    if (!input) {
-        return std::unexpected(CommandError{1, "rename_channel expects JSON input"});
+std::vector<net::outbound::OutgoingMessage> RenameChannelCommand::execute(
+    CommandContext& ctx, const queue::Event& evt) {
+    const auto* event = std::get_if<queue::MessageEvent>(&evt);
+    if (!event) {
+        return {};
     }
 
-    auto user_exp = ctx.session_manager.sessionOfConnection(input->conn);
+    const auto& env = event->payload.env;
+    if (env.type() != sercom::protocol::Envelope::CHANNEL_RENAME) {
+        return {};
+    }
+
+    sercom::protocol::command::RenameChannel cmd;
+    if (!cmd.ParseFromString(env.payload())) {
+        return {make_command_error(event->conn_id, env.type(),
+                                   sercom::protocol::event::CommandErrorCode_INVALID_FORMAT,
+                                   "Invalid CHANNEL_RENAME payload")};
+    }
+
+    auto user_exp = ctx.session_manager.sessionOfConnection(event->conn_id);
     if (!user_exp.has_value()) {
-        return std::unexpected(CommandError{2, "Authenticate first"});
+        return {make_command_error(event->conn_id, env.type(),
+                                   sercom::protocol::event::CommandErrorCode_UNAUTHORIZED,
+                                   "Authenticate first")};
     }
     const UserId user_id = user_exp.value();
 
-    auto channel_id_raw = commands::read_uint64(input->body, "channel_id");
-    const auto j = json::parse(input->body, nullptr, false);
-    if (j.is_discarded()) {
-        return std::unexpected(CommandError{3, "Invalid JSON"});
+    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd.hub_id()});
+    if (!hub_id_opt.has_value()) {
+        return {make_command_error(event->conn_id, env.type(),
+                                   sercom::protocol::event::CommandErrorCode_NOT_FOUND,
+                                   "Hub not found")};
     }
-    std::string requested_name = sanitize(j.value("name", ""));
+    const HubId hub_id = hub_id_opt.value();
 
-    if (!channel_id_raw.has_value()) {
-        return std::unexpected(CommandError{3, "channel_id is required"});
-    }
-    if (requested_name.empty()) {
-        return std::unexpected(CommandError{4, "Channel name is required"});
-    }
-
-    auto channel_id_opt = ctx.ids.to_internal(PublicChannelId{channel_id_raw.value()});
+    auto channel_id_opt = ctx.ids.to_internal(PublicChannelId{cmd.channel_id()});
     if (!channel_id_opt.has_value()) {
-        return std::unexpected(CommandError{5, "Channel not found"});
+        return {make_command_error(event->conn_id, env.type(),
+                                   sercom::protocol::event::CommandErrorCode_NOT_FOUND,
+                                   "Channel not found")};
     }
 
     auto channel_opt = ctx.channel_service.getChannel(*channel_id_opt);
-    if (!channel_opt.has_value()) {
-        return std::unexpected(CommandError{6, "Channel not found"});
+    if (!channel_opt.has_value() || channel_opt->hub_id != hub_id) {
+        return {make_command_error(event->conn_id, env.type(),
+                                   sercom::protocol::event::CommandErrorCode_NOT_FOUND,
+                                   "Channel not found")};
     }
     const Channel channel = channel_opt.value();
-    const HubId hub_id = channel.hub_id;
+
+    std::string requested_name = sanitize(cmd.name());
+    if (requested_name.empty()) {
+        return {make_command_error(event->conn_id, env.type(),
+                                   sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
+                                   "Channel name is required")};
+    }
 
     if (!ctx.hub_service.isHubMember(hub_id, user_id)) {
-        return std::unexpected(CommandError{7, "Join the hub before renaming channels"});
+        return {make_command_error(event->conn_id, env.type(),
+                                   sercom::protocol::event::CommandErrorCode_FORBIDDEN,
+                                   "Join the hub before renaming channels")};
     }
 
     auto role = ctx.hub_service.getMembershipRole(hub_id, user_id);
     if (!role.has_value() || (*role != Role::OWNER && *role != Role::ADMIN)) {
-        return std::unexpected(CommandError{8, "Only admins/owners can rename channels"});
+        return {make_command_error(event->conn_id, env.type(),
+                                   sercom::protocol::event::CommandErrorCode_FORBIDDEN,
+                                   "Only admins/owners can rename channels")};
+    }
+
+    const auto existing = ctx.channel_service.getHubChannels(hub_id);
+    const auto normalized = normalize_name(requested_name);
+    for (const auto& ch : existing) {
+        if (ch.id == channel.id) continue;
+        if (normalize_name(ch.name) == normalized) {
+            return {make_command_error(event->conn_id, env.type(),
+                                       sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
+                                       "Channel name already exists")};
+        }
     }
 
     if (!ctx.channel_service.renameChannel(channel.id, requested_name)) {
-        return std::unexpected(CommandError{9, "Unable to rename channel at this time"});
+        return {make_command_error(event->conn_id, env.type(),
+                                   sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
+                                   "Unable to rename channel at this time")};
     }
 
-    const auto public_hub_id = ctx.ids.to_public(hub_id);
-    const auto public_channel_id = ctx.ids.to_public(channel.id);
+    sercom::protocol::event::ChannelRenamed renamed_evt;
+    renamed_evt.set_hub_id(ctx.ids.to_public(hub_id).value);
+    auto* out_channel = renamed_evt.mutable_channel();
+    out_channel->set_id(ctx.ids.to_public(channel.id).value);
+    out_channel->set_name(requested_name);
+    out_channel->set_type(converters::to_proto_channel_type(channel.type));
 
-    json channel_json = {{"id", public_channel_id.value},
-                         {"hub_id", public_hub_id.value},
-                         {"name", requested_name},
-                         {"type", channel_type_to_string(channel.type)}};
+    sercom::protocol::Envelope out_env;
+    out_env.set_version(1);
+    out_env.set_type(sercom::protocol::Envelope::CHANNEL_RENAMED);
+    renamed_evt.SerializeToString(out_env.mutable_payload());
 
-    json payload = {
-        {"type", "channel_renamed"}, {"hub_id", public_hub_id.value}, {"channel", channel_json}};
+    std::string bytes;
+    out_env.SerializeToString(&bytes);
 
-    CommandSuccess res;
-    // Notify hub subscribers
     auto subs = ctx.subscription_manager.getSubscribers(Topic::HubTopic(hub_id));
-    if (subs.has_value() && !subs->empty()) {
-        std::vector<GlobalConnId> conns;
-        conns.reserve(subs->size());
-        for (const auto& uid : subs.value()) {
-            auto conn = ctx.session_manager.getMainConnection(uid);
-            if (conn.has_value()) conns.push_back(conn.value());
-        }
-        if (!conns.empty()) {
-            res.intents.push_back(Fanout{.conns = std::move(conns), .payload = payload});
-        }
+    if (!subs.has_value() || subs->empty()) {
+        return {};
     }
 
-    // Ack requester
-    res.intents.push_back(Unicast{.conn = input->conn, .payload = std::move(payload)});
+    std::vector<GlobalConnId> conns;
+    conns.reserve(subs->size());
+    for (const auto& uid : subs.value()) {
+        auto conn = ctx.session_manager.getMainConnection(uid);
+        if (conn.has_value()) conns.push_back(conn.value());
+    }
+    if (conns.empty()) {
+        return {};
+    }
 
-    return res;
+    return {net::outbound::OutgoingMessage{
+        .target = net::outbound::Target::many(std::move(conns)),
+        .action = net::outbound::SendPayload{
+            .payload = net::outbound::Payload{.data = std::move(bytes), .is_binary = true}}}};
 }
 
 }  // namespace app

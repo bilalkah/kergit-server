@@ -78,6 +78,20 @@ cc_proto_library(
 )
 
 proto_library(
+    name = "channel_proto",
+    srcs = ["channel.proto"],
+    deps = [
+        "//proto/domain:channel_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "channel_cc_proto",
+    visibility = ["//visibility:public"],
+    deps = [":channel_proto"],
+)
+
+proto_library(
     name = "user_proto",
     srcs = ["user.proto"],
 )
