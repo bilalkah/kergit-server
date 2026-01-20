@@ -28,6 +28,11 @@ class HubRepository {
     std::optional<Role> getMembershipRole(const HubId& hubId, const UserId& userUuid);
     std::vector<std::pair<UserId, std::string>> getHubMembers(const HubId& hubId);
     std::vector<MemberWithRole> getHubMembersWithRoles(const HubId& hubId);
+    // Preferred for hot paths: single-round-trip hub + members (replaces getHub + getHubMembers).
+    std::optional<Hub> getHubWithMembers(const HubId& hubId);
+    // Preferred for hot paths: single query for member display + role (replaces getHubMembers +
+    // getMembershipRole fanout).
+    std::vector<MemberWithRole> getHubMembersFull(const HubId& hubId);
     bool renameHub(const HubId& hubId, const std::string& name);
     bool deleteHub(const HubId& hubId, const UserId& ownerUuid);
     HubId ensurePersonalHubWithGeneral(const UserId& ownerUuid, const std::string& hubName);

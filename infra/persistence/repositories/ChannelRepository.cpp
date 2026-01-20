@@ -117,6 +117,43 @@ std::vector<Message> ChannelRepository::fetchMessagesBefore(const ChannelId& cha
     });
 }
 
+std::vector<Message> ChannelRepository::fetchMessagesPage(const ChannelId& channelId,
+                                                          std::optional<MessageId> after,
+                                                          std::optional<MessageId> before,
+                                                          int limit) {
+    return db_.read("ChannelRepository.fetchMessagesPage", [&](pqxx::work& txn) {
+        const std::string after_id = after ? after->value : std::string{};
+        const std::string before_id = before ? before->value : std::string{};
+        const int forward = after.has_value() ? 1 : 0;
+
+        auto res = txn.exec(
+            "SELECT id::text, channel_id::text, sender_id::text, content, created_at "
+            "FROM public.messages WHERE channel_id = $1::uuid "
+            "AND ($2 = '' OR created_at > (SELECT created_at FROM public.messages "
+            "WHERE id = NULLIF($2, '')::uuid)) "
+            "AND ($3 = '' OR created_at < (SELECT created_at FROM public.messages "
+            "WHERE id = NULLIF($3, '')::uuid)) "
+            "ORDER BY "
+            "CASE WHEN $4 <> 0 THEN created_at END ASC, "
+            "CASE WHEN $4 = 0 THEN created_at END DESC "
+            "LIMIT $5",
+            pqxx::params{channelId.value, after_id, before_id, forward, limit});
+
+        std::vector<Message> msgs;
+        msgs.reserve(res.size());
+        for (const auto& row : res) {
+            Message msg;
+            msg.id = MessageId{row[0].as<std::string>()};
+            msg.ch_id = ChannelId{row[1].as<std::string>()};
+            msg.sender_id = UserId{row[2].as<std::string>()};
+            msg.text = row[3].as<std::string>();
+            msg.sent_at = parse_timestamp(row[4].as<std::string>());
+            msgs.push_back(std::move(msg));
+        }
+        return msgs;
+    });
+}
+
 std::vector<Channel> ChannelRepository::getHubChannels(const HubId& hubId) {
     return db_.read("ChannelRepository.getHubChannels", [&](pqxx::work& txn) {
         auto res = txn.exec(
