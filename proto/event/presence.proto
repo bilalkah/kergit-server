@@ -14,16 +14,6 @@ message HubMemberPresenceChanged {
   bool is_online = 3;
 }
 
-/*
- * Channel activity (derived, ephemeral)
- */
-message UserActiveChannelChanged {
-  uint64 hub_id = 1;
-  uint64 user_id = 2;
-  uint64 previous_channel_id = 3;
-  uint64 current_channel_id = 4;
-}
-
 message TypingStarted {
   uint64 hub_id = 1;
   uint64 user_id = 2;
@@ -45,8 +35,6 @@ message PresenceEvent {
 
     HubMemberJoined member_joined = 2;
     HubMemberLeft member_left = 3;
-
-    UserActiveChannelChanged active_channel_changed = 4;
 
     TypingStarted typing_started = 5;
     TypingStopped typing_stopped = 6;
