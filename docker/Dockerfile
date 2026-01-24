@@ -10,6 +10,7 @@ RUN apt-get update && apt-get upgrade -y && \
       git curl wget ca-certificates unzip zip tar xz-utils \
       python3 python3-pip python3-venv \
       ccache \
+      sudo \
       openssl libssl-dev \
       zlib1g-dev libzstd-dev \
       libuv1-dev libevent-dev libunwind-dev \
@@ -48,7 +49,7 @@ ENV LANG=en_US.UTF-8 \
     CCACHE_DIR=/home/sercom/.ccache \
     PATH="/usr/lib/ccache:/usr/local/bin:/usr/bin:/bin:$PATH" \
     CC=/usr/lib/ccache/gcc \
-    CXX=/usr/∏lib/ccache/g++
+    CXX=/usr/lib/ccache/g++
 
 # Keep Bazel from reusing any stale auto-config (safe default)
 ENV BAZELISK_HOME=/home/sercom/.cache/bazelisk

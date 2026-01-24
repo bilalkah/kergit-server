@@ -49,19 +49,18 @@ message RenameHub {
   string name = 2;
 }
 
+message HubChange {
+  oneof change {
+    string name = 1;
+    string avatar_seed = 2;
+  }
+}
+
 /*
  * Update hub settings.
  * Only OWNER / ADMIN.
  */
 message UpdateHub {
-  enum Change {
-    CHANGE_UNSPECIFIED = 0;
-    NAME = 1;
-    AVATAR = 2;
-  }
-
   uint64 hub_id = 1;
-  repeated Change changes = 2;
-  string name = 3;
-  string avatar_seed = 4;
+  repeated HubChange changes = 2;
 }

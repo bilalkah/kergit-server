@@ -1,4 +1,4 @@
-load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:defs.bzl", "cc_library")
 
 cc_library(
     name = "channel_cache",
@@ -20,9 +20,9 @@ cc_library(
     visibility = ["//app:__subpackages__"],
     deps = [
         ":channel_cache",
+        "//app/services/hub:hub_service",
         "//domains:channel_domain",
         "//domains:message_domain",
-        "//app/services/hub:hub_service",
         "//infra/persistence:persistence_gateway_lib",
     ],
 )
