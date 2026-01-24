@@ -80,11 +80,12 @@ void TextWSServer::wire() {
             .sendPingsAutomatically = false,
             .upgrade =
                 [this](auto* res, auto* req, auto* ctx) {
+                    log(utils::LogLevel::WARN, "Incoming WebSocket upgrade request");
                     std::string origin = std::string(req->getHeader("origin"));
-                    // if (!origins_.is_allowed(origin)) {
-                    //     res->writeStatus("403 Forbidden")->end("Origin not allowed");
-                    //     return;
-                    // }
+                    if (!origins_.is_allowed(origin)) {
+                        res->writeStatus("403 Forbidden")->end("Origin not allowed");
+                        return;
+                    }
 
                     if (!auth_.has_value()) {
                         res->writeStatus("500")->end("Server misconfiguration");
