@@ -14,12 +14,18 @@ message CreateChannel {
   sercom.protocol.domain.ChannelType type = 3;
 }
 
+message ChannelChange {
+  oneof change {
+    string name = 1;
+  }
+}
+
 /*
- * Rename an existing channel.
+ * Update channel settings.
  * Only OWNER / ADMIN.
  */
-message RenameChannel {
+message UpdateChannel {
   uint64 hub_id = 1;
   uint64 channel_id = 2;
-  string name = 3;
+  repeated ChannelChange changes = 3;
 }

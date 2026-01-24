@@ -116,9 +116,6 @@ void OutgoingWorker::tick() {
                     if (!result.has_value()) {
                         log(utils::LogLevel::ERROR,
                             "Failed to update auth state for connection: ", conn_ctx.conn_id.value);
-                    } else {
-                        log(utils::LogLevel::INFO,
-                            "Updated auth state for connection: ", conn_ctx.conn_id.value);
                     }
                 } else if constexpr (std::is_same_v<T, DropConnection>) {
                     if (!conn_ctx.handle.valid()) return;

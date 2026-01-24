@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <optional>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -56,17 +57,35 @@ std::vector<net::outbound::OutgoingMessage> UpdateUserCommand::execute(CommandCo
     }
     const UserId user_id = user_exp.value();
 
-    bool change_username = false;
-    bool change_avatar = false;
+    std::optional<std::string> username_opt;
+    std::optional<std::string> avatar_seed_opt;
+
     for (int i = 0; i < cmd.changes_size(); ++i) {
-        switch (cmd.changes(i)) {
-            case sercom::protocol::command::UpdateUser::USERNAME:
-                change_username = true;
+        const auto& change = cmd.changes(i);
+        switch (change.change_case()) {
+            case sercom::protocol::command::UserChange::kUsername: {
+                auto username = sanitize(change.username());
+                if (username.size() > 48) username.resize(48);
+                if (username.empty()) {
+                    return {make_command_error(event->conn_id, env.type(),
+                                               sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
+                                               "Username is required")};
+                }
+                username_opt = std::move(username);
                 break;
-            case sercom::protocol::command::UpdateUser::AVATAR:
-                change_avatar = true;
+            }
+            case sercom::protocol::command::UserChange::kAvatarSeed: {
+                auto seed = sanitize(change.avatar_seed());
+                if (seed.size() > 64) seed.resize(64);
+                if (seed.empty()) {
+                    return {make_command_error(event->conn_id, env.type(),
+                                               sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
+                                               "Avatar seed is required")};
+                }
+                avatar_seed_opt = std::move(seed);
                 break;
-            case sercom::protocol::command::UpdateUser::CHANGE_UNSPECIFIED:
+            }
+            case sercom::protocol::command::UserChange::CHANGE_NOT_SET:
             default:
                 return {make_command_error(event->conn_id, env.type(),
                                            sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
@@ -74,34 +93,10 @@ std::vector<net::outbound::OutgoingMessage> UpdateUserCommand::execute(CommandCo
         }
     }
 
-    if (!change_username && !change_avatar) {
+    if (!username_opt.has_value() && !avatar_seed_opt.has_value()) {
         return {make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
                                    "No changes requested")};
-    }
-
-    std::optional<std::string> username_opt;
-    if (change_username) {
-        auto username = sanitize(cmd.username());
-        if (username.size() > 48) username.resize(48);
-        if (username.empty()) {
-            return {make_command_error(event->conn_id, env.type(),
-                                       sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
-                                       "Username is required")};
-        }
-        username_opt = std::move(username);
-    }
-
-    std::optional<std::string> avatar_seed_opt;
-    if (change_avatar) {
-        auto seed = sanitize(cmd.avatar_seed());
-        if (seed.size() > 64) seed.resize(64);
-        if (seed.empty()) {
-            return {make_command_error(event->conn_id, env.type(),
-                                       sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
-                                       "Avatar seed is required")};
-        }
-        avatar_seed_opt = std::move(seed);
     }
 
     try {

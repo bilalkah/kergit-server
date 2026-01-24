@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -52,7 +53,7 @@ std::vector<net::outbound::OutgoingMessage> RenameChannelCommand::execute(
         return {};
     }
 
-    sercom::protocol::command::RenameChannel cmd;
+    sercom::protocol::command::UpdateChannel cmd;
     if (!cmd.ParseFromString(env.payload())) {
         return {make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_INVALID_FORMAT,
@@ -90,11 +91,32 @@ std::vector<net::outbound::OutgoingMessage> RenameChannelCommand::execute(
     }
     const Channel channel = channel_opt.value();
 
-    std::string requested_name = sanitize(cmd.name());
-    if (requested_name.empty()) {
+    std::optional<std::string> requested_name;
+    for (int i = 0; i < cmd.changes_size(); ++i) {
+        const auto& change = cmd.changes(i);
+        switch (change.change_case()) {
+            case sercom::protocol::command::ChannelChange::kName: {
+                auto name = sanitize(change.name());
+                if (name.empty()) {
+                    return {make_command_error(event->conn_id, env.type(),
+                                               sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
+                                               "Channel name is required")};
+                }
+                requested_name = std::move(name);
+                break;
+            }
+            case sercom::protocol::command::ChannelChange::CHANGE_NOT_SET:
+            default:
+                return {make_command_error(event->conn_id, env.type(),
+                                           sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
+                                           "Invalid change type")};
+        }
+    }
+
+    if (!requested_name.has_value()) {
         return {make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
-                                   "Channel name is required")};
+                                   "No changes requested")};
     }
 
     if (!ctx.hub_service.isHubMember(hub_id, user_id)) {
@@ -111,7 +133,7 @@ std::vector<net::outbound::OutgoingMessage> RenameChannelCommand::execute(
     }
 
     const auto existing = ctx.channel_service.getHubChannels(hub_id);
-    const auto normalized = normalize_name(requested_name);
+    const auto normalized = normalize_name(*requested_name);
     for (const auto& ch : existing) {
         if (ch.id == channel.id) continue;
         if (normalize_name(ch.name) == normalized) {
@@ -121,7 +143,7 @@ std::vector<net::outbound::OutgoingMessage> RenameChannelCommand::execute(
         }
     }
 
-    if (!ctx.channel_service.renameChannel(channel.id, requested_name)) {
+    if (!ctx.channel_service.renameChannel(channel.id, *requested_name)) {
         return {make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
                                    "Unable to rename channel at this time")};
@@ -131,7 +153,7 @@ std::vector<net::outbound::OutgoingMessage> RenameChannelCommand::execute(
     renamed_evt.set_hub_id(ctx.ids.to_public(hub_id).value);
     auto* out_channel = renamed_evt.mutable_channel();
     out_channel->set_id(ctx.ids.to_public(channel.id).value);
-    out_channel->set_name(requested_name);
+    out_channel->set_name(*requested_name);
     out_channel->set_type(converters::to_proto_channel_type(channel.type));
 
     sercom::protocol::Envelope out_env;
