@@ -51,8 +51,8 @@ class ProtoMessageValidator {
         const sercom::protocol::command::CreateHub& msg);
     std::expected<void, ValidationError> validate_create_channel(
         const sercom::protocol::command::CreateChannel& msg);
-    std::expected<void, ValidationError> validate_rename_channel(
-        const sercom::protocol::command::RenameChannel& msg);
+    std::expected<void, ValidationError> validate_update_channel(
+        const sercom::protocol::command::UpdateChannel& msg);
     std::expected<void, ValidationError> validate_join_hub(
         const sercom::protocol::command::JoinHub& msg);
     std::expected<void, ValidationError> validate_create_hub_join_code(

@@ -78,11 +78,11 @@ std::expected<void, ValidationError> ProtoMessageValidator::validate_envelope(
             return validate_create_channel(create_channel);
         }
         case sercom::protocol::Envelope::CHANNEL_RENAME: {
-            sercom::protocol::command::RenameChannel rename_channel;
-            if (!rename_channel.ParseFromArray(env.payload().data(), env.payload().size())) {
+            sercom::protocol::command::UpdateChannel update_channel;
+            if (!update_channel.ParseFromArray(env.payload().data(), env.payload().size())) {
                 return std::unexpected("Invalid CHANNEL_RENAME payload");
             }
-            return validate_rename_channel(rename_channel);
+            return validate_update_channel(update_channel);
         }
         case sercom::protocol::Envelope::HUB_JOIN: {
             sercom::protocol::command::JoinHub join_hub;
@@ -299,19 +299,39 @@ std::expected<void, ValidationError> ProtoMessageValidator::validate_create_chan
     return {};
 }
 
-// ---------- CHANNEL_RENAME validation ----------
+// ---------- CHANNEL_RENAME (UpdateChannel payload) validation ----------
 
-std::expected<void, ValidationError> ProtoMessageValidator::validate_rename_channel(
-    const sercom::protocol::command::RenameChannel& msg) {
+std::expected<void, ValidationError> ProtoMessageValidator::validate_update_channel(
+    const sercom::protocol::command::UpdateChannel& msg) {
     if (msg.hub_id() == 0) {
         return std::unexpected("hub_id is empty");
     }
     if (msg.channel_id() == 0) {
         return std::unexpected("channel_id is empty");
     }
-    if (msg.name().empty()) {
-        return std::unexpected("name is empty");
+    if (msg.changes().empty()) {
+        return std::unexpected("changes are empty");
     }
+
+    bool has_name = false;
+    for (const auto& change : msg.changes()) {
+        switch (change.change_case()) {
+            case sercom::protocol::command::ChannelChange::kName:
+                if (change.name().empty()) {
+                    return std::unexpected("name is empty");
+                }
+                has_name = true;
+                break;
+            case sercom::protocol::command::ChannelChange::CHANGE_NOT_SET:
+            default:
+                return std::unexpected("invalid change");
+        }
+    }
+
+    if (!has_name) {
+        return std::unexpected("no supported changes");
+    }
+
     return {};
 }
 
@@ -381,23 +401,26 @@ std::expected<void, ValidationError> ProtoMessageValidator::validate_update_hub(
     bool has_name = false;
     bool has_avatar = false;
     for (const auto& change : msg.changes()) {
-        switch (change) {
-            case sercom::protocol::command::UpdateHub::NAME:
+        switch (change.change_case()) {
+            case sercom::protocol::command::HubChange::kName:
+                if (change.name().empty()) {
+                    return std::unexpected("name is empty");
+                }
                 has_name = true;
                 break;
-            case sercom::protocol::command::UpdateHub::AVATAR:
+            case sercom::protocol::command::HubChange::kAvatarSeed:
+                if (change.avatar_seed().empty()) {
+                    return std::unexpected("avatar_seed is empty");
+                }
                 has_avatar = true;
                 break;
-            case sercom::protocol::command::UpdateHub::CHANGE_UNSPECIFIED:
+            case sercom::protocol::command::HubChange::CHANGE_NOT_SET:
             default:
                 return std::unexpected("invalid change");
         }
     }
-    if (has_name && msg.name().empty()) {
-        return std::unexpected("name is empty");
-    }
-    if (has_avatar && msg.avatar_seed().empty()) {
-        return std::unexpected("avatar_seed is empty");
+    if (!has_name && !has_avatar) {
+        return std::unexpected("no supported changes");
     }
     return {};
 }
@@ -413,24 +436,27 @@ std::expected<void, ValidationError> ProtoMessageValidator::validate_update_user
     bool has_username = false;
     bool has_avatar = false;
     for (const auto& change : msg.changes()) {
-        switch (change) {
-            case sercom::protocol::command::UpdateUser::USERNAME:
+        switch (change.change_case()) {
+            case sercom::protocol::command::UserChange::kUsername:
+                if (change.username().empty()) {
+                    return std::unexpected("username is empty");
+                }
                 has_username = true;
                 break;
-            case sercom::protocol::command::UpdateUser::AVATAR:
+            case sercom::protocol::command::UserChange::kAvatarSeed:
+                if (change.avatar_seed().empty()) {
+                    return std::unexpected("avatar_seed is empty");
+                }
                 has_avatar = true;
                 break;
-            case sercom::protocol::command::UpdateUser::CHANGE_UNSPECIFIED:
+            case sercom::protocol::command::UserChange::CHANGE_NOT_SET:
             default:
                 return std::unexpected("invalid change");
         }
     }
 
-    if (has_username && msg.username().empty()) {
-        return std::unexpected("username is empty");
-    }
-    if (has_avatar && msg.avatar_seed().empty()) {
-        return std::unexpected("avatar_seed is empty");
+    if (!has_username && !has_avatar) {
+        return std::unexpected("no supported changes");
     }
     return {};
 }

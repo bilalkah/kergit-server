@@ -1,4 +1,4 @@
-load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:defs.bzl", "cc_library")
 load("//app/commands:command_list.bzl", "COMMAND_LIST")
 
 cc_library(

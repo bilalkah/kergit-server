@@ -1,5 +1,5 @@
 services:
-  dev:
+  macos-dev:
     build: .
     container_name: sercom-dev-macos
     volumes:
@@ -26,7 +26,22 @@ services:
     sysctls:
       net.ipv6.conf.all.disable_ipv6: 1
       net.ipv6.conf.default.disable_ipv6: 1
-      
+  ubuntu-dev:
+    build: .
+    container_name: sercom-dev-ubuntu
+    volumes:
+      - ../:/home/sercom/workspace:cached
+      - ccache:/home/sercom/.ccache
+    working_dir: /home/sercom/workspace
+    tty: true
+    stdin_open: true
+    environment:
+      - CCACHE_DIR=/home/sercom/.ccache
+      - REDIS_URL=redis://redis:6379
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    network_mode: host
+    command: bash -lc "sleep infinity"
   
   redis:
     image: redis:7-alpine

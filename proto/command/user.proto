@@ -5,14 +5,16 @@ package sercom.protocol.command;
 /*
  * Update current user settings.
  */
-message UpdateUser {
-  enum Change {
-    CHANGE_UNSPECIFIED = 0;
-    USERNAME = 1;
-    AVATAR = 2;
+message UserChange {
+  oneof change {
+    string username = 1;
+    string avatar_seed = 2;
   }
+}
 
-  repeated Change changes = 1;
-  string username = 2;
-  string avatar_seed = 3;
+/*
+ * Update user settings.
+ */
+message UpdateUser {
+  repeated UserChange changes = 2;
 }

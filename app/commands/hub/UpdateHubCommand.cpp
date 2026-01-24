@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -57,17 +58,33 @@ std::vector<net::outbound::OutgoingMessage> UpdateHubCommand::execute(CommandCon
     }
     const UserId user_id = user_exp.value();
 
-    bool change_name = false;
-    bool change_avatar = false;
+    std::optional<std::string> requested_name;
+    std::optional<std::string> requested_seed;
+
     for (int i = 0; i < cmd.changes_size(); ++i) {
-        switch (cmd.changes(i)) {
-            case sercom::protocol::command::UpdateHub::NAME:
-                change_name = true;
+        const auto& change = cmd.changes(i);
+        switch (change.change_case()) {
+            case sercom::protocol::command::HubChange::kName: {
+                auto name = sanitize(change.name());
+                if (name.empty()) {
+                    return {make_command_error(event->conn_id, env.type(),
+                                               sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
+                                               "Hub name is required")};
+                }
+                requested_name = std::move(name);
                 break;
-            case sercom::protocol::command::UpdateHub::AVATAR:
-                change_avatar = true;
+            }
+            case sercom::protocol::command::HubChange::kAvatarSeed: {
+                auto seed = sanitize(change.avatar_seed());
+                if (seed.empty()) {
+                    return {make_command_error(event->conn_id, env.type(),
+                                               sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
+                                               "Avatar seed is required")};
+                }
+                requested_seed = std::move(seed);
                 break;
-            case sercom::protocol::command::UpdateHub::CHANGE_UNSPECIFIED:
+            }
+            case sercom::protocol::command::HubChange::CHANGE_NOT_SET:
             default:
                 return {make_command_error(event->conn_id, env.type(),
                                            sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
@@ -75,30 +92,10 @@ std::vector<net::outbound::OutgoingMessage> UpdateHubCommand::execute(CommandCon
         }
     }
 
-    if (!change_name && !change_avatar) {
+    if (!requested_name.has_value() && !requested_seed.has_value()) {
         return {make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
                                    "No changes requested")};
-    }
-
-    std::string requested_name;
-    if (change_name) {
-        requested_name = sanitize(cmd.name());
-        if (requested_name.empty()) {
-            return {make_command_error(event->conn_id, env.type(),
-                                       sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
-                                       "Hub name is required")};
-        }
-    }
-
-    std::string requested_seed;
-    if (change_avatar) {
-        requested_seed = sanitize(cmd.avatar_seed());
-        if (requested_seed.empty()) {
-            return {make_command_error(event->conn_id, env.type(),
-                                       sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
-                                       "Avatar seed is required")};
-        }
     }
 
     auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd.hub_id()});
@@ -123,15 +120,15 @@ std::vector<net::outbound::OutgoingMessage> UpdateHubCommand::execute(CommandCon
     }
 
     try {
-        if (change_name) {
-            if (!ctx.hub_service.renameHub(hub_id, requested_name)) {
+        if (requested_name.has_value()) {
+            if (!ctx.hub_service.renameHub(hub_id, *requested_name)) {
                 return {make_command_error(event->conn_id, env.type(),
                                            sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
                                            "Unable to rename hub at this time")};
             }
         }
-        if (change_avatar) {
-            if (!ctx.hub_service.updateHubAvatarSeed(hub_id, requested_seed)) {
+        if (requested_seed.has_value()) {
+            if (!ctx.hub_service.updateHubAvatarSeed(hub_id, *requested_seed)) {
                 return {make_command_error(event->conn_id, env.type(),
                                            sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
                                            "Unable to update hub avatar at this time")};
@@ -162,10 +159,10 @@ std::vector<net::outbound::OutgoingMessage> UpdateHubCommand::execute(CommandCon
     }
 
     std::vector<net::outbound::OutgoingMessage> out;
-    if (change_name) {
+    if (requested_name.has_value()) {
         sercom::protocol::event::HubRenamed renamed;
         renamed.set_hub_id(ctx.ids.to_public(hub_id).value);
-        renamed.set_name(requested_name);
+        renamed.set_name(*requested_name);
 
         sercom::protocol::Envelope out_env;
         out_env.set_version(1);
@@ -181,10 +178,10 @@ std::vector<net::outbound::OutgoingMessage> UpdateHubCommand::execute(CommandCon
                 .payload = net::outbound::Payload{.data = std::move(bytes), .is_binary = true}}});
     }
 
-    if (change_avatar) {
+    if (requested_seed.has_value()) {
         sercom::protocol::event::HubAvatarChanged changed;
         changed.set_hub_id(ctx.ids.to_public(hub_id).value);
-        changed.set_avatar_seed(requested_seed);
+        changed.set_avatar_seed(*requested_seed);
 
         sercom::protocol::Envelope out_env;
         out_env.set_version(1);

@@ -1,4 +1,4 @@
-load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:defs.bzl", "cc_library")
 
 cc_library(
     name = "session_manager",
@@ -6,8 +6,8 @@ cc_library(
         "SessionManager.cpp",
     ],
     hdrs = [
-        "SessionManager.h",
         "SessionInfo.h",
+        "SessionManager.h",
     ],
     copts = ["-std=gnu++23"],
     visibility = ["//app:__subpackages__"],
