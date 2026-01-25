@@ -29,6 +29,10 @@ class SessionManager final {
     // Called on auth success
     void createSession(const GlobalConnId& main_conn, const UserId& user);
 
+    // Called on auth success - atomically checks if session exists and creates if not
+    // Returns true if session was created, false if session already exists
+    bool tryCreateSession(const GlobalConnId& main_conn, const UserId& user);
+
     // Called on DisconnectionEvent
     void removeConnection(const GlobalConnId& conn);
 

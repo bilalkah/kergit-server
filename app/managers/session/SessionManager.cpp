@@ -6,11 +6,33 @@ void SessionManager::createSession(const GlobalConnId& main_conn, const UserId& 
     std::unique_lock lock(mutex_);
     UserId session = user;
 
+    // Check if session already exists - if so, don't add the new connection mapping
+    if (sessions_.contains(session)) {
+        return;  // Session already exists, don't overwrite or add new connection
+    }
+
     SessionInfo info;
     info.main_conn = main_conn;
 
     sessions_.emplace(session, std::move(info));
     conn_to_session_[main_conn] = session;
+}
+
+bool SessionManager::tryCreateSession(const GlobalConnId& main_conn, const UserId& user) {
+    std::unique_lock lock(mutex_);
+    UserId session = user;
+
+    // Atomic check-and-create: return false if session already exists
+    if (sessions_.contains(session)) {
+        return false;  // Session already exists for this user
+    }
+
+    SessionInfo info;
+    info.main_conn = main_conn;
+
+    sessions_.emplace(session, std::move(info));
+    conn_to_session_[main_conn] = session;
+    return true;
 }
 
 /**
