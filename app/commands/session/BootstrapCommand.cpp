@@ -46,7 +46,9 @@ std::vector<net::outbound::OutgoingMessage> BootstrapCommand::execute(CommandCon
                 .reason = "User not found"}}};
     }
 
-    if (ctx.session_manager.hasSession(user_id)) {
+    // Atomically try to create session - prevents race condition where two connections
+    // for the same user could both pass hasSession check before either creates the session
+    if (!ctx.session_manager.tryCreateSession(event->conn_id, user_id)) {
         return {net::outbound::OutgoingMessage{
             .target = net::outbound::Target::one(event->conn_id),
             .action = net::outbound::DropConnection{
@@ -54,9 +56,6 @@ std::vector<net::outbound::OutgoingMessage> BootstrapCommand::execute(CommandCon
                     sercom::protocol::event::CommandErrorCode::CommandErrorCode_INVALID_SESSION),
                 .reason = "duplicate_session"}}};
     }
-
-    // --- session + subscriptions ---
-    ctx.session_manager.createSession(event->conn_id, user_id);
 
     const auto hubs = ctx.hub_service.getUserHubs(user_id);
     for (const auto& hub : hubs) {
