@@ -8,6 +8,7 @@ proto_library(
         "//proto/domain:channel_proto",
         "//proto/domain:hub_proto",
         "//proto/domain:user_proto",
+        ":activity_proto",
     ],
 )
 
@@ -100,4 +101,15 @@ cc_proto_library(
     name = "user_cc_proto",
     visibility = ["//visibility:public"],
     deps = [":user_proto"],
+)
+
+proto_library(
+    name = "activity_proto",
+    srcs = ["activity.proto"],
+)
+
+cc_proto_library(
+    name = "activity_cc_proto",
+    visibility = ["//visibility:public"],
+    deps = [":activity_proto"],
 )

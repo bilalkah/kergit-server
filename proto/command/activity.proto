@@ -32,3 +32,31 @@ message Typing {
   uint64 channel_id = 2;
   State state = 3;
 }
+
+
+message VoiceChannelMembership {
+  enum State {
+    STATE_UNSPECIFIED = 0;
+    STATE_JOIN = 1;
+    STATE_LEAVE = 2;
+  }
+  // The voice channel the user wants to join
+  // This is your channel_id
+  uint64 hub_id = 1;
+  uint64 channel_id = 2;
+  State state = 3;
+}
+
+message VoiceChannelActivity {
+  enum State {
+    STATE_UNSPECIFIED = 0;
+    STATE_MUTE = 1;
+    STATE_UNMUTE = 2;
+    STATE_DEAFEN = 3;
+    STATE_UNDEAFEN = 4;
+  }
+  uint64 hub_id = 1;
+  uint64 channel_id = 2;
+  State state = 3;
+}
+

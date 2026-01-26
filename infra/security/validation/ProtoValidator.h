@@ -41,6 +41,10 @@ class ProtoMessageValidator {
         const sercom::protocol::command::Typing& msg);
     std::expected<void, ValidationError> validate_active_channel(
         const sercom::protocol::command::SelectActiveChannel& msg);
+    std::expected<void, ValidationError> validate_voice_channel_membership(
+        const sercom::protocol::command::VoiceChannelMembership& msg);
+    std::expected<void, ValidationError> validate_voice_channel_activity(
+        const sercom::protocol::command::VoiceChannelActivity& msg);
     std::expected<void, ValidationError> validate_send_message(
         const sercom::protocol::command::SendMessage& msg);
     std::expected<void, ValidationError> validate_fetch_latest_messages(
@@ -53,6 +57,8 @@ class ProtoMessageValidator {
         const sercom::protocol::command::CreateChannel& msg);
     std::expected<void, ValidationError> validate_update_channel(
         const sercom::protocol::command::UpdateChannel& msg);
+    std::expected<void, ValidationError> validate_remove_channel(
+        const sercom::protocol::command::RemoveChannel& msg);
     std::expected<void, ValidationError> validate_join_hub(
         const sercom::protocol::command::JoinHub& msg);
     std::expected<void, ValidationError> validate_create_hub_join_code(

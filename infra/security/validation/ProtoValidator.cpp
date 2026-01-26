@@ -42,6 +42,20 @@ std::expected<void, ValidationError> ProtoMessageValidator::validate_envelope(
             }
             return validate_active_channel(active_channel);
         }
+        case sercom::protocol::Envelope::VOICE_JOIN: {
+            sercom::protocol::command::VoiceChannelMembership membership;
+            if (!membership.ParseFromArray(env.payload().data(), env.payload().size())) {
+                return std::unexpected("Invalid VOICE_JOIN payload");
+            }
+            return validate_voice_channel_membership(membership);
+        }
+        case sercom::protocol::Envelope::VOICE_ACTIVITY: {
+            sercom::protocol::command::VoiceChannelActivity activity;
+            if (!activity.ParseFromArray(env.payload().data(), env.payload().size())) {
+                return std::unexpected("Invalid VOICE_ACTIVITY payload");
+            }
+            return validate_voice_channel_activity(activity);
+        }
         case sercom::protocol::Envelope::MESSAGE_SEND: {
             sercom::protocol::command::SendMessage send_message;
             if (!send_message.ParseFromArray(env.payload().data(), env.payload().size())) {
@@ -83,6 +97,13 @@ std::expected<void, ValidationError> ProtoMessageValidator::validate_envelope(
                 return std::unexpected("Invalid CHANNEL_RENAME payload");
             }
             return validate_update_channel(update_channel);
+        }
+        case sercom::protocol::Envelope::CHANNEL_REMOVE: {
+            sercom::protocol::command::RemoveChannel remove_channel;
+            if (!remove_channel.ParseFromArray(env.payload().data(), env.payload().size())) {
+                return std::unexpected("Invalid CHANNEL_REMOVE payload");
+            }
+            return validate_remove_channel(remove_channel);
         }
         case sercom::protocol::Envelope::HUB_JOIN: {
             sercom::protocol::command::JoinHub join_hub;
@@ -153,6 +174,10 @@ std::expected<void, ValidationError> ProtoMessageValidator::validate_envelope(
         case sercom::protocol::Envelope::USER_PROFILE_UPDATED:
         case sercom::protocol::Envelope::CHANNEL_CREATED:
         case sercom::protocol::Envelope::CHANNEL_RENAMED:
+        case sercom::protocol::Envelope::CHANNEL_REMOVED:
+        case sercom::protocol::Envelope::VOICE_TOKEN_ISSUED:
+        case sercom::protocol::Envelope::VOICE_CHANNEL_PARTICIPANTS:
+        case sercom::protocol::Envelope::VOICE_CHANNEL_PRESENCE:
             return std::unexpected("Server-only message type");
 
         default:
@@ -218,6 +243,40 @@ std::expected<void, ValidationError> ProtoMessageValidator::validate_active_chan
 
     if (msg.channel_id() == 0) {
         return std::unexpected("channel_id is empty");
+    }
+
+    return {};
+}
+
+std::expected<void, ValidationError> ProtoMessageValidator::validate_voice_channel_membership(
+    const sercom::protocol::command::VoiceChannelMembership& msg) {
+    if (msg.hub_id() == 0) {
+        return std::unexpected("hub_id is empty");
+    }
+
+    if (msg.channel_id() == 0) {
+        return std::unexpected("channel_id is empty");
+    }
+
+    if (msg.state() == sercom::protocol::command::VoiceChannelMembership::STATE_UNSPECIFIED) {
+        return std::unexpected("voice channel state is unspecified");
+    }
+
+    return {};
+}
+
+std::expected<void, ValidationError> ProtoMessageValidator::validate_voice_channel_activity(
+    const sercom::protocol::command::VoiceChannelActivity& msg) {
+    if (msg.hub_id() == 0) {
+        return std::unexpected("hub_id is empty");
+    }
+
+    if (msg.channel_id() == 0) {
+        return std::unexpected("channel_id is empty");
+    }
+
+    if (msg.state() == sercom::protocol::command::VoiceChannelActivity::STATE_UNSPECIFIED) {
+        return std::unexpected("voice activity state is unspecified");
     }
 
     return {};
@@ -330,6 +389,19 @@ std::expected<void, ValidationError> ProtoMessageValidator::validate_update_chan
 
     if (!has_name) {
         return std::unexpected("no supported changes");
+    }
+
+    return {};
+}
+
+std::expected<void, ValidationError> ProtoMessageValidator::validate_remove_channel(
+    const sercom::protocol::command::RemoveChannel& msg) {
+    if (msg.hub_id() == 0) {
+        return std::unexpected("hub_id is empty");
+    }
+
+    if (msg.channel_id() == 0) {
+        return std::unexpected("channel_id is empty");
     }
 
     return {};

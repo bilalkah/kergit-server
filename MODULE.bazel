@@ -5,7 +5,6 @@ module(name = "serverless_communication")
 # Third-party dependencies.
 bazel_dep(name = "websocketpp", version = "0.8.2")
 bazel_dep(name = "googletest", version = "1.17.0")
-bazel_dep(name = "jwt-cpp", version = "0.7.0.bcr.1")
 bazel_dep(name = "fmt", version = "12.1.0")
 bazel_dep(name = "protobuf", version = "33.4")
 
@@ -14,6 +13,9 @@ use_repo(libpqxx_ext, "libpqxx")
 
 nlohmann_json_ext = use_extension("//third_party/nlohmann_json:extension.bzl", "nlohmann_json")
 use_repo(nlohmann_json_ext, "nlohmann_json")
+
+jwt_cpp_ext = use_extension("//third_party/jwt-cpp:extension.bzl", "jwt_cpp")
+use_repo(jwt_cpp_ext, "jwt-cpp")
 
 boringssl_ext = use_extension("//third_party/boringssl:extension.bzl", "boringssl")
 use_repo(boringssl_ext, "boringssl")
@@ -38,8 +40,8 @@ use_repo(hiredis_ext, "hiredis")
 
 # Bazel rules dependencies.
 bazel_dep(name = "rules_python", version = "1.6.0")
-bazel_dep(name = "rules_cc", version = "0.2.13")
-bazel_dep(name = "rules_shell", version = "0.5.1")
+bazel_dep(name = "rules_cc", version = "0.2.14")
+bazel_dep(name = "rules_shell", version = "0.6.1")
 bazel_dep(name = "platforms", version = "1.0.0")
 bazel_dep(name = "rules_license", version = "1.0.0")
 
