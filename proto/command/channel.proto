@@ -29,3 +29,12 @@ message UpdateChannel {
   uint64 channel_id = 2;
   repeated ChannelChange changes = 3;
 }
+
+/*
+ * Permanently delete a channel.
+ * Only OWNER.
+ */
+message RemoveChannel {
+  uint64 hub_id = 1;
+  uint64 channel_id = 2;
+}

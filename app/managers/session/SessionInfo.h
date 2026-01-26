@@ -14,11 +14,13 @@ struct SessionInfo {
     // current context
     std::optional<HubId> current_hub;
     std::optional<ChannelId> current_text_channel;
+    std::optional<HubId> current_voice_hub;
     std::optional<ChannelId> current_voice_channel;
+    bool voice_muted = false;
+    bool voice_deafened = false;
 
-    // transport-level connections
+    // transport-level connection
     std::optional<GlobalConnId> main_conn;
-    std::optional<GlobalConnId> voice_conn;
 };
 
 }  // namespace app

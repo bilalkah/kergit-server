@@ -18,6 +18,10 @@ message Envelope {
         PRESENCE = 30;
         TYPING = 31;
         ACTIVE_CHANNEL = 32;
+        VOICE_JOIN = 33;
+        VOICE_CHANNEL_PARTICIPANTS = 34;
+        VOICE_ACTIVITY = 35;
+        VOICE_CHANNEL_PRESENCE = 36;
 
         MESSAGE_SEND = 40;
         MESSAGE_FETCH_LATEST = 41;
@@ -35,6 +39,7 @@ message Envelope {
         HUB_UPDATE = 56;
         CHANNEL_CREATE = 80;
         CHANNEL_RENAME = 81;
+        CHANNEL_REMOVE = 85;
 
         HUB_CREATED = 60;
         HUB_MEMBER_JOINED = 61;
@@ -46,6 +51,8 @@ message Envelope {
         HUB_AVATAR_CHANGED = 67;
         CHANNEL_CREATED = 82;
         CHANNEL_RENAMED = 83;
+        CHANNEL_REMOVED = 86;
+        VOICE_TOKEN_ISSUED = 84;
 
         USER_UPDATE = 70;
         USER_PROFILE_UPDATED = 71;

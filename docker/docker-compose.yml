@@ -26,6 +26,7 @@ services:
     sysctls:
       net.ipv6.conf.all.disable_ipv6: 1
       net.ipv6.conf.default.disable_ipv6: 1
+
   ubuntu-dev:
     build: .
     container_name: sercom-dev-ubuntu
@@ -42,6 +43,20 @@ services:
       - REDIS_PORT=6379
     network_mode: host
     command: bash -lc "sleep infinity"
+
+  livekit:
+    image: livekit/livekit-server:latest
+    container_name: livekit
+    command: --config /config/livekit.yaml
+
+    volumes:
+      - ../livekit/livekit.yaml:/config/livekit.yaml:ro
+    ports:
+      - "7880:7880"
+      - "7881:7881/tcp"
+      - "7882:7882/udp"
+    restart: unless-stopped
+
   
   redis:
     image: redis:7-alpine

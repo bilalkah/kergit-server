@@ -30,3 +30,35 @@ cc_library(
         "//proto/event:presence_cc_proto",
     ],
 )
+
+cc_library(
+    name = "join_voice_channel_command",
+    srcs = ["JoinVoiceChannelCommand.cpp"],
+    hdrs = ["JoinVoiceChannelCommand.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//app/commands:i_command",
+        "//app/dispatcher:command_context",
+        "//app/managers/subscription:topic",
+        "//proto:envelope_cc_proto",
+        "//proto/command:activity_cc_proto",
+        "//proto/event:activity_cc_proto",
+        "//proto/event:error_cc_proto",
+    ],
+)
+
+cc_library(
+    name = "voice_channel_activity_command",
+    srcs = ["VoiceChannelActivityCommand.cpp"],
+    hdrs = ["VoiceChannelActivityCommand.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//app/commands:i_command",
+        "//app/dispatcher:command_context",
+        "//app/managers/subscription:topic",
+        "//proto:envelope_cc_proto",
+        "//proto/command:activity_cc_proto",
+        "//proto/event:activity_cc_proto",
+        "//proto/event:error_cc_proto",
+    ],
+)

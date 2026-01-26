@@ -53,11 +53,6 @@ void SessionManager::removeConnection(const GlobalConnId& conn) {
         return;  // session not found, clean up mapping
     }
 
-    // Remove voice connection mapping if exists
-    if (sit->second.voice_conn) {
-        conn_to_session_.erase(*sit->second.voice_conn);
-    }
-
     // Remove main connection mapping
     conn_to_session_.erase(it);
 
@@ -84,27 +79,66 @@ void SessionManager::leaveTextChannel(const UserId& session) {
     it->second.current_hub.reset();
 }
 
-void SessionManager::attachVoice(const UserId& session, const GlobalConnId& voice_conn,
-                                 const ChannelId& channel) {
+void SessionManager::joinVoiceChannel(const UserId& session, const HubId& hub,
+                                      const ChannelId& channel) {
     std::unique_lock lock(mutex_);
     auto it = sessions_.find(session);
     if (it == sessions_.end()) return;
 
-    it->second.voice_conn = voice_conn;
+    it->second.current_voice_hub = hub;
     it->second.current_voice_channel = channel;
-    conn_to_session_[voice_conn] = session;
+    it->second.voice_muted = false;
+    it->second.voice_deafened = false;
 }
 
-void SessionManager::detachVoice(const UserId& session) {
+void SessionManager::leaveVoiceChannel(const UserId& session) {
     std::unique_lock lock(mutex_);
     auto it = sessions_.find(session);
     if (it == sessions_.end()) return;
 
-    if (it->second.voice_conn) {
-        conn_to_session_.erase(*it->second.voice_conn);
-        it->second.voice_conn.reset();
-        it->second.current_voice_channel.reset();
+    it->second.current_voice_channel.reset();
+    it->second.current_voice_hub.reset();
+    it->second.voice_muted = false;
+    it->second.voice_deafened = false;
+}
+
+bool SessionManager::setVoiceMuted(const UserId& session, bool muted) {
+    std::unique_lock lock(mutex_);
+    auto it = sessions_.find(session);
+    if (it == sessions_.end()) return false;
+    if (it->second.voice_muted == muted) return false;
+    it->second.voice_muted = muted;
+    return true;
+}
+
+bool SessionManager::setVoiceDeafened(const UserId& session, bool deafened) {
+    std::unique_lock lock(mutex_);
+    auto it = sessions_.find(session);
+    if (it == sessions_.end()) return false;
+    bool changed = false;
+    if (it->second.voice_deafened != deafened) {
+        it->second.voice_deafened = deafened;
+        changed = true;
     }
+    const bool desiredMuted = deafened ? true : false;
+    if (it->second.voice_muted != desiredMuted) {
+        it->second.voice_muted = desiredMuted;
+        changed = true;
+    }
+    return changed;
+}
+
+std::vector<UserId> SessionManager::voiceParticipantsInChannel(const HubId& hub,
+                                                               const ChannelId& channel) const {
+    std::shared_lock lock(mutex_);
+    std::vector<UserId> users;
+    for (const auto& [user_id, info] : sessions_) {
+        if (!info.current_voice_hub || !info.current_voice_channel) continue;
+        if (info.current_voice_hub.value() != hub) continue;
+        if (info.current_voice_channel.value() != channel) continue;
+        users.push_back(user_id);
+    }
+    return users;
 }
 
 bool SessionManager::hasSession(const UserId& user) const {

@@ -33,8 +33,8 @@ struct UpdateAuthState {
 };
 
 struct DropConnection {
-    int code;
-    std::string reason;
+    int code{0};
+    std::string reason{};
 };
 
 using Action = std::variant<SendPayload, UpdateAuthState, DropConnection>;

@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package sercom.protocol.event;
+
+// Server → Client
+message VoiceTokenIssued {
+  // Same channel_id for correlation
+  uint64 channel_id = 1;
+
+  // LiveKit access token (JWT)
+  string token = 2;
+
+  // Expiration in seconds (informational)
+  uint64 expires_in = 3;
+}
+
+
+/*
+ * Full snapshot of voice participants in a channel.
+ * Sent:
+ *  - optionally on bootstrap for the ACTIVE channel only
+ */
+message VoiceChannelParticipants {
+  // Voice channel id
+  uint64 hub_id = 1;
+  uint64 channel_id = 2;
+
+  // User IDs of participants currently in the voice channel
+  repeated uint64 participant_user_ids = 3;
+}
+
+/*
+ * Voice channel presence update.
+ * Sent:
+ *  - when a user joins a voice channel
+ *  - when a user leaves a voice channel
+ */
+message VoiceChannelPresence {
+  enum State {
+    STATE_UNSPECIFIED = 0;
+    STATE_JOINED = 1;
+    STATE_LEFT = 2;
+    STATE_MUTED = 3;
+    STATE_UNMUTED = 4;
+    STATE_DEAFENED = 5;
+    STATE_UNDEAFENED = 6;
+  }
+  
+  // Voice channel id
+  uint64 hub_id = 1;
+  uint64 channel_id = 2;
+
+  State state = 3;
+  // User id who triggered the presence update
+  uint64 user_id = 4;
+}

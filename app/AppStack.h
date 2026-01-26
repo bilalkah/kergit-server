@@ -3,6 +3,7 @@
 
 #include "app/dispatcher/CommandContext.h"
 #include "app/dispatcher/Dispatcher.h"
+#include "app/services/livekit/LiveKitTokenService.h"
 #include "app/worker/WorkerPool.h"
 #include "core/ServerConfig.h"
 #include "infra/persistence/PersistenceGateway.h"
@@ -51,6 +52,7 @@ class AppStack : public utils::Loggable {
     std::unique_ptr<services::HubService> hub_service_;
     std::unique_ptr<services::HubNotifier> hub_notifier_;
     std::unique_ptr<services::HubSnapshotBuilder> hub_snapshot_builder_;
+    std::unique_ptr<services::livekit::LiveKitTokenService> livekit_token_service_;
 
     // Core
     std::unique_ptr<CommandContext> cmd_ctx_;

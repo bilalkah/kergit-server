@@ -21,3 +21,12 @@ message ChannelRenamed {
   uint64 hub_id = 1;
   sercom.protocol.domain.Channel channel = 2;
 }
+
+/*
+ * Channel was renamed.
+ * Fanout to hub members.
+ */
+message ChannelRemoved {
+  uint64 hub_id = 1;
+  uint64 channel_id = 2;
+}

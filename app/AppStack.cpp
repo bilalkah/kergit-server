@@ -1,5 +1,7 @@
 #include "app/AppStack.h"
 
+#include "utils/EnvLoader.h"
+
 namespace app {
 
 AppStack::AppStack(const core::ServerConfig& config) : config_(config) {
@@ -67,10 +69,26 @@ void AppStack::init_services() {
             *channel_service_, *hub_service_, *presence_manager_, *public_id_service_);
 
         log(utils::LogLevel::INFO, "hub_snapshot_builder_ done.");
+
+        auto livekit_key = utils::EnvLoader::get_env("LIVEKIT_API_KEY", "");
+        auto livekit_secret = utils::EnvLoader::get_env("LIVEKIT_API_SECRET", "");
+        log(utils::LogLevel::INFO, "LIVEKIT env key=[", livekit_key, "], secret=[", livekit_secret, "]");
+
+        const auto livekit_force = utils::EnvLoader::get_env("LIVEKIT_FORCE_DEV", "") == "1";
+        if (livekit_force) {
+            livekit_key = "dev";
+            livekit_secret =
+                "a780bc5d7c0fddb53308e170d3bbef4e01fdf7d28a3c171cde429c58b794ddd4";
+            log(utils::LogLevel::WARN, "LIVEKIT_FORCE_DEV enabled (using dev key/secret)");
+        }
+        livekit_token_service_ =
+            std::make_unique<services::livekit::LiveKitTokenService>(livekit_key, livekit_secret);
+        log(utils::LogLevel::INFO, "livekit_token_service_ done.");
         cmd_ctx_ = std::make_unique<CommandContext>(
             CommandContext{*public_id_service_, *auth_service_, *channel_service_, *hub_service_,
-                           *hub_notifier_, *hub_snapshot_builder_, *user_service_,
-                           *presence_manager_, *subscription_manager_, *session_manager_});
+                           *hub_notifier_, *hub_snapshot_builder_, *livekit_token_service_,
+                           *user_service_, *presence_manager_, *subscription_manager_,
+                           *session_manager_});
         log(utils::LogLevel::INFO, "Services are inited.");
     } catch (const std::exception& ex) {
         log(utils::LogLevel::ERROR, "init_services failed: ", ex.what());

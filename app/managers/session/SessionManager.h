@@ -19,7 +19,7 @@ using SessionError = std::string;
  * Invariants:
  *  - Sessions are created ONLY after auth
  *  - GlobalConnId is transport-level only
- *  - Voice connections are owned by a session
+ *  - Voice is signaling-only; no separate voice sockets
  *  - Offline users leave zero memory
  */
 class SessionManager final {
@@ -39,9 +39,12 @@ class SessionManager final {
     // ---- active operations ----
     void joinTextChannel(const UserId& session, const HubId& hub, const ChannelId& channel);
     void leaveTextChannel(const UserId& session);
-    void attachVoice(const UserId& session, const GlobalConnId& voice_conn,
-                     const ChannelId& channel);
-    void detachVoice(const UserId& session);
+    void joinVoiceChannel(const UserId& session, const HubId& hub, const ChannelId& channel);
+    void leaveVoiceChannel(const UserId& session);
+    bool setVoiceMuted(const UserId& session, bool muted);
+    bool setVoiceDeafened(const UserId& session, bool deafened);
+    std::vector<UserId> voiceParticipantsInChannel(const HubId& hub,
+                                                   const ChannelId& channel) const;
 
     // ---- queries ----
     bool hasSession(const UserId& user) const;

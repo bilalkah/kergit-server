@@ -4,6 +4,7 @@
 // #include "app/commands/channel/DeleteChannelCommand.h"
 // #include "app/commands/channel/JoinChannelCommand.h"
 #include "app/commands/channel/RenameChannelCommand.h"
+#include "app/commands/channel/RemoveChannelCommand.h"
 #include "app/commands/hub/CreateHubCommand.h"
 #include "app/commands/hub/DeleteHubCommand.h"
 #include "app/commands/hub/GetHubInviteCommand.h"
@@ -14,6 +15,8 @@
 // #include "app/commands/member/UpdateMemberRoleCommand.h"
 #include "app/commands/activity/SelectActiveChannelCommand.h"
 #include "app/commands/activity/TypingCommand.h"
+#include "app/commands/activity/JoinVoiceChannelCommand.h"
+#include "app/commands/activity/VoiceChannelActivityCommand.h"
 #include "app/commands/message/FetchLatestMessagesCommand.h"
 #include "app/commands/message/FetchMessagesBeforeCommand.h"
 #include "app/commands/message/SendMessageCommand.h"
@@ -63,6 +66,10 @@ void Dispatcher::register_all() {
     map_proto_[sercom::protocol::Envelope_Type_ACTIVE_CHANNEL] =
         std::make_unique<SelectActiveChannelCommand>();
     map_proto_[sercom::protocol::Envelope_Type_TYPING] = std::make_unique<TypingCommand>();
+    map_proto_[sercom::protocol::Envelope_Type_VOICE_JOIN] =
+        std::make_unique<JoinVoiceChannelCommand>();
+    map_proto_[sercom::protocol::Envelope_Type_VOICE_ACTIVITY] =
+        std::make_unique<VoiceChannelActivityCommand>();
     map_proto_[sercom::protocol::Envelope_Type_MESSAGE_SEND] =
         std::make_unique<SendMessageCommand>();
     map_proto_[sercom::protocol::Envelope_Type_MESSAGE_FETCH_LATEST] =
@@ -87,6 +94,8 @@ void Dispatcher::register_all() {
         std::make_unique<CreateChannelCommand>();
     map_proto_[sercom::protocol::Envelope_Type_CHANNEL_RENAME] =
         std::make_unique<RenameChannelCommand>();
+    map_proto_[sercom::protocol::Envelope_Type_CHANNEL_REMOVE] =
+        std::make_unique<RemoveChannelCommand>();
     // register_cmd("join_channel", std::make_unique<JoinChannelCommand>());
     // register_cmd("send_message", std::make_unique<SendMessageCommand>());
     // register_cmd("create_channel", std::make_unique<CreateChannelCommand>());

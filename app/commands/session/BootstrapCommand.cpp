@@ -5,6 +5,7 @@
 #include "domains/Channel.h"
 #include "domains/Hub.h"
 #include "proto/envelope.pb.h"
+#include "proto/event/activity.pb.h"
 #include "proto/event/error.pb.h"
 #include "proto/event/presence.pb.h"
 #include "proto/event/session.pb.h"
@@ -103,6 +104,20 @@ std::vector<net::outbound::OutgoingMessage> BootstrapCommand::execute(CommandCon
             m->set_display_name(member.display_name.empty() ? "Member" : member.display_name);
             m->set_role(converters::to_proto_hub_role(member.role));
             m->set_avatar_seed(member.avatar_seed);
+        }
+
+        for (const auto& channel : snapshot.channels) {
+            if (channel.type != ChannelType::VOICE) continue;
+            const auto participants =
+                ctx.session_manager.voiceParticipantsInChannel(hub.id, channel.id);
+            if (participants.empty()) continue;
+
+            auto* voice_snapshot = bootstrap.add_voice_channels();
+            voice_snapshot->set_hub_id(public_hub_id.value);
+            voice_snapshot->set_channel_id(ctx.ids.to_public(channel.id).value);
+            for (const auto& uid : participants) {
+                voice_snapshot->add_participant_user_ids(ctx.ids.to_public(uid).value);
+            }
         }
 
         // --- presence fanout ---
