@@ -1,0 +1,4 @@
+:7883 {
+  tls /certs/cert.pem /certs/key.pem
+  reverse_proxy livekit:7880
+}
