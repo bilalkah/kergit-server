@@ -30,7 +30,7 @@ void maybe_log() {
         return;
     }
 
-    const auto& c = counters();
+    auto& c = counters();
     const auto inbound = c.inbound_msgs_total.load(std::memory_order_relaxed);
     const auto outbound = c.outbound_msgs_total.load(std::memory_order_relaxed);
     const auto parse_fail = c.parse_fail_total.load(std::memory_order_relaxed);
@@ -40,17 +40,31 @@ void maybe_log() {
     const auto dropped_out = c.dropped_outbound_total.load(std::memory_order_relaxed);
     const auto outbound_backpressure =
         c.outbound_backpressure_total.load(std::memory_order_relaxed);
-    const auto event_hiwat = c.event_queue_highwater.load(std::memory_order_relaxed);
-    const auto outbound_hiwat = c.outbound_queue_highwater.load(std::memory_order_relaxed);
+    const auto event_hiwat =
+        c.event_queue_highwater.exchange(0, std::memory_order_relaxed);
+    const auto outbound_hiwat =
+        c.outbound_queue_highwater.exchange(0, std::memory_order_relaxed);
+    const auto dropped_out_low =
+        c.dropped_outbound_overflow_low_pri.load(std::memory_order_relaxed);
+    const auto dropped_out_high =
+        c.dropped_outbound_overflow_high_pri.load(std::memory_order_relaxed);
+    const auto b0 = c.outbound_msgs_per_tick_buckets[0].load(std::memory_order_relaxed);
+    const auto b1 = c.outbound_msgs_per_tick_buckets[1].load(std::memory_order_relaxed);
+    const auto b2 = c.outbound_msgs_per_tick_buckets[2].load(std::memory_order_relaxed);
+    const auto b3 = c.outbound_msgs_per_tick_buckets[3].load(std::memory_order_relaxed);
+    const auto b4 = c.outbound_msgs_per_tick_buckets[4].load(std::memory_order_relaxed);
+    const auto b5 = c.outbound_msgs_per_tick_buckets[5].load(std::memory_order_relaxed);
 
     utils::log_line(
         utils::LogLevel::INFO,
         fmt::format(
             "metrics inbound_total={} outbound_total={} parse_fail={} auth_fail={} "
-            "membership_fail={} dropped_in={} dropped_out={} outbound_backpressure={} "
-            "event_hiwat={} outbound_hiwat={}",
+            "membership_fail={} dropped_in={} dropped_out={} dropped_out_low={} "
+            "dropped_out_high={} outbound_backpressure={} event_hiwat={} "
+            "outbound_hiwat={} outbound_tick_hist=[{} {} {} {} {} {}]",
             inbound, outbound, parse_fail, auth_fail, membership_fail, dropped_in, dropped_out,
-            outbound_backpressure, event_hiwat, outbound_hiwat));
+            dropped_out_low, dropped_out_high, outbound_backpressure, event_hiwat, outbound_hiwat,
+            b0, b1, b2, b3, b4, b5));
 }
 
 }  // namespace utils::metrics

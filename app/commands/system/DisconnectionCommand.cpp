@@ -53,12 +53,13 @@ std::vector<net::outbound::OutgoingMessage> DisconnectionCommand::execute(Comman
             recipients.push_back(conn_exp.value());
         }
 
-        if (!recipients.empty()) {
-            auto payload = ctx.hub_notifier.memberOffline(hub_id, user_id);
-            out.push_back(net::outbound::OutgoingMessage{
-                .target = net::outbound::Target::many(std::move(recipients)),
-                .action = net::outbound::SendPayload{.payload = std::move(payload)}});
-        }
+            if (!recipients.empty()) {
+                auto payload = ctx.hub_notifier.memberOffline(hub_id, user_id);
+                out.push_back(net::outbound::OutgoingMessage{
+                    .priority = net::outbound::OutboundPriority::Low,
+                    .target = net::outbound::Target::many(std::move(recipients)),
+                    .action = net::outbound::SendPayload{.payload = std::move(payload)}});
+            }
     }
 
     return out;

@@ -6,13 +6,19 @@
 
 namespace net::outbound {
 
+enum class PushResult {
+    Ok,
+    DroppedLowPriority,
+    DroppedHighPriority,
+};
+
 class IOutboundSink {
    public:
     virtual ~IOutboundSink() = default;
 
-    virtual void push(const OutgoingMessage& msg) = 0;
+    virtual PushResult push(const OutgoingMessage& msg) = 0;
 
-    virtual void push(OutgoingMessage&& msg) = 0;
+    virtual PushResult push(OutgoingMessage&& msg) = 0;
 };
 
 }  // namespace net::outbound

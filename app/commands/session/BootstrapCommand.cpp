@@ -148,6 +148,7 @@ std::vector<net::outbound::OutgoingMessage> BootstrapCommand::execute(CommandCon
                 penv.SerializeToString(&bytes);
 
                 out.push_back(net::outbound::OutgoingMessage{
+                    .priority = net::outbound::OutboundPriority::Low,
                     .target = net::outbound::Target::many(std::move(targets)),
                     .action = net::outbound::SendPayload{
                         .payload =

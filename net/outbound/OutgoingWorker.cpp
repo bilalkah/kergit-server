@@ -65,84 +65,101 @@ void OutgoingWorker::on_timer(us_timer_t* timer) {
  * - handle direct messages and publish messages
  */
 void OutgoingWorker::tick() {
-    auto expected_msg = out_q_.try_pop();
+    const auto start = std::chrono::steady_clock::now();
+    std::size_t processed = 0;
 
-    if (!expected_msg.has_value()) {
-        // log(utils::LogLevel::WARN, expected_msg.error());
-        return;
-    }
-
-    const OutgoingMessage& msg = expected_msg.value();
-
-    auto conn_opt = conns_.get(msg.target.conns);
-    for (auto& conn_res : conn_opt) {
-        if (!conn_res.has_value()) {
-            utils::metrics::counters().dropped_outbound_total.fetch_add(
-                1, std::memory_order_relaxed);
+    auto process_message = [&](const OutgoingMessage& msg) {
+        auto conn_opt = conns_.get(msg.target.conns);
+        for (auto& conn_res : conn_opt) {
+            if (!conn_res.has_value()) {
+                utils::metrics::counters().dropped_outbound_total.fetch_add(
+                    1, std::memory_order_relaxed);
 #if defined(SERCOM_DEBUG_LOGS)
-            log(utils::LogLevel::ERROR,
-                "Connection not found for outgoing message: ", conn_res.error().message);
+                log(utils::LogLevel::ERROR,
+                    "Connection not found for outgoing message: ", conn_res.error().message);
 #endif
-            continue;
+                continue;
+            }
+
+            auto& conn_ctx = conn_res.value();
+            // Process action
+            std::visit(
+                [&](const auto& action) {
+                    using T = std::decay_t<decltype(action)>;
+                    if constexpr (std::is_same_v<T, SendPayload>) {
+                        if (!conn_ctx.handle.valid()) return;
+                        const auto status =
+                            conn_ctx.handle.send(action.payload.data, action.payload.is_binary);
+                        if (status == transport::websocket::UwsSocket::SendStatus::SUCCESS) {
+                            // hot-path: avoid per-message logging
+                        } else if (status ==
+                                   transport::websocket::UwsSocket::SendStatus::BACKPRESSURE) {
+                            utils::metrics::counters().outbound_backpressure_total.fetch_add(
+                                1, std::memory_order_relaxed);
+#if defined(SERCOM_DEBUG_LOGS)
+                            log(utils::LogLevel::WARN,
+                                "Backpressure on connection: ", conn_ctx.conn_id.value);
+#endif
+                            conns_.mutate(conn_ctx.conn_id, [&](auto& ctx) {
+                                ctx.pending.push_back(std::make_pair(
+                                    action.payload.data,
+                                    action.payload.is_binary ? uWS::OpCode::BINARY
+                                                             : uWS::OpCode::TEXT));
+                            });
+                        } else if (transport::websocket::UwsSocket::SendStatus::DROPPED ==
+                                   status) {
+                            utils::metrics::counters().dropped_outbound_total.fetch_add(
+                                1, std::memory_order_relaxed);
+#if defined(SERCOM_DEBUG_LOGS)
+                            log(utils::LogLevel::ERROR,
+                                "Connection closed while sending to: ", conn_ctx.conn_id.value);
+#endif
+                        }
+                    } else if constexpr (std::is_same_v<T, UpdateAuthState>) {
+                        auto result = conns_.mutate(conn_ctx.conn_id, [&](auto& ctx) {
+                            ctx.auth.is_authenticated = action.is_authenticated;
+                            ctx.auth.expires_at = action.expires_at;
+                        });
+                        if (!result.has_value()) {
+                            utils::metrics::counters().dropped_outbound_total.fetch_add(
+                                1, std::memory_order_relaxed);
+#if defined(SERCOM_DEBUG_LOGS)
+                            log(utils::LogLevel::ERROR,
+                                "Failed to update auth state for connection: ",
+                                conn_ctx.conn_id.value);
+#endif
+                        }
+                    } else if constexpr (std::is_same_v<T, DropConnection>) {
+                        if (!conn_ctx.handle.valid()) return;
+                        conn_ctx.handle.end(action.code, action.reason);
+#if defined(SERCOM_DEBUG_LOGS)
+                        log(utils::LogLevel::INFO, "Dropped connection: ", conn_ctx.conn_id.value,
+                            " Reason: ", action.reason);
+#endif
+                    }
+                },
+                msg.action);
+        }
+    };
+
+    while (processed < cfg_.max_per_tick) {
+        if (cfg_.time_budget.count() > 0) {
+            const auto now = std::chrono::steady_clock::now();
+            if (now - start >= cfg_.time_budget) {
+                break;
+            }
         }
 
-        auto& conn_ctx = conn_res.value();
-        // Process action
-        std::visit(
-            [&](const auto& action) {
-                using T = std::decay_t<decltype(action)>;
-                if constexpr (std::is_same_v<T, SendPayload>) {
-                    if (!conn_ctx.handle.valid()) return;
-                    const auto status =
-                        conn_ctx.handle.send(action.payload.data, action.payload.is_binary);
-                    if (status == transport::websocket::UwsSocket::SendStatus::SUCCESS) {
-                        // hot-path: avoid per-message logging
-                    } else if (status ==
-                               transport::websocket::UwsSocket::SendStatus::BACKPRESSURE) {
-                        utils::metrics::counters().outbound_backpressure_total.fetch_add(
-                            1, std::memory_order_relaxed);
-#if defined(SERCOM_DEBUG_LOGS)
-                        log(utils::LogLevel::WARN,
-                            "Backpressure on connection: ", conn_ctx.conn_id.value);
-#endif
-                        conns_.mutate(conn_ctx.conn_id, [&](auto& ctx) {
-                            ctx.pending.push_back(std::make_pair(
-                                action.payload.data, action.payload.is_binary ? uWS::OpCode::BINARY
-                                                                              : uWS::OpCode::TEXT));
-                        });
-                    } else if (transport::websocket::UwsSocket::SendStatus::DROPPED == status) {
-                        utils::metrics::counters().dropped_outbound_total.fetch_add(
-                            1, std::memory_order_relaxed);
-#if defined(SERCOM_DEBUG_LOGS)
-                        log(utils::LogLevel::ERROR,
-                            "Connection closed while sending to: ", conn_ctx.conn_id.value);
-#endif
-                    }
-                } else if constexpr (std::is_same_v<T, UpdateAuthState>) {
-                    auto result = conns_.mutate(conn_ctx.conn_id, [&](auto& ctx) {
-                        ctx.auth.is_authenticated = action.is_authenticated;
-                        ctx.auth.expires_at = action.expires_at;
-                    });
-                    if (!result.has_value()) {
-                        utils::metrics::counters().dropped_outbound_total.fetch_add(
-                            1, std::memory_order_relaxed);
-#if defined(SERCOM_DEBUG_LOGS)
-                        log(utils::LogLevel::ERROR,
-                            "Failed to update auth state for connection: ", conn_ctx.conn_id.value);
-#endif
-                    }
-                } else if constexpr (std::is_same_v<T, DropConnection>) {
-                    if (!conn_ctx.handle.valid()) return;
-                    conn_ctx.handle.end(action.code, action.reason);
-#if defined(SERCOM_DEBUG_LOGS)
-                    log(utils::LogLevel::INFO, "Dropped connection: ", conn_ctx.conn_id.value,
-                        " Reason: ", action.reason);
-#endif
-                }
-            },
-            msg.action);
+        OutgoingMessage msg;
+        if (!out_q_.try_pop(msg)) {
+            break;
+        }
+
+        process_message(msg);
+        ++processed;
     }
 
+    utils::metrics::observe_outbound_msgs_per_tick(processed);
     utils::metrics::maybe_log();
 }
 

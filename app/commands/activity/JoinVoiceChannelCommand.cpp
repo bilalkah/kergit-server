@@ -119,6 +119,7 @@ std::vector<net::outbound::OutgoingMessage> JoinVoiceChannelCommand::execute(
         out_env.SerializeToString(&bytes);
 
         return std::vector<net::outbound::OutgoingMessage>{net::outbound::OutgoingMessage{
+            .priority = net::outbound::OutboundPriority::Low,
             .target = net::outbound::Target::many(std::move(conns)),
             .action = net::outbound::SendPayload{
                 .payload = net::outbound::Payload{.data = std::move(bytes), .is_binary = true}}}};
@@ -156,6 +157,7 @@ std::vector<net::outbound::OutgoingMessage> JoinVoiceChannelCommand::execute(
         out_env.SerializeToString(&bytes);
 
         return std::vector<net::outbound::OutgoingMessage>{net::outbound::OutgoingMessage{
+            .priority = net::outbound::OutboundPriority::Low,
             .target = net::outbound::Target::many(std::move(conns)),
             .action = net::outbound::SendPayload{
                 .payload = net::outbound::Payload{.data = std::move(bytes), .is_binary = true}}}};

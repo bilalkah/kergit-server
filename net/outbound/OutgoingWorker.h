@@ -15,6 +15,8 @@ namespace net::outbound {
 
 struct OutgoingWorkerConfig {
     std::chrono::milliseconds interval{5};
+    std::chrono::microseconds time_budget{1000};
+    std::size_t max_per_tick{256};
 };
 
 class OutgoingWorker : public utils::Loggable {

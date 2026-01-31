@@ -7,36 +7,54 @@ void NetworkRouter::register_stack(std::unique_ptr<NetworkStack> stack) {
     net_stacks_by_id_.emplace(id, std::move(stack));
 }
 
-void NetworkRouter::push(const outbound::OutgoingMessage& msg) {
+outbound::PushResult NetworkRouter::push(const outbound::OutgoingMessage& msg) {
     // group connections by netstack_id
     auto grouped = group_outgoing_msg(msg);
+    outbound::PushResult overall = outbound::PushResult::Ok;
 
     // send once per netstack
     for (auto& [netstack_id, conns] : grouped) {
         auto it = net_stacks_by_id_.find(netstack_id);
         if (it == net_stacks_by_id_.end()) continue;
 
-        outbound::OutgoingMessage forwarded{.target = outbound::Target{std::move(conns)},
+        outbound::OutgoingMessage forwarded{.priority = msg.priority,
+                                            .target = outbound::Target{std::move(conns)},
                                             .action = msg.action};
 
-        it->second->outbound_sink().push(std::move(forwarded));
+        auto res = it->second->outbound_sink().push(std::move(forwarded));
+        if (res == outbound::PushResult::DroppedHighPriority) {
+            overall = res;
+        } else if (res == outbound::PushResult::DroppedLowPriority &&
+                   overall == outbound::PushResult::Ok) {
+            overall = res;
+        }
     }
+    return overall;
 }
 
-void NetworkRouter::push(outbound::OutgoingMessage&& msg) {
+outbound::PushResult NetworkRouter::push(outbound::OutgoingMessage&& msg) {
     // group connections by netstack_id
     auto grouped = group_outgoing_msg(msg);
+    outbound::PushResult overall = outbound::PushResult::Ok;
 
     // send once per netstack
     for (auto& [netstack_id, conns] : grouped) {
         auto it = net_stacks_by_id_.find(netstack_id);
         if (it == net_stacks_by_id_.end()) continue;
 
-        outbound::OutgoingMessage forwarded{.target = outbound::Target{std::move(conns)},
+        outbound::OutgoingMessage forwarded{.priority = msg.priority,
+                                            .target = outbound::Target{std::move(conns)},
                                             .action = msg.action};
 
-        it->second->outbound_sink().push(std::move(forwarded));
+        auto res = it->second->outbound_sink().push(std::move(forwarded));
+        if (res == outbound::PushResult::DroppedHighPriority) {
+            overall = res;
+        } else if (res == outbound::PushResult::DroppedLowPriority &&
+                   overall == outbound::PushResult::Ok) {
+            overall = res;
+        }
     }
+    return overall;
 }
 
 void NetworkRouter::stop_all() {

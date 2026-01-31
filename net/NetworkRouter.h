@@ -15,8 +15,8 @@ class NetworkRouter : public utils::Loggable, public outbound::IOutboundSink {
     void register_stack(std::unique_ptr<NetworkStack> stack);
 
     // IOutboundSink implementation
-    void push(const outbound::OutgoingMessage& msg) override;
-    void push(outbound::OutgoingMessage&& msg) override;
+    outbound::PushResult push(const outbound::OutgoingMessage& msg) override;
+    outbound::PushResult push(outbound::OutgoingMessage&& msg) override;
 
     void stop_all();
     void start_all();
