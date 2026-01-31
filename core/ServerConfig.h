@@ -53,6 +53,7 @@ struct AppStackConfig {
     std::string environment{"development"};
     std::string log_level{"info"};
     size_t worker_threads{3};
+    std::size_t event_queue_capacity{30000};
 };
 
 struct ServerConfig {
@@ -85,6 +86,9 @@ class ServerConfigFiller {
         cfg.database.write_pool_size = static_cast<std::size_t>(std::stoul(
             utils::EnvLoader::get_env("DB_WRITE_POOL_SIZE",
                                       std::to_string(cfg.database.pool_size))));
+        cfg.app_stack.event_queue_capacity = static_cast<std::size_t>(std::stoul(
+            utils::EnvLoader::get_env("EVENT_QUEUE_CAPACITY",
+                                      std::to_string(cfg.app_stack.event_queue_capacity))));
     }
 };
 

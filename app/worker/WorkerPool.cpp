@@ -78,14 +78,21 @@ void WorkerPool::worker_loop(std::size_t worker_index) {
         // For worker
         wait_if_paused();
         if (!running_) break;
-        auto evt = in_queue_.pop();
-        if (!evt.has_value()) {
-            log(utils::LogLevel::WARN, "Worker ", worker_index, " stopping: ", evt.error());
-            break;
+        static thread_local uint32_t empty_polls = 0;
+        app::queue::Event event;
+        if (!in_queue_.try_pop(event)) {
+            constexpr uint32_t kYieldSpins = 16;
+            constexpr auto kSleepDuration = std::chrono::microseconds(100);
+            if (empty_polls < kYieldSpins) {
+                ++empty_polls;
+                std::this_thread::yield();
+            } else {
+                std::this_thread::sleep_for(kSleepDuration);
+            }
+            continue;
         }
+        empty_polls = 0;
         // For worker
-
-        app::queue::Event event = std::move(evt.value());
 
         std::vector<net::outbound::OutgoingMessage> intents = std::visit(
             [&](auto&& event) -> std::vector<net::outbound::OutgoingMessage> {

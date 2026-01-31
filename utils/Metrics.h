@@ -24,6 +24,9 @@ struct Counters {
     std::atomic<uint64_t> auth_fail_total{0};
     std::atomic<uint64_t> membership_fail_total{0};
     std::atomic<uint64_t> outbound_backpressure_total{0};
+    std::atomic<uint64_t> dropped_inbound_low_overflow{0};
+    std::atomic<uint64_t> dropped_inbound_high_overflow{0};
+    std::atomic<uint64_t> evicted_inbound_low_for_high{0};
     std::array<std::atomic<uint64_t>, 6> outbound_msgs_per_tick_buckets{};
 
     Counters() {
