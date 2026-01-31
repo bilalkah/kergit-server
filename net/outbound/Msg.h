@@ -10,6 +10,11 @@
 
 namespace net::outbound {
 
+enum class OutboundPriority : uint8_t {
+    High = 0,
+    Low = 1,
+};
+
 struct Payload {
     std::string data;      // serialized bytes
     bool is_binary{true};  // default for protobuf
@@ -40,6 +45,7 @@ struct DropConnection {
 using Action = std::variant<SendPayload, UpdateAuthState, DropConnection>;
 
 struct OutgoingMessage {
+    OutboundPriority priority{OutboundPriority::High};
     Target target;
     Action action;
 };

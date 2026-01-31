@@ -94,7 +94,7 @@ void WorkerPool::worker_loop(std::size_t worker_index) {
             event);
 
         for (const auto& intent : intents) {
-            out_queue_.push(intent);
+            (void)out_queue_.push(intent);
             utils::metrics::counters().outbound_msgs_total.fetch_add(1,
                                                                      std::memory_order_relaxed);
         }

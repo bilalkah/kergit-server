@@ -20,7 +20,7 @@ cc_library(
     visibility = ["//net:__subpackages__"],
     deps = [
         ":outbound_msg",
-        "//core/base:ts_queue",
+        "//utils:metrics",
     ],
 )
 

@@ -113,6 +113,7 @@ std::vector<net::outbound::OutgoingMessage> TypingCommand::execute(CommandContex
     }
 
     return {net::outbound::OutgoingMessage{
+        .priority = net::outbound::OutboundPriority::Low,
         .target = net::outbound::Target::many(std::move(conns)),
         .action = net::outbound::SendPayload{
             .payload = net::outbound::Payload{.data = std::move(bytes), .is_binary = true}}}};

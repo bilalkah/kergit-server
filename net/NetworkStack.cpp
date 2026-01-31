@@ -108,7 +108,7 @@ void NetworkStack::wire_components() {
     connection_registry_ = std::make_unique<connection::ConnectionRegistery>();
 
     // Outgoing message queue
-    outgoing_queue_ = std::make_unique<outbound::OutgoingQueue>();
+    outgoing_queue_ = std::make_unique<outbound::OutgoingQueue>(cfg_.outbound_queue_capacity);
 
     // Transport later
     transport_layer_ = std::make_unique<transport::websocket::TextWSServer>(
