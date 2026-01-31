@@ -130,6 +130,6 @@ void NetworkStack::wire_components() {
                  event_sink_->push(Event{DisconnectionEvent{.conn_id = GlobalConnId{id_, connid},
                                                             .code = code,
                                                             .reason = std::string(reason)}});
-             }});
+            }});
 }
 }  // namespace net

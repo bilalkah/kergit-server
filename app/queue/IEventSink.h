@@ -8,9 +8,9 @@ class IEventSink {
    public:
     virtual ~IEventSink() = default;
 
-    virtual void push(const Event& event) = 0;
+    virtual PushResult push(const Event& event) = 0;
 
-    virtual void push(Event&& event) = 0;
+    virtual PushResult push(Event&& event) = 0;
 };
 }  // namespace app::queue
 

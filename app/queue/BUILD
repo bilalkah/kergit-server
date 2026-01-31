@@ -36,6 +36,6 @@ cc_library(
     deps = [
         ":event_msg",
         ":i_event_sink",
-        "//core/base:ts_queue",
+        "//utils:metrics",
     ],
 )

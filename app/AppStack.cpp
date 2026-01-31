@@ -5,7 +5,8 @@
 namespace app {
 
 AppStack::AppStack(const core::ServerConfig& config) : config_(config) {
-    event_queue_ = std::make_unique<queue::EventQueue>();
+    event_queue_ =
+        std::make_unique<queue::EventQueue>(config_.app_stack.event_queue_capacity);
 }
 
 void AppStack::start() { worker_pool_->start(); }

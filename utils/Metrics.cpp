@@ -38,6 +38,12 @@ void maybe_log() {
     const auto membership_fail = c.membership_fail_total.load(std::memory_order_relaxed);
     const auto dropped_in = c.dropped_inbound_total.load(std::memory_order_relaxed);
     const auto dropped_out = c.dropped_outbound_total.load(std::memory_order_relaxed);
+    const auto dropped_in_low =
+        c.dropped_inbound_low_overflow.load(std::memory_order_relaxed);
+    const auto dropped_in_high =
+        c.dropped_inbound_high_overflow.load(std::memory_order_relaxed);
+    const auto evicted_in_low_for_high =
+        c.evicted_inbound_low_for_high.load(std::memory_order_relaxed);
     const auto outbound_backpressure =
         c.outbound_backpressure_total.load(std::memory_order_relaxed);
     const auto event_hiwat =
@@ -59,12 +65,14 @@ void maybe_log() {
         utils::LogLevel::INFO,
         fmt::format(
             "metrics inbound_total={} outbound_total={} parse_fail={} auth_fail={} "
-            "membership_fail={} dropped_in={} dropped_out={} dropped_out_low={} "
+            "membership_fail={} dropped_in={} dropped_in_low={} dropped_in_high={} "
+            "evicted_in_low_for_high={} dropped_out={} dropped_out_low={} "
             "dropped_out_high={} outbound_backpressure={} event_hiwat={} "
             "outbound_hiwat={} outbound_tick_hist=[{} {} {} {} {} {}]",
-            inbound, outbound, parse_fail, auth_fail, membership_fail, dropped_in, dropped_out,
-            dropped_out_low, dropped_out_high, outbound_backpressure, event_hiwat, outbound_hiwat,
-            b0, b1, b2, b3, b4, b5));
+            inbound, outbound, parse_fail, auth_fail, membership_fail, dropped_in, dropped_in_low,
+            dropped_in_high, evicted_in_low_for_high, dropped_out, dropped_out_low,
+            dropped_out_high, outbound_backpressure, event_hiwat, outbound_hiwat, b0, b1, b2, b3,
+            b4, b5));
 }
 
 }  // namespace utils::metrics
