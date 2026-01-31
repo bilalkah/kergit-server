@@ -4,11 +4,28 @@
 
 #include <chrono>
 #include <iostream>
+#include <limits>
 #include <thread>
 #include <variant>
 
 using namespace sercom::protocol;
 namespace app::worker {
+namespace {
+thread_local std::size_t worker_index_tls = std::numeric_limits<std::size_t>::max();
+
+const char* outbound_action_label(const net::outbound::OutgoingMessage& msg) {
+    if (std::holds_alternative<net::outbound::SendPayload>(msg.action)) {
+        return "send";
+    }
+    if (std::holds_alternative<net::outbound::UpdateAuthState>(msg.action)) {
+        return "auth_state";
+    }
+    if (std::holds_alternative<net::outbound::DropConnection>(msg.action)) {
+        return "drop";
+    }
+    return "unknown";
+}
+}  // namespace
 
 WorkerPool::WorkerPool(queue::EventQueue& in_queue, net::outbound::IOutboundSink& out_queue,
                        Dispatcher& dispatcher, CommandContext& cmd_ctx,
@@ -68,6 +85,7 @@ void WorkerPool::wait_if_paused() {
 }
 
 void WorkerPool::worker_loop(std::size_t worker_index) {
+    worker_index_tls = worker_index;
     log(utils::LogLevel::INFO, "Worker ", worker_index, " started.");
     while (running_) {
         // For worker
@@ -90,6 +108,14 @@ void WorkerPool::worker_loop(std::size_t worker_index) {
 
         for (const auto& intent : intents) {
             out_queue_.push(intent);
+            const auto target_count = intent.target.conns.size();
+            std::size_t payload_size = 0;
+            if (const auto* send = std::get_if<net::outbound::SendPayload>(&intent.action)) {
+                payload_size = send->payload.data.size();
+            }
+            log(utils::LogLevel::INFO, "Worker ", worker_index,
+                " enqueued outgoing action=", outbound_action_label(intent),
+                " targets=", target_count, " bytes=", payload_size);
         }
     }
 }
@@ -158,7 +184,27 @@ std::vector<net::outbound::OutgoingMessage> WorkerPool::handle_event(
         return result;
     }
 
+    if (worker_index_tls != std::numeric_limits<std::size_t>::max()) {
+        log(utils::LogLevel::INFO, "Worker ", worker_index_tls, " executing command type ",
+            static_cast<int>(env.type()), " for connection ", msg_evt.conn_id.netstack_id.value,
+            "/", msg_evt.conn_id.conn_id.value);
+    } else {
+        log(utils::LogLevel::INFO, "Executing command type ", static_cast<int>(env.type()),
+            " for connection ", msg_evt.conn_id.netstack_id.value, "/",
+            msg_evt.conn_id.conn_id.value);
+    }
+
     result = dispatcher_.dispatch(env.type(), cmd_ctx_, msg_evt);
+
+    if (worker_index_tls != std::numeric_limits<std::size_t>::max()) {
+        log(utils::LogLevel::INFO, "Worker ", worker_index_tls, " finished command type ",
+            static_cast<int>(env.type()), " for connection ", msg_evt.conn_id.netstack_id.value,
+            "/", msg_evt.conn_id.conn_id.value, " outgoing=", result.size());
+    } else {
+        log(utils::LogLevel::INFO, "Finished command type ", static_cast<int>(env.type()),
+            " for connection ", msg_evt.conn_id.netstack_id.value, "/",
+            msg_evt.conn_id.conn_id.value, " outgoing=", result.size());
+    }
 
     unmark_executing(msg_evt.conn_id, env.type());
     return result;

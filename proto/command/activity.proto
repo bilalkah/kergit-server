@@ -37,8 +37,14 @@ message Typing {
 message VoiceChannelMembership {
   enum State {
     STATE_UNSPECIFIED = 0;
-    STATE_JOIN = 1;
-    STATE_LEAVE = 2;
+
+    // Intent
+    STATE_REQUEST_JOIN = 1;
+    STATE_REQUEST_LEAVE = 2;
+
+    // Result
+    STATE_JOIN = 3;
+    STATE_LEAVE = 4;
   }
   // The voice channel the user wants to join
   // This is your channel_id
@@ -59,4 +65,3 @@ message VoiceChannelActivity {
   uint64 channel_id = 2;
   State state = 3;
 }
-

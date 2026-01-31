@@ -71,7 +71,6 @@ void OutgoingWorker::tick() {
         return;
     }
 
-    log(utils::LogLevel::WARN, "Processing outgoing message from queue");
     const OutgoingMessage& msg = expected_msg.value();
 
     auto conn_opt = conns_.get(msg.target.conns);

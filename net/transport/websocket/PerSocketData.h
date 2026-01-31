@@ -8,7 +8,7 @@
 
 namespace net::transport::websocket {
 
-struct TextPerSocketData {
+struct PerSocketData {
     ConnId conn_id{""};
     UserId user_id{""};
     std::string role{};
