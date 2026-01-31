@@ -6,7 +6,7 @@
 #include "net/connection/ConnectionRegistery.h"
 #include "net/outbound/OutgoingQueue.h"
 #include "net/transport/ITransport.h"
-#include "net/transport/websocket/TextWebSocketTransport.h"
+#include "net/transport/websocket/WebSocketTransport.h"
 #include "utils/Loggable.h"
 
 #include <cstdint>

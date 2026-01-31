@@ -1,5 +1,5 @@
-#ifndef NET_TRANSPORT_WEBSOCKET_TEXTWEBSOCKETTRANSPORT_H
-#define NET_TRANSPORT_WEBSOCKET_TEXTWEBSOCKETTRANSPORT_H
+#ifndef NET_TRANSPORT_WEBSOCKET_WebSocketTransport_H
+#define NET_TRANSPORT_WEBSOCKET_WebSocketTransport_H
 
 #include "core/ServerConfig.h"
 #include "infra/security/token/SupabaseJwtVerifier.h"
@@ -9,7 +9,7 @@
 #include "net/runtime/HeartbeatService.h"
 #include "net/transport/ITransport.h"
 #include "net/transport/websocket/IWsApp.h"
-#include "net/transport/websocket/TextPerSocketData.h"
+#include "net/transport/websocket/PerSocketData.h"
 #include "net/transport/websocket/UwsTypes.h"
 #include "utils/Loggable.h"
 
@@ -102,4 +102,4 @@ class TextWSServer : public ITransportServer, public utils::Loggable {
 
 }  // namespace net::transport::websocket
 
-#endif  // NET_TRANSPORT_WEBSOCKET_TEXTWEBSOCKETTRANSPORT_H
+#endif  // NET_TRANSPORT_WEBSOCKET_WebSocketTransport_H

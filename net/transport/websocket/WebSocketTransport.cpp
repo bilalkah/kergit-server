@@ -1,5 +1,4 @@
-#include "net/transport/websocket/TextWebSocketTransport.h"
-
+#include "net/transport/websocket/WebSocketTransport.h"
 #include "net/transport/websocket/WsAppFactory.h"
 #include "net/transport/websocket/utils.h"
 
@@ -73,7 +72,7 @@ void* TextWSServer::loop_id() const { return reinterpret_cast<void*>(app_->getUw
 void TextWSServer::set_hooks(const Hooks hooks) { hooks_ = hooks; }
 
 void TextWSServer::wire() {
-    app_->uws().ws<TextPerSocketData>(
+    app_->uws().ws<PerSocketData>(
         cfg_.ws_path,
         {
             .compression = uWS::SHARED_COMPRESSOR,
@@ -113,14 +112,14 @@ void TextWSServer::wire() {
                     }
 
                     const auto& claims = auth_result.value();
-                    TextPerSocketData psd{};
+                    PerSocketData psd{};
                     psd.conn_id = conn_id_gen_.allocate();
                     psd.user_id = UserId{claims.id};
                     psd.role = claims.role;
                     psd.exp = claims.exp;
-                    res->template upgrade<TextPerSocketData>(
-                        std::move(psd), ws_key, "supabase",
-                        req->getHeader("sec-websocket-extensions"), ctx);
+                    res->template upgrade<PerSocketData>(std::move(psd), ws_key, "supabase",
+                                                         req->getHeader("sec-websocket-extensions"),
+                                                         ctx);
 
                     active_connections_.fetch_add(1, std::memory_order_relaxed);
                 },

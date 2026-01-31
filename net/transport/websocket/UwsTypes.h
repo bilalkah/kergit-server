@@ -2,7 +2,7 @@
 #define NET_TRANSPORT_WEBSOCKET_UWSTYPES_H
 
 #include "App.h"
-#include "net/transport/websocket/TextPerSocketData.h"
+#include "net/transport/websocket/PerSocketData.h"
 
 namespace net::transport::websocket {
 
@@ -19,7 +19,7 @@ using ListenToken = ::us_listen_socket_t*;
 
 template <typename T>
 using UwsWebSocketT = uWS::WebSocket<kSslEnabled, true, T>;
-using UwsSocket = UwsWebSocketT<TextPerSocketData>;
+using UwsSocket = UwsWebSocketT<PerSocketData>;
 
 }  // namespace net::transport::websocket
 #endif  // NET_TRANSPORT_WEBSOCKET_UWSTYPES_H

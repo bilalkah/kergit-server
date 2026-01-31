@@ -93,3 +93,5 @@ echo "[depgraph] Rendering: $OUT"
 dot "-T${EXT}" "$DOT_COLORED" > "$OUT"
 
 echo "[depgraph] Done: $OUT"
+
+cp "$DOT_TMP" /home/bilal/repos/serverless-communication

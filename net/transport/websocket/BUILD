@@ -2,7 +2,7 @@ load("@rules_cc//cc:cc_library.bzl", "cc_library")
 
 cc_library(
     name = "text_per_socket_data",
-    hdrs = ["TextPerSocketData.h"],
+    hdrs = ["PerSocketData.h"],
     copts = ["-std=gnu++23"],
     visibility = ["//net:__subpackages__"],
     deps = [
@@ -61,8 +61,8 @@ cc_library(
 
 cc_library(
     name = "text_websocket_transport",
-    srcs = ["TextWebSocketTransport.cpp"],
-    hdrs = ["TextWebSocketTransport.h"],
+    srcs = ["WebSocketTransport.cpp"],
+    hdrs = ["WebSocketTransport.h"],
     copts = ["-std=gnu++23"],
     visibility = ["//net:__subpackages__"],
     deps = [
