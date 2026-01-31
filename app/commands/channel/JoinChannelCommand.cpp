@@ -30,7 +30,11 @@ std::string iso_time(const std::chrono::system_clock::time_point& tp) {
 
 json build_history(CommandContext& ctx, const ChannelId& channel_id, int limit = 50) {
     json arr = json::array();
-    auto history = ctx.channel_service.fetchMessages(channel_id, limit);
+    auto history_exp = ctx.channel_service.fetchMessages(channel_id, limit);
+    if (!history_exp.has_value()) {
+        return arr;
+    }
+    const auto& history = history_exp.value();
     const auto public_channel = ctx.ids.to_public(channel_id);
 
     // reverse to chronological order (oldest first)

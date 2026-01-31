@@ -25,15 +25,27 @@ std::optional<std::string> UserService::getDisplayName(const UserId& userId) {
     return user->username;
 }
 
-void UserService::updateProfile(const UserId& userId, const std::optional<std::string>& username,
-                                const std::optional<std::string>& full_name) {
-    repo_.updateUserProfile(userId, username, full_name);
+std::expected<void, UserService::UpdateError> UserService::updateProfile(
+    const UserId& userId, const std::optional<std::string>& username,
+    const std::optional<std::string>& full_name) {
+    try {
+        repo_.updateUserProfile(userId, username, full_name);
+    } catch (...) {
+        return std::unexpected(UpdateError::RepoFailure);
+    }
     cache_->invalidate(userId);
+    return {};
 }
 
-void UserService::updateSettings(const UserId& userId, const std::optional<std::string>& username,
-                                 const std::optional<std::string>& avatar_seed) {
-    repo_.updateUserSettings(userId, username, avatar_seed);
+std::expected<void, UserService::UpdateError> UserService::updateSettings(
+    const UserId& userId, const std::optional<std::string>& username,
+    const std::optional<std::string>& avatar_seed) {
+    try {
+        repo_.updateUserSettings(userId, username, avatar_seed);
+    } catch (...) {
+        return std::unexpected(UpdateError::RepoFailure);
+    }
     cache_->invalidate(userId);
+    return {};
 }
 }  // namespace app::services

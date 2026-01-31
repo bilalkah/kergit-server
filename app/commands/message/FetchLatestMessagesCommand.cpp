@@ -11,7 +11,6 @@
 
 #include <algorithm>
 #include <chrono>
-#include <exception>
 #include <optional>
 #include <string_view>
 #include <vector>
@@ -108,21 +107,24 @@ std::vector<net::outbound::OutgoingMessage> FetchLatestMessagesCommand::execute(
     }
 
     std::vector<Message> messages;
-    try {
-        if (after_id.has_value()) {
-            messages = ctx.channel_service.fetchMessagesAfter(*channel_id_opt, *after_id, limit);
-        } else {
-            messages = ctx.channel_service.fetchMessages(*channel_id_opt, limit);
-            std::reverse(messages.begin(), messages.end());
+    if (after_id.has_value()) {
+        auto messages_exp =
+            ctx.channel_service.fetchMessagesAfter(*channel_id_opt, *after_id, limit);
+        if (!messages_exp.has_value()) {
+            return {make_command_error(event->conn_id, env.type(),
+                                       sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
+                                       "Failed to fetch messages")};
         }
-    } catch (const std::exception& ex) {
-        return {make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
-                                   ex.what())};
-    } catch (...) {
-        return {make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
-                                   "Failed to fetch messages")};
+        messages = std::move(messages_exp.value());
+    } else {
+        auto messages_exp = ctx.channel_service.fetchMessages(*channel_id_opt, limit);
+        if (!messages_exp.has_value()) {
+            return {make_command_error(event->conn_id, env.type(),
+                                       sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
+                                       "Failed to fetch messages")};
+        }
+        messages = std::move(messages_exp.value());
+        std::reverse(messages.begin(), messages.end());
     }
 
     sercom::protocol::event::MessageBatch batch;

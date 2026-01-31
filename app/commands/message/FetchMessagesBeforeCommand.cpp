@@ -11,7 +11,6 @@
 
 #include <algorithm>
 #include <chrono>
-#include <exception>
 #include <string_view>
 #include <vector>
 
@@ -105,20 +104,15 @@ std::vector<net::outbound::OutgoingMessage> FetchMessagesBeforeCommand::execute(
     }
 
     const int limit = clamp_limit(cmd.limit());
-    std::vector<Message> messages;
-    try {
-        messages =
-            ctx.channel_service.fetchMessagesBefore(*channel_id_opt, *before_internal, limit);
-        std::reverse(messages.begin(), messages.end());
-    } catch (const std::exception& ex) {
-        return {make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
-                                   ex.what())};
-    } catch (...) {
+    auto messages_exp =
+        ctx.channel_service.fetchMessagesBefore(*channel_id_opt, *before_internal, limit);
+    if (!messages_exp.has_value()) {
         return {make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
                                    "Failed to fetch messages")};
     }
+    std::vector<Message> messages = std::move(messages_exp.value());
+    std::reverse(messages.begin(), messages.end());
 
     sercom::protocol::event::MessageBatch batch;
     batch.set_hub_id(ctx.ids.to_public(*hub_id_opt).value);

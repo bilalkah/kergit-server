@@ -11,7 +11,6 @@
 #include "proto/event/message.pb.h"
 
 #include <chrono>
-#include <exception>
 #include <string_view>
 #include <vector>
 
@@ -110,18 +109,14 @@ std::vector<net::outbound::OutgoingMessage> SendMessageCommand::execute(CommandC
                                    "Channel is not active")};
     }
 
-    Message saved;
-    try {
-        saved = ctx.channel_service.sendMessage(*channel_id_opt, user_id, cmd.content());
-    } catch (const std::exception& ex) {
-        return {make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
-                                   ex.what())};
-    } catch (...) {
+    auto saved_exp =
+        ctx.channel_service.sendMessage(*channel_id_opt, user_id, cmd.content());
+    if (!saved_exp.has_value()) {
         return {make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
                                    "Failed to send message")};
     }
+    Message saved = std::move(saved_exp.value());
 
     sercom::protocol::event::MessageCreated created;
     created.set_hub_id(ctx.ids.to_public(*hub_id_opt).value);

@@ -165,6 +165,7 @@ const std::expected<SessionInfo, SessionError> SessionManager::getSession(
 
 const std::expected<GlobalConnId, SessionError> SessionManager::getMainConnection(
     const UserId& session) const {
+    std::shared_lock lock(mutex_);
     auto it = sessions_.find(session);
     if (it == sessions_.end()) return std::unexpected<SessionError>("Session not found");
     if (!it->second.main_conn)

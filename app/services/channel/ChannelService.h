@@ -4,6 +4,7 @@
 #include "app/services/channel/ChannelCache.h"
 #include "infra/persistence/repositories/ChannelRepository.h"
 
+#include <expected>
 #include <memory>
 #include <optional>
 
@@ -25,14 +26,19 @@ class ChannelService {
     bool deleteChannel(const ChannelId& channelId, const HubId& hubId);
 
     // ---- Message reads ----
-    std::vector<Message> fetchMessages(const ChannelId& channelId, int limit);
-    std::vector<Message> fetchMessagesAfter(const ChannelId& channelId, const MessageId& afterId,
-                                            int limit);
-    std::vector<Message> fetchMessagesBefore(const ChannelId& channelId, const MessageId& beforeId,
-                                             int limit);
+    enum class MessageError {
+        RepoFailure,
+    };
+    std::expected<std::vector<Message>, MessageError> fetchMessages(const ChannelId& channelId,
+                                                                    int limit);
+    std::expected<std::vector<Message>, MessageError> fetchMessagesAfter(
+        const ChannelId& channelId, const MessageId& afterId, int limit);
+    std::expected<std::vector<Message>, MessageError> fetchMessagesBefore(
+        const ChannelId& channelId, const MessageId& beforeId, int limit);
     // ---- Message writes ----
-    Message sendMessage(const ChannelId& channelId, const UserId& senderId,
-                        const std::string& content);
+    std::expected<Message, MessageError> sendMessage(const ChannelId& channelId,
+                                                     const UserId& senderId,
+                                                     const std::string& content);
 
    private:
     ChannelRepository& repo_;

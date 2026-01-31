@@ -41,3 +41,15 @@ cc_library(
         "@fmt",
     ],
 )
+
+cc_library(
+    name = "metrics",
+    srcs = ["Metrics.cpp"],
+    hdrs = ["Metrics.h"],
+    copts = ["-std=gnu++23"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":loggable",
+        "@fmt",
+    ],
+)
