@@ -125,19 +125,38 @@ bool ChannelService::deleteChannel(const ChannelId& channelId, const HubId& hubI
     }
     return success;
 }
-std::vector<Message> ChannelService::fetchMessages(const ChannelId& channelId, int limit) {
-    return repo_.fetchMessages(channelId, limit);
+std::expected<std::vector<Message>, ChannelService::MessageError> ChannelService::fetchMessages(
+    const ChannelId& channelId, int limit) {
+    try {
+        return repo_.fetchMessages(channelId, limit);
+    } catch (...) {
+        return std::unexpected(MessageError::RepoFailure);
+    }
 }
-std::vector<Message> ChannelService::fetchMessagesAfter(const ChannelId& channelId,
-                                                        const MessageId& afterId, int limit) {
-    return repo_.fetchMessagesAfter(channelId, afterId, limit);
+std::expected<std::vector<Message>, ChannelService::MessageError>
+ChannelService::fetchMessagesAfter(const ChannelId& channelId, const MessageId& afterId,
+                                   int limit) {
+    try {
+        return repo_.fetchMessagesAfter(channelId, afterId, limit);
+    } catch (...) {
+        return std::unexpected(MessageError::RepoFailure);
+    }
 }
-std::vector<Message> ChannelService::fetchMessagesBefore(const ChannelId& channelId,
-                                                         const MessageId& beforeId, int limit) {
-    return repo_.fetchMessagesBefore(channelId, beforeId, limit);
+std::expected<std::vector<Message>, ChannelService::MessageError>
+ChannelService::fetchMessagesBefore(const ChannelId& channelId, const MessageId& beforeId,
+                                    int limit) {
+    try {
+        return repo_.fetchMessagesBefore(channelId, beforeId, limit);
+    } catch (...) {
+        return std::unexpected(MessageError::RepoFailure);
+    }
 }
-Message ChannelService::sendMessage(const ChannelId& channelId, const UserId& senderId,
-                                    const std::string& content) {
-    return repo_.sendMessage(channelId, senderId, content);
+std::expected<Message, ChannelService::MessageError> ChannelService::sendMessage(
+    const ChannelId& channelId, const UserId& senderId, const std::string& content) {
+    try {
+        return repo_.sendMessage(channelId, senderId, content);
+    } catch (...) {
+        return std::unexpected(MessageError::RepoFailure);
+    }
 }
 }  // namespace app::services

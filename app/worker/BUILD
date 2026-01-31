@@ -22,6 +22,7 @@ cc_library(
         "//proto:envelope_cc_proto",
         "//proto/event:error_cc_proto",
         "//utils:loggable",
+        "//utils:metrics",
         "@nlohmann_json",
     ],
 )

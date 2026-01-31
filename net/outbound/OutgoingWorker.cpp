@@ -1,4 +1,5 @@
 #include "net/outbound/OutgoingWorker.h"
+#include "utils/Metrics.h"
 
 namespace net::outbound {
 OutgoingWorker::OutgoingWorker(transport::ILoop& loop, connection::ConnectionRegistery& conns,
@@ -76,8 +77,12 @@ void OutgoingWorker::tick() {
     auto conn_opt = conns_.get(msg.target.conns);
     for (auto& conn_res : conn_opt) {
         if (!conn_res.has_value()) {
+            utils::metrics::counters().dropped_outbound_total.fetch_add(
+                1, std::memory_order_relaxed);
+#if defined(SERCOM_DEBUG_LOGS)
             log(utils::LogLevel::ERROR,
                 "Connection not found for outgoing message: ", conn_res.error().message);
+#endif
             continue;
         }
 
@@ -91,21 +96,27 @@ void OutgoingWorker::tick() {
                     const auto status =
                         conn_ctx.handle.send(action.payload.data, action.payload.is_binary);
                     if (status == transport::websocket::UwsSocket::SendStatus::SUCCESS) {
-                        log(utils::LogLevel::INFO,
-                            "Sent payload to connection: ", conn_ctx.conn_id.value,
-                            " Payload size: ", action.payload.data.size());
+                        // hot-path: avoid per-message logging
                     } else if (status ==
                                transport::websocket::UwsSocket::SendStatus::BACKPRESSURE) {
+                        utils::metrics::counters().outbound_backpressure_total.fetch_add(
+                            1, std::memory_order_relaxed);
+#if defined(SERCOM_DEBUG_LOGS)
                         log(utils::LogLevel::WARN,
                             "Backpressure on connection: ", conn_ctx.conn_id.value);
+#endif
                         conns_.mutate(conn_ctx.conn_id, [&](auto& ctx) {
                             ctx.pending.push_back(std::make_pair(
                                 action.payload.data, action.payload.is_binary ? uWS::OpCode::BINARY
                                                                               : uWS::OpCode::TEXT));
                         });
                     } else if (transport::websocket::UwsSocket::SendStatus::DROPPED == status) {
+                        utils::metrics::counters().dropped_outbound_total.fetch_add(
+                            1, std::memory_order_relaxed);
+#if defined(SERCOM_DEBUG_LOGS)
                         log(utils::LogLevel::ERROR,
                             "Connection closed while sending to: ", conn_ctx.conn_id.value);
+#endif
                     }
                 } else if constexpr (std::is_same_v<T, UpdateAuthState>) {
                     auto result = conns_.mutate(conn_ctx.conn_id, [&](auto& ctx) {
@@ -113,18 +124,26 @@ void OutgoingWorker::tick() {
                         ctx.auth.expires_at = action.expires_at;
                     });
                     if (!result.has_value()) {
+                        utils::metrics::counters().dropped_outbound_total.fetch_add(
+                            1, std::memory_order_relaxed);
+#if defined(SERCOM_DEBUG_LOGS)
                         log(utils::LogLevel::ERROR,
                             "Failed to update auth state for connection: ", conn_ctx.conn_id.value);
+#endif
                     }
                 } else if constexpr (std::is_same_v<T, DropConnection>) {
                     if (!conn_ctx.handle.valid()) return;
                     conn_ctx.handle.end(action.code, action.reason);
+#if defined(SERCOM_DEBUG_LOGS)
                     log(utils::LogLevel::INFO, "Dropped connection: ", conn_ctx.conn_id.value,
                         " Reason: ", action.reason);
+#endif
                 }
             },
             msg.action);
     }
+
+    utils::metrics::maybe_log();
 }
 
 }  // namespace net::outbound

@@ -53,6 +53,7 @@ cc_library(
         "//net/outbound:i_outbound_sink",
         "//net/transport:i_loop",
         "//utils:loggable",
+        "//utils:metrics",
         "@uwebsockets",
     ],
 )

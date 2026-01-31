@@ -1,9 +1,9 @@
 #include "app/worker/WorkerPool.h"
 
 #include "proto/event/error.pb.h"
+#include "utils/Metrics.h"
 
 #include <chrono>
-#include <iostream>
 #include <limits>
 #include <thread>
 #include <variant>
@@ -12,19 +12,6 @@ using namespace sercom::protocol;
 namespace app::worker {
 namespace {
 thread_local std::size_t worker_index_tls = std::numeric_limits<std::size_t>::max();
-
-const char* outbound_action_label(const net::outbound::OutgoingMessage& msg) {
-    if (std::holds_alternative<net::outbound::SendPayload>(msg.action)) {
-        return "send";
-    }
-    if (std::holds_alternative<net::outbound::UpdateAuthState>(msg.action)) {
-        return "auth_state";
-    }
-    if (std::holds_alternative<net::outbound::DropConnection>(msg.action)) {
-        return "drop";
-    }
-    return "unknown";
-}
 }  // namespace
 
 WorkerPool::WorkerPool(queue::EventQueue& in_queue, net::outbound::IOutboundSink& out_queue,
@@ -108,15 +95,11 @@ void WorkerPool::worker_loop(std::size_t worker_index) {
 
         for (const auto& intent : intents) {
             out_queue_.push(intent);
-            const auto target_count = intent.target.conns.size();
-            std::size_t payload_size = 0;
-            if (const auto* send = std::get_if<net::outbound::SendPayload>(&intent.action)) {
-                payload_size = send->payload.data.size();
-            }
-            log(utils::LogLevel::INFO, "Worker ", worker_index,
-                " enqueued outgoing action=", outbound_action_label(intent),
-                " targets=", target_count, " bytes=", payload_size);
+            utils::metrics::counters().outbound_msgs_total.fetch_add(1,
+                                                                     std::memory_order_relaxed);
         }
+
+        utils::metrics::maybe_log();
     }
 }
 
@@ -166,6 +149,7 @@ std::vector<net::outbound::OutgoingMessage> WorkerPool::handle_event(
 
     auto env_validation = proto_validator_.validate_envelope(env);
     if (!env_validation.has_value()) {
+        utils::metrics::counters().parse_fail_total.fetch_add(1, std::memory_order_relaxed);
         // Drop connection on invalid envelope
         result.emplace_back(net::outbound::OutgoingMessage{
             .target = net::outbound::Target::one(msg_evt.conn_id),
@@ -178,33 +162,20 @@ std::vector<net::outbound::OutgoingMessage> WorkerPool::handle_event(
     }
 
     if (!try_mark_executing(msg_evt.conn_id, env.type())) {
+        utils::metrics::counters().dropped_inbound_total.fetch_add(1, std::memory_order_relaxed);
+#if defined(SERCOM_DEBUG_LOGS)
         log(utils::LogLevel::WARN, "Dropping duplicate in-flight command of type ",
             static_cast<int>(env.type()), " for connection ", msg_evt.conn_id.netstack_id.value,
             "/", msg_evt.conn_id.conn_id.value);
+#endif
         return result;
     }
 
-    if (worker_index_tls != std::numeric_limits<std::size_t>::max()) {
-        log(utils::LogLevel::INFO, "Worker ", worker_index_tls, " executing command type ",
-            static_cast<int>(env.type()), " for connection ", msg_evt.conn_id.netstack_id.value,
-            "/", msg_evt.conn_id.conn_id.value);
-    } else {
-        log(utils::LogLevel::INFO, "Executing command type ", static_cast<int>(env.type()),
-            " for connection ", msg_evt.conn_id.netstack_id.value, "/",
-            msg_evt.conn_id.conn_id.value);
-    }
+    utils::metrics::counters().inbound_msgs_total.fetch_add(1, std::memory_order_relaxed);
+    utils::metrics::inc_type(utils::metrics::counters().inbound_msgs_by_type,
+                             static_cast<uint32_t>(env.type()));
 
     result = dispatcher_.dispatch(env.type(), cmd_ctx_, msg_evt);
-
-    if (worker_index_tls != std::numeric_limits<std::size_t>::max()) {
-        log(utils::LogLevel::INFO, "Worker ", worker_index_tls, " finished command type ",
-            static_cast<int>(env.type()), " for connection ", msg_evt.conn_id.netstack_id.value,
-            "/", msg_evt.conn_id.conn_id.value, " outgoing=", result.size());
-    } else {
-        log(utils::LogLevel::INFO, "Finished command type ", static_cast<int>(env.type()),
-            " for connection ", msg_evt.conn_id.netstack_id.value, "/",
-            msg_evt.conn_id.conn_id.value, " outgoing=", result.size());
-    }
 
     unmark_executing(msg_evt.conn_id, env.type());
     return result;

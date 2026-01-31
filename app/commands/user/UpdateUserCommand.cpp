@@ -99,13 +99,8 @@ std::vector<net::outbound::OutgoingMessage> UpdateUserCommand::execute(CommandCo
                                    "No changes requested")};
     }
 
-    try {
-        ctx.user_service.updateSettings(user_id, username_opt, avatar_seed_opt);
-    } catch (const std::exception& ex) {
-        return {make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
-                                   ex.what())};
-    } catch (...) {
+    auto update_res = ctx.user_service.updateSettings(user_id, username_opt, avatar_seed_opt);
+    if (!update_res.has_value()) {
         return {make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
                                    "Unable to update user settings")};

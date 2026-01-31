@@ -54,6 +54,7 @@ class SessionManager final {
     std::vector<UserId> activeUsers() const;
 
    private:
+    // Single lock protecting session maps; do not hold across external calls.
     mutable std::shared_mutex mutex_;
     // Primary storage
     std::unordered_map<UserId, SessionInfo> sessions_;

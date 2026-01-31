@@ -46,6 +46,7 @@ build:sslquic --config=fast
 # === SSL + QUIC + LIBDEFLATE (Release/Opt) ===
 build:sslquic_opt --config=with_ssl
 build:sslquic_opt --config=opt
+build:sslquic_opt --define SERCOM_DEBUG_LOGS=1
 
 # === Vanilla (Debug) ===
 build:vanilla_dbg --config=without_ssl

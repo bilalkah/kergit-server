@@ -5,6 +5,7 @@
 #include "domains/User.h"
 #include "infra/persistence/repositories/UserRepository.h"
 
+#include <expected>
 #include <optional>
 #include <string_view>
 
@@ -22,10 +23,15 @@ class UserService {
 
     // ---- Write operations ----
     // Updates username / full_name and invalidates cache
-    void updateProfile(const UserId& userId, const std::optional<std::string>& username,
-                       const std::optional<std::string>& full_name);
-    void updateSettings(const UserId& userId, const std::optional<std::string>& username,
-                        const std::optional<std::string>& avatar_seed);
+    enum class UpdateError {
+        RepoFailure,
+    };
+    std::expected<void, UpdateError> updateProfile(
+        const UserId& userId, const std::optional<std::string>& username,
+        const std::optional<std::string>& full_name);
+    std::expected<void, UpdateError> updateSettings(
+        const UserId& userId, const std::optional<std::string>& username,
+        const std::optional<std::string>& avatar_seed);
 
    private:
     UserRepository& repo_;

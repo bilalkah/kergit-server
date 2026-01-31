@@ -68,62 +68,60 @@ CommandResult UpdateProfileCommand::execute(CommandContext& ctx, const CommandIn
         return std::unexpected(CommandError{3, "Provide a username or full name to update"});
     }
 
-    try {
-        ctx.user_service.updateProfile(user_id, username_opt, full_name_opt);
-
-        std::string final_username;
-        std::string final_full_name;
-        if (auto u = ctx.user_service.getUser(user_id)) {
-            final_username = u->username;
-            final_full_name = u->full_name;
-        } else {
-            final_username = username_opt.value_or(std::string{});
-            final_full_name = full_name_opt.value_or(std::string{});
-        }
-
-        std::string chosen_display;
-        if (!final_username.empty()) {
-            chosen_display = final_username;
-        } else if (!final_full_name.empty()) {
-            chosen_display = final_full_name;
-        }
-        if (chosen_display.empty()) chosen_display = "Member";
-
-        json payload = {
-            {"type", "profile_updated"},      {"success", true},
-            {"username", final_username},     {"full_name", final_full_name},
-            {"display_name", chosen_display}, {"user_id", ctx.ids.to_public(user_id).value}};
-
-        CommandSuccess res;
-        res.intents.push_back(Unicast{.conn = input->conn, .payload = payload});
-
-        // Broadcast updated name to hub members
-        const auto hubs = ctx.hub_service.getUserHubs(user_id);
-        for (const auto& hub : hubs) {
-            const auto online_members = ctx.presence_manager.onlineUsersInHub(hub.id);
-            std::vector<GlobalConnId> conns;
-            conns.reserve(online_members.size());
-            for (const auto& member_id : online_members) {
-                if (member_id == user_id) continue;
-                auto c = ctx.session_manager.getMainConnection(member_id);
-                if (c.has_value()) conns.push_back(c.value());
-            }
-            if (!conns.empty()) {
-                json presence = {{"type", "profile_updated"},
-                                 {"hub_id", ctx.ids.to_public(hub.id).value},
-                                 {"user_id", ctx.ids.to_public(user_id).value},
-                                 {"username", final_username},
-                                 {"full_name", final_full_name},
-                                 {"display_name", chosen_display}};
-                res.intents.push_back(
-                    Fanout{.conns = std::move(conns), .payload = std::move(presence)});
-            }
-        }
-
-        return res;
-    } catch (const std::exception& ex) {
-        return std::unexpected(CommandError{4, ex.what()});
+    auto update_res = ctx.user_service.updateProfile(user_id, username_opt, full_name_opt);
+    if (!update_res.has_value()) {
+        return std::unexpected(CommandError{4, "Unable to update profile"});
     }
-}
+
+    std::string final_username;
+    std::string final_full_name;
+    if (auto u = ctx.user_service.getUser(user_id)) {
+        final_username = u->username;
+        final_full_name = u->full_name;
+    } else {
+        final_username = username_opt.value_or(std::string{});
+        final_full_name = full_name_opt.value_or(std::string{});
+    }
+
+    std::string chosen_display;
+    if (!final_username.empty()) {
+        chosen_display = final_username;
+    } else if (!final_full_name.empty()) {
+        chosen_display = final_full_name;
+    }
+    if (chosen_display.empty()) chosen_display = "Member";
+
+    json payload = {
+        {"type", "profile_updated"},      {"success", true},
+        {"username", final_username},     {"full_name", final_full_name},
+        {"display_name", chosen_display}, {"user_id", ctx.ids.to_public(user_id).value}};
+
+    CommandSuccess res;
+    res.intents.push_back(Unicast{.conn = input->conn, .payload = payload});
+
+    // Broadcast updated name to hub members
+    const auto hubs = ctx.hub_service.getUserHubs(user_id);
+    for (const auto& hub : hubs) {
+        const auto online_members = ctx.presence_manager.onlineUsersInHub(hub.id);
+        std::vector<GlobalConnId> conns;
+        conns.reserve(online_members.size());
+        for (const auto& member_id : online_members) {
+            if (member_id == user_id) continue;
+            auto c = ctx.session_manager.getMainConnection(member_id);
+            if (c.has_value()) conns.push_back(c.value());
+        }
+        if (!conns.empty()) {
+            json presence = {{"type", "profile_updated"},
+                             {"hub_id", ctx.ids.to_public(hub.id).value},
+                             {"user_id", ctx.ids.to_public(user_id).value},
+                             {"username", final_username},
+                             {"full_name", final_full_name},
+                             {"display_name", chosen_display}};
+            res.intents.push_back(
+                Fanout{.conns = std::move(conns), .payload = std::move(presence)});
+        }
+    }
+
+    return res;
 
 }  // namespace app
