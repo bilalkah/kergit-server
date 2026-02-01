@@ -3,6 +3,7 @@
 
 #include "domains/ids/Ids.h"
 #include "net/Types.h"
+#include "net/outbound/Msg.h"
 #include "net/transport/Handle.h"
 
 #include <deque>
@@ -61,6 +62,14 @@ struct ConnectionContext {
 
     // deque for backpressured outgoing messages
     std::deque<std::pair<std::string, uWS::OpCode>> pending;
+
+    struct PerConnectionOutbox {
+        std::deque<net::outbound::OutgoingMessage> q;
+        std::size_t capacity{128};
+        uint32_t slow_hits{0};
+    };
+
+    PerConnectionOutbox outbox{};
 };
 
 /**
@@ -105,6 +114,7 @@ class ConnectionRegistery {
     // Returns a lightweight snapshot of connection state without copying
     // any containers. No lock is held beyond this call.
     std::optional<ConnectionView> get_view(const ConnId& conn_id) const;
+    std::vector<ConnId> get_ids() const;
 
     /**
      * Mutate in-place (no copies)

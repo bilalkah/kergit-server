@@ -9,6 +9,7 @@ cc_library(
     deps = [
         "//domains/ids:domain_ids",
         "//net:net_types",
+        "//net/outbound:outbound_msg",
         "//net/transport:handle",
         "//net/transport/websocket:uws_types",
     ],

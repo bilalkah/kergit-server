@@ -62,6 +62,16 @@ std::optional<ConnectionView> ConnectionRegistery::get_view(const ConnId& conn_i
                           .auth = ctx.auth};
 }
 
+std::vector<ConnId> ConnectionRegistery::get_ids() const {
+    std::shared_lock lock(mutex_);
+    std::vector<ConnId> ids;
+    ids.reserve(connections_.size());
+    for (const auto& [conn_id, ctx] : connections_) {
+        ids.push_back(conn_id);
+    }
+    return ids;
+}
+
 std::expected<void, ConnectionError> ConnectionRegistery::mutate(
     const ConnId& conn_id, const std::function<void(ConnectionContext&)>& mutator) {
     std::unique_lock lock(mutex_);

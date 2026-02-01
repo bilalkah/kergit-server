@@ -38,6 +38,10 @@ struct Counters {
     // Increments once per fan-out broadcast that uses a subscriber snapshot.
     std::atomic<uint64_t> fanout_subscriber_snapshot_total{0};
     std::atomic<uint64_t> fanout_payload_shared_total{0};
+    std::atomic<uint64_t> per_conn_queue_enqueued_total{0};
+    std::atomic<uint64_t> per_conn_queue_dropped_low_total{0};
+    std::atomic<uint64_t> per_conn_queue_overflow_total{0};
+    std::atomic<uint64_t> slow_connection_dropped_total{0};
     std::array<std::atomic<uint64_t>, 6> outbound_msgs_per_tick_buckets{};
 
     Counters() {
