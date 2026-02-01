@@ -25,32 +25,64 @@ uint32_t parse_u32(std::string_view s, uint32_t fallback) {
 }
 
 std::string snapshot_to_json(const utils::metrics::MetricsSnapshot& s) {
-    return fmt::format(
-        "{{\"ts\":{},\"inbound_total\":{},\"outbound_total\":{},\"parse_fail\":{},"
-        "\"auth_fail\":{},\"membership_fail\":{},\"payload_parse_total\":{},"
-        "\"payload_parse_fail_total\":{},\"parsed_payload_violation_total\":{},"
-        "\"registry_view_access_total\":{},\"registry_miss_total\":{},"
-        "\"registry_copy_elim_total\":{},\"fanout_sub_snapshot_total\":{},"
-        "\"fanout_payload_shared_total\":{},\"per_conn_enqueued_total\":{},"
-        "\"per_conn_dropped_low_total\":{},\"per_conn_overflow_total\":{},"
-        "\"slow_connection_dropped_total\":{},\"outbound_flush_total\":{},"
-        "\"outbound_flush_empty_total\":{},\"outbound_flush_send_fail_total\":{},"
-        "\"outbound_backpressured_total\":{},\"dropped_in\":{},\"dropped_in_low\":{},"
-        "\"dropped_in_high\":{},\"evicted_in_low_for_high\":{},\"dropped_out\":{},"
-        "\"dropped_out_low\":{},\"dropped_out_high\":{},\"outbound_backpressure\":{},"
-        "\"event_hiwat\":{},\"outbound_hiwat\":{},\"outbound_tick_hist\":[{},{},{},{},{},{}]}}",
-        s.timestamp_sec, s.inbound_total, s.outbound_total, s.parse_fail, s.auth_fail,
-        s.membership_fail, s.payload_parse_total, s.payload_parse_fail_total,
-        s.parsed_payload_violation_total, s.registry_view_access_total, s.registry_miss_total,
-        s.registry_copy_elim_total, s.fanout_sub_snapshot_total, s.fanout_payload_shared_total,
-        s.per_conn_enqueued_total, s.per_conn_dropped_low_total, s.per_conn_overflow_total,
-        s.slow_connection_dropped_total, s.outbound_flush_total, s.outbound_flush_empty_total,
-        s.outbound_flush_send_fail_total, s.outbound_backpressured_total, s.dropped_in,
-        s.dropped_in_low, s.dropped_in_high, s.evicted_in_low_for_high, s.dropped_out,
-        s.dropped_out_low, s.dropped_out_high, s.outbound_backpressure, s.event_hiwat,
-        s.outbound_hiwat, s.outbound_tick_hist[0], s.outbound_tick_hist[1],
-        s.outbound_tick_hist[2], s.outbound_tick_hist[3], s.outbound_tick_hist[4],
-        s.outbound_tick_hist[5]);
+    std::string out;
+    out.reserve(1024);
+    auto append_num = [&out](uint64_t value) {
+        fmt::format_to(std::back_inserter(out), "{}", value);
+    };
+
+    out.append("{\"version\":1,\"ts\":");
+    append_num(s.timestamp_sec);
+    out.append(",\"counters\":{");
+
+    out.append("\"inbound_total\":"); append_num(s.counters.inbound_total); out.append(",");
+    out.append("\"outbound_total\":"); append_num(s.counters.outbound_total); out.append(",");
+    out.append("\"parse_fail\":"); append_num(s.counters.parse_fail); out.append(",");
+    out.append("\"auth_fail\":"); append_num(s.counters.auth_fail); out.append(",");
+    out.append("\"membership_fail\":"); append_num(s.counters.membership_fail); out.append(",");
+    out.append("\"payload_parse_total\":"); append_num(s.counters.payload_parse_total); out.append(",");
+    out.append("\"payload_parse_fail_total\":"); append_num(s.counters.payload_parse_fail_total); out.append(",");
+    out.append("\"parsed_payload_violation_total\":"); append_num(s.counters.parsed_payload_violation_total); out.append(",");
+    out.append("\"registry_view_access_total\":"); append_num(s.counters.registry_view_access_total); out.append(",");
+    out.append("\"registry_miss_total\":"); append_num(s.counters.registry_miss_total); out.append(",");
+    out.append("\"registry_copy_elim_total\":"); append_num(s.counters.registry_copy_elim_total); out.append(",");
+    out.append("\"fanout_sub_snapshot_total\":"); append_num(s.counters.fanout_sub_snapshot_total); out.append(",");
+    out.append("\"fanout_payload_shared_total\":"); append_num(s.counters.fanout_payload_shared_total); out.append(",");
+    out.append("\"per_conn_enqueued_total\":"); append_num(s.counters.per_conn_enqueued_total); out.append(",");
+    out.append("\"per_conn_dropped_low_total\":"); append_num(s.counters.per_conn_dropped_low_total); out.append(",");
+    out.append("\"per_conn_overflow_total\":"); append_num(s.counters.per_conn_overflow_total); out.append(",");
+    out.append("\"slow_connection_dropped_total\":"); append_num(s.counters.slow_connection_dropped_total); out.append(",");
+    out.append("\"outbound_flush_total\":"); append_num(s.counters.outbound_flush_total); out.append(",");
+    out.append("\"outbound_flush_empty_total\":"); append_num(s.counters.outbound_flush_empty_total); out.append(",");
+    out.append("\"outbound_flush_send_fail_total\":"); append_num(s.counters.outbound_flush_send_fail_total); out.append(",");
+    out.append("\"outbound_backpressured_total\":"); append_num(s.counters.outbound_backpressured_total); out.append(",");
+    out.append("\"dropped_in\":"); append_num(s.counters.dropped_in); out.append(",");
+    out.append("\"dropped_in_low\":"); append_num(s.counters.dropped_in_low); out.append(",");
+    out.append("\"dropped_in_high\":"); append_num(s.counters.dropped_in_high); out.append(",");
+    out.append("\"evicted_in_low_for_high\":"); append_num(s.counters.evicted_in_low_for_high); out.append(",");
+    out.append("\"dropped_out\":"); append_num(s.counters.dropped_out); out.append(",");
+    out.append("\"dropped_out_low\":"); append_num(s.counters.dropped_out_low); out.append(",");
+    out.append("\"dropped_out_high\":"); append_num(s.counters.dropped_out_high); out.append(",");
+    out.append("\"outbound_backpressure\":"); append_num(s.counters.outbound_backpressure);
+
+    out.append("},\"gauges\":{");
+    out.append("\"event_hiwat\":"); append_num(s.gauges.event_hiwat); out.append(",");
+    out.append("\"outbound_hiwat\":"); append_num(s.gauges.outbound_hiwat); out.append(",");
+    out.append("\"active_connections\":"); append_num(s.gauges.active_connections); out.append(",");
+    out.append("\"active_users\":"); append_num(s.gauges.active_users); out.append(",");
+    out.append("\"server_ping_ms\":"); append_num(s.gauges.server_ping_ms);
+
+    out.append("},\"histograms\":{");
+    out.append("\"outbound_tick_hist\":[");
+    append_num(s.histograms.outbound_tick_hist[0]); out.append(",");
+    append_num(s.histograms.outbound_tick_hist[1]); out.append(",");
+    append_num(s.histograms.outbound_tick_hist[2]); out.append(",");
+    append_num(s.histograms.outbound_tick_hist[3]); out.append(",");
+    append_num(s.histograms.outbound_tick_hist[4]); out.append(",");
+    append_num(s.histograms.outbound_tick_hist[5]);
+    out.append("]}}");
+
+    return out;
 }
 }  // namespace
 
@@ -91,28 +123,58 @@ void HttpServer::run() {
     uWS::App app;
     app_ = &app;
     loop_.store(uWS::Loop::get(), std::memory_order_release);
+    auto write_cors = [](auto* res) {
+        res->writeHeader("Access-Control-Allow-Origin", "*");
+        res->writeHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+        res->writeHeader("Access-Control-Allow-Headers", "Content-Type");
+    };
+    app.options("/*", [write_cors](auto* res, auto*) {
+        write_cors(res);
+        res->end();
+    });
     app.get("/health", [](auto* res, auto*) {
+        const auto start = std::chrono::steady_clock::now();
+        res->writeHeader("Access-Control-Allow-Origin", "*");
         res->writeHeader("Content-Type", "application/json");
+        const auto elapsed = std::chrono::steady_clock::now() - start;
+        const auto ms =
+            static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(elapsed)
+                                      .count());
+        utils::metrics::counters().server_ping_ms.store(ms, std::memory_order_relaxed);
         res->end("{\"status\":\"ok\"}");
     });
     app.get("/metrics/snapshot", [](auto* res, auto*) {
+        const auto start = std::chrono::steady_clock::now();
+        res->writeHeader("Access-Control-Allow-Origin", "*");
         res->writeHeader("Content-Type", "application/json");
         const auto snap = utils::metrics::snapshot_now();
+        const auto elapsed = std::chrono::steady_clock::now() - start;
+        const auto ms =
+            static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(elapsed)
+                                      .count());
+        utils::metrics::counters().server_ping_ms.store(ms, std::memory_order_relaxed);
         res->end(snapshot_to_json(snap));
     });
     app.get("/metrics/timeseries", [](auto* res, auto* req) {
+        const auto start = std::chrono::steady_clock::now();
+        res->writeHeader("Access-Control-Allow-Origin", "*");
         res->writeHeader("Content-Type", "application/json");
         const auto window =
             parse_u32(req->getQuery("window"), 60);
         const auto series = utils::metrics::timeseries(window);
         std::string out;
-        out.reserve(series.size() * 64);
-        out.append("[");
+        out.reserve(series.size() * 256);
+        out.append(fmt::format("{{\"version\":1,\"window_sec\":{},\"samples\":[", window));
         for (std::size_t i = 0; i < series.size(); ++i) {
             if (i) out.append(",");
             out.append(snapshot_to_json(series[i]));
         }
-        out.append("]");
+        out.append("]}");
+        const auto elapsed = std::chrono::steady_clock::now() - start;
+        const auto ms =
+            static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(elapsed)
+                                      .count());
+        utils::metrics::counters().server_ping_ms.store(ms, std::memory_order_relaxed);
         res->end(out);
     });
 

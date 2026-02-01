@@ -2,6 +2,7 @@
 #include "net/outbound/OutboundFlushEngine.h"
 #include "net/transport/websocket/WsAppFactory.h"
 #include "net/transport/websocket/utils.h"
+#include "utils/Metrics.h"
 
 #include <cctype>
 #include <chrono>
@@ -162,6 +163,8 @@ void TextWSServer::wire() {
                     conns_.attach(psd->conn_id, std::move(ctx));
                     heartbeat_service_.on_open(psd->conn_id);
                     hooks_.on_open(psd->conn_id, psd->user_id);
+                    utils::metrics::counters().active_connections.fetch_add(
+                        1, std::memory_order_relaxed);
                 },
             .message =
                 [this](UwsSocket* ws, std::string_view data, uWS::OpCode op) {
@@ -230,6 +233,8 @@ void TextWSServer::wire() {
 
                     hooks_.on_close(conn_id, code, std::string(reason));
                     active_connections_.fetch_sub(1, std::memory_order_relaxed);
+                    utils::metrics::counters().active_connections.fetch_sub(
+                        1, std::memory_order_relaxed);
                 },
         });
 

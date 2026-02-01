@@ -4,6 +4,9 @@
 #include <chrono>
 
 struct us_timer_t;
+namespace uWS {
+class Loop;
+}
 
 namespace net::connection {
 class ConnectionRegistery;
@@ -33,6 +36,7 @@ class OutboundFlushEngine {
     transport::IOutboundTransport& transport_;
     std::chrono::milliseconds tick_;
     ::us_timer_t* timer_{nullptr};
+    uWS::Loop* loop_{nullptr};
 };
 
 }  // namespace net::outbound
