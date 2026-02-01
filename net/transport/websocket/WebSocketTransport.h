@@ -7,6 +7,7 @@
 #include "net/outbound/OutgoingQueue.h"
 #include "net/outbound/OutgoingWorker.h"
 #include "net/runtime/HeartbeatService.h"
+#include "net/transport/IOutboundTransport.h"
 #include "net/transport/ITransport.h"
 #include "net/transport/websocket/IWsApp.h"
 #include "net/transport/websocket/PerSocketData.h"
@@ -19,6 +20,15 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
+
+namespace app::queue {
+class IEventSink;
+}
+
+namespace net::outbound {
+class OutboundFlushEngine;
+}
 
 namespace net::transport::websocket {
 
@@ -34,7 +44,8 @@ struct OriginAllowlist {
     }
 };
 
-class TextWSServer : public ITransportServer, public utils::Loggable {
+class TextWSServer : public ITransportServer, public transport::IOutboundTransport,
+                     public utils::Loggable {
    public:
     explicit TextWSServer(core::NetworkStackConfig cfg, connection::ConnectionRegistery& conns,
                           outbound::OutgoingQueue& outgoing_queue, OriginAllowlist origins = {},
@@ -50,6 +61,9 @@ class TextWSServer : public ITransportServer, public utils::Loggable {
     const char* name() const override;
     void* loop_id() const override;
     void set_hooks(Hooks hooks) override;
+    bool send(transport::WsHandle& handle, std::string_view payload,
+              bool binary) noexcept override;
+    bool is_backpressured(const transport::WsHandle& handle) const noexcept override;
 
    private:
     class ConnIdGenerator {
@@ -98,6 +112,7 @@ class TextWSServer : public ITransportServer, public utils::Loggable {
      * Number of active connections
      */
     std::atomic<uint8_t> active_connections_{0};
+    std::unique_ptr<outbound::OutboundFlushEngine> flush_engine_;
 };
 
 }  // namespace net::transport::websocket

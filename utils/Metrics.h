@@ -42,6 +42,9 @@ struct Counters {
     std::atomic<uint64_t> per_conn_queue_dropped_low_total{0};
     std::atomic<uint64_t> per_conn_queue_overflow_total{0};
     std::atomic<uint64_t> slow_connection_dropped_total{0};
+    std::atomic<uint64_t> outbound_flush_total{0};
+    std::atomic<uint64_t> outbound_flush_empty_total{0};
+    std::atomic<uint64_t> outbound_flush_send_fail_total{0};
     std::array<std::atomic<uint64_t>, 6> outbound_msgs_per_tick_buckets{};
 
     Counters() {

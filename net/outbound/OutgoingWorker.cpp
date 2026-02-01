@@ -110,11 +110,7 @@ void OutgoingWorker::tick() {
                 1, std::memory_order_relaxed);
             ob.slow_hits += 1;
             if (ob.slow_hits >= 4) {
-                if (ctx.handle.valid()) {
-                    ctx.handle.end(1013, "slow consumer");
-                }
-                utils::metrics::counters().slow_connection_dropped_total.fetch_add(
-                    1, std::memory_order_relaxed);
+                ob.drop_pending = true;
                 ob.q.clear();
             }
         });
@@ -155,79 +151,6 @@ void OutgoingWorker::tick() {
 
         distribute_message(msg);
         ++processed;
-    }
-
-    const auto conn_ids = conns_.get_ids();
-    for (const auto& conn_id : conn_ids) {
-        if (cfg_.time_budget.count() > 0) {
-            const auto now = std::chrono::steady_clock::now();
-            if (now - start >= cfg_.time_budget) {
-                break;
-            }
-        }
-
-        auto view = conns_.get_view(conn_id);
-        if (!view.has_value()) {
-            continue;
-        }
-        utils::metrics::counters().registry_view_access_total.fetch_add(
-            1, std::memory_order_relaxed);
-
-        OutgoingMessage msg;
-        bool has_msg = false;
-        auto pop_result = conns_.mutate(conn_id, [&](auto& ctx) {
-            if (ctx.outbox.q.empty()) {
-                return;
-            }
-            msg = std::move(ctx.outbox.q.front());
-            ctx.outbox.q.pop_front();
-            has_msg = true;
-        });
-        if (!pop_result.has_value() || !has_msg) {
-            continue;
-        }
-
-        auto handle = view->handle;
-        std::visit(
-            [&](const auto& action) {
-                using T = std::decay_t<decltype(action)>;
-                if constexpr (std::is_same_v<T, SendPayload>) {
-                    if (!handle.valid()) {
-                        return;
-                    }
-                    const auto& bytes = *action.payload.data;
-                    const auto status = handle.send(bytes, action.payload.is_binary);
-                    if (status == transport::websocket::UwsSocket::SendStatus::SUCCESS) {
-                        conns_.mutate(conn_id, [&](auto& ctx) { ctx.outbox.slow_hits = 0; });
-                    } else if (status ==
-                               transport::websocket::UwsSocket::SendStatus::BACKPRESSURE) {
-                        utils::metrics::counters().outbound_backpressure_total.fetch_add(
-                            1, std::memory_order_relaxed);
-                        conns_.mutate(conn_id, [&](auto& ctx) {
-                            ctx.outbox.q.push_front(std::move(msg));
-                        });
-                    } else if (transport::websocket::UwsSocket::SendStatus::DROPPED ==
-                               status) {
-                        utils::metrics::counters().dropped_outbound_total.fetch_add(
-                            1, std::memory_order_relaxed);
-                    }
-                } else if constexpr (std::is_same_v<T, UpdateAuthState>) {
-                    conns_.mutate(conn_id, [&](auto& ctx) {
-                        ctx.auth.is_authenticated = action.is_authenticated;
-                        ctx.auth.expires_at = action.expires_at;
-                        ctx.outbox.slow_hits = 0;
-                    });
-                } else if constexpr (std::is_same_v<T, DropConnection>) {
-                    if (handle.valid()) {
-                        handle.end(action.code, action.reason);
-                    }
-                    conns_.mutate(conn_id, [&](auto& ctx) {
-                        ctx.outbox.q.clear();
-                        ctx.outbox.slow_hits = 0;
-                    });
-                }
-            },
-            msg.action);
     }
 
     utils::metrics::observe_outbound_msgs_per_tick(processed);

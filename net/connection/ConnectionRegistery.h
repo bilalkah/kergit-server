@@ -67,6 +67,7 @@ struct ConnectionContext {
         std::deque<net::outbound::OutgoingMessage> q;
         std::size_t capacity{128};
         uint32_t slow_hits{0};
+        bool drop_pending{false};
     };
 
     PerConnectionOutbox outbox{};
@@ -93,6 +94,12 @@ struct ConnectionView {
     AuthState auth{};
 };
 
+struct OutboundReady {
+    transport::WsHandle handle{};
+    net::outbound::OutgoingMessage msg{};
+    bool drop_pending{false};
+};
+
 /**
  * Registry managing active connections.
  */
@@ -115,6 +122,7 @@ class ConnectionRegistery {
     // any containers. No lock is held beyond this call.
     std::optional<ConnectionView> get_view(const ConnId& conn_id) const;
     std::vector<ConnId> get_ids() const;
+    std::optional<OutboundReady> take_one_outbound(const ConnId& conn_id);
 
     /**
      * Mutate in-place (no copies)

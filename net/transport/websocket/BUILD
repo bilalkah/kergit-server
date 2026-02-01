@@ -62,7 +62,9 @@ cc_library(
 cc_library(
     name = "text_websocket_transport",
     srcs = ["WebSocketTransport.cpp"],
-    hdrs = ["WebSocketTransport.h"],
+    hdrs = [
+        "WebSocketTransport.h",
+    ],
     copts = ["-std=gnu++23"],
     visibility = ["//net:__subpackages__"],
     deps = [
@@ -70,9 +72,13 @@ cc_library(
         ":ws_app_factory",
         "//core:server_config",
         "//infra/security:supabase_jwt_verifier",
+        "//net/connection:connection_registery",
+        "//net/outbound:outbound_flush_engine",
         "//net/outbound:outgoing_worker",
         "//net/runtime:heartbeat_service",
+        "//net/transport:outbound_transport_iface",
         "//net/transport:i_transport",
+        "//utils:metrics",
         "@uwebsockets",
     ],
 )

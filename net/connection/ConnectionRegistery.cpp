@@ -72,6 +72,29 @@ std::vector<ConnId> ConnectionRegistery::get_ids() const {
     return ids;
 }
 
+std::optional<OutboundReady> ConnectionRegistery::take_one_outbound(const ConnId& conn_id) {
+    std::unique_lock lock(mutex_);
+    auto it = connections_.find(conn_id);
+    if (it == connections_.end()) {
+        return std::nullopt;
+    }
+    auto& ctx = it->second;
+    if (ctx.outbox.drop_pending) {
+        ctx.outbox.drop_pending = false;
+        ctx.outbox.slow_hits = 0;
+        ctx.outbox.q.clear();
+        return OutboundReady{.handle = ctx.handle, .msg = {}, .drop_pending = true};
+    }
+    if (ctx.outbox.q.empty()) {
+        return std::nullopt;
+    }
+    OutboundReady ready;
+    ready.handle = ctx.handle;
+    ready.msg = std::move(ctx.outbox.q.front());
+    ctx.outbox.q.pop_front();
+    return ready;
+}
+
 std::expected<void, ConnectionError> ConnectionRegistery::mutate(
     const ConnId& conn_id, const std::function<void(ConnectionContext&)>& mutator) {
     std::unique_lock lock(mutex_);

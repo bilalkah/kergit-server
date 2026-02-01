@@ -14,6 +14,20 @@ cc_library(
 )
 
 cc_library(
+    name = "outbound_flush_engine",
+    srcs = ["OutboundFlushEngine.cpp"],
+    hdrs = ["OutboundFlushEngine.h"],
+    copts = ["-std=gnu++23"],
+    visibility = ["//net:__subpackages__"],
+    deps = [
+        "//net/connection:connection_registery",
+        "//net/transport:outbound_transport_iface",
+        "//net/transport/websocket:uws_types",
+        "//utils:metrics",
+    ],
+)
+
+cc_library(
     name = "outgoing_queue",
     hdrs = ["OutgoingQueue.h"],
     copts = ["-std=gnu++23"],

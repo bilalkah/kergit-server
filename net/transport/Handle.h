@@ -4,6 +4,7 @@
 #include "net/transport/websocket/UwsTypes.h"
 
 #include <string>
+#include <string_view>
 
 /**
  * WebSocket connection handles for connection
@@ -27,7 +28,14 @@ struct WsHandle {
 
     bool valid() const { return ws != nullptr; }
 
-    UwsSocket::SendStatus send(std::string payload, bool binary = false) {
+    UwsSocket::SendStatus send(std::string payload, bool binary = false) const {
+        if (ws) {
+            return ws->send(payload, binary ? uWS::OpCode::BINARY : uWS::OpCode::TEXT);
+        }
+        return UwsSocket::SendStatus::DROPPED;
+    }
+
+    UwsSocket::SendStatus send(std::string_view payload, bool binary = false) const {
         if (ws) {
             return ws->send(payload, binary ? uWS::OpCode::BINARY : uWS::OpCode::TEXT);
         }
