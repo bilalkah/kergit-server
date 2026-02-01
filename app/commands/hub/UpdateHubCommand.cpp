@@ -43,33 +43,33 @@ std::vector<net::outbound::OutgoingMessage> UpdateHubCommand::execute(CommandCon
         return {};
     }
 
-    sercom::protocol::command::UpdateHub cmd;
-    if (!cmd.ParseFromString(env.payload())) {
-        return {make_command_error(event->conn_id, env.type(),
+    const auto* cmd = get_parsed<sercom::protocol::command::UpdateHub>(*event);
+    if (!cmd) {
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_INVALID_FORMAT,
-                                   "Invalid HUB_UPDATE payload")};
+                                   "Invalid HUB_UPDATE payload"));
     }
 
     auto user_exp = ctx.session_manager.sessionOfConnection(event->conn_id);
     if (!user_exp.has_value()) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_UNAUTHORIZED,
-                                   "Authenticate first")};
+                                   "Authenticate first"));
     }
     const UserId user_id = user_exp.value();
 
     std::optional<std::string> requested_name;
     std::optional<std::string> requested_seed;
 
-    for (int i = 0; i < cmd.changes_size(); ++i) {
-        const auto& change = cmd.changes(i);
+    for (int i = 0; i < cmd->changes_size(); ++i) {
+        const auto& change = cmd->changes(i);
         switch (change.change_case()) {
             case sercom::protocol::command::HubChange::kName: {
                 auto name = sanitize(change.name());
                 if (name.empty()) {
-                    return {make_command_error(event->conn_id, env.type(),
+                    return single_outgoing(make_command_error(event->conn_id, env.type(),
                                                sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
-                                               "Hub name is required")};
+                                               "Hub name is required"));
                 }
                 requested_name = std::move(name);
                 break;
@@ -77,71 +77,71 @@ std::vector<net::outbound::OutgoingMessage> UpdateHubCommand::execute(CommandCon
             case sercom::protocol::command::HubChange::kAvatarSeed: {
                 auto seed = sanitize(change.avatar_seed());
                 if (seed.empty()) {
-                    return {make_command_error(event->conn_id, env.type(),
+                    return single_outgoing(make_command_error(event->conn_id, env.type(),
                                                sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
-                                               "Avatar seed is required")};
+                                               "Avatar seed is required"));
                 }
                 requested_seed = std::move(seed);
                 break;
             }
             case sercom::protocol::command::HubChange::CHANGE_NOT_SET:
             default:
-                return {make_command_error(event->conn_id, env.type(),
+                return single_outgoing(make_command_error(event->conn_id, env.type(),
                                            sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
-                                           "Invalid change type")};
+                                           "Invalid change type"));
         }
     }
 
     if (!requested_name.has_value() && !requested_seed.has_value()) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
-                                   "No changes requested")};
+                                   "No changes requested"));
     }
 
-    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd.hub_id()});
+    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd->hub_id()});
     if (!hub_id_opt.has_value()) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_NOT_FOUND,
-                                   "Hub not found")};
+                                   "Hub not found"));
     }
     const HubId hub_id = hub_id_opt.value();
 
     if (!ctx.hub_service.isHubMember(hub_id, user_id)) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_FORBIDDEN,
-                                   "Join the hub before updating it")};
+                                   "Join the hub before updating it"));
     }
 
     auto role = ctx.hub_service.getMembershipRole(hub_id, user_id);
     if (!role.has_value() || (*role != Role::OWNER && *role != Role::ADMIN)) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_FORBIDDEN,
-                                   "Only admins or owners can update hub settings")};
+                                   "Only admins or owners can update hub settings"));
     }
 
     try {
         if (requested_name.has_value()) {
             if (!ctx.hub_service.renameHub(hub_id, *requested_name)) {
-                return {make_command_error(event->conn_id, env.type(),
+                return single_outgoing(make_command_error(event->conn_id, env.type(),
                                            sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
-                                           "Unable to rename hub at this time")};
+                                           "Unable to rename hub at this time"));
             }
         }
         if (requested_seed.has_value()) {
             if (!ctx.hub_service.updateHubAvatarSeed(hub_id, *requested_seed)) {
-                return {make_command_error(event->conn_id, env.type(),
+                return single_outgoing(make_command_error(event->conn_id, env.type(),
                                            sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
-                                           "Unable to update hub avatar at this time")};
+                                           "Unable to update hub avatar at this time"));
             }
         }
     } catch (const std::exception& ex) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
-                                   ex.what())};
+                                   ex.what()));
     } catch (...) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
-                                   "Unable to update hub settings")};
+                                   "Unable to update hub settings"));
     }
 
     std::vector<GlobalConnId> conns;
@@ -174,8 +174,10 @@ std::vector<net::outbound::OutgoingMessage> UpdateHubCommand::execute(CommandCon
 
         out.push_back(net::outbound::OutgoingMessage{
             .target = net::outbound::Target::many(conns),
-            .action = net::outbound::SendPayload{
-                .payload = net::outbound::Payload{.data = std::move(bytes), .is_binary = true}}});
+            .action = net::outbound::Action{
+                std::in_place_type<net::outbound::SendPayload>,
+                net::outbound::SendPayload{.payload = net::outbound::Payload{
+                    .data = std::move(bytes), .is_binary = true}}}});
     }
 
     if (requested_seed.has_value()) {
@@ -193,8 +195,10 @@ std::vector<net::outbound::OutgoingMessage> UpdateHubCommand::execute(CommandCon
 
         out.push_back(net::outbound::OutgoingMessage{
             .target = net::outbound::Target::many(conns),
-            .action = net::outbound::SendPayload{
-                .payload = net::outbound::Payload{.data = std::move(bytes), .is_binary = true}}});
+            .action = net::outbound::Action{
+                std::in_place_type<net::outbound::SendPayload>,
+                net::outbound::SendPayload{.payload = net::outbound::Payload{
+                    .data = std::move(bytes), .is_binary = true}}}});
     }
 
     return out;

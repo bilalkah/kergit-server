@@ -2,6 +2,7 @@
 #define APP_QUEUE_MSG_H
 
 #include "domains/ids/Ids.h"
+#include "proto/ParsedPayload.h"
 #include "proto/envelope.pb.h"
 
 #include <cstdint>
@@ -13,6 +14,7 @@ namespace app::queue {
 
 struct Payload {
     sercom::protocol::Envelope env;
+    sercom::protocol::ParsedPayload parsed{};
 };
 
 struct ConnectionEvent {

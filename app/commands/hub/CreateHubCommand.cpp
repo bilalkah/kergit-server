@@ -64,39 +64,39 @@ std::vector<net::outbound::OutgoingMessage> CreateHubCommand::execute(CommandCon
         return {};
     }
 
-    sercom::protocol::command::CreateHub cmd;
-    if (!cmd.ParseFromString(env.payload())) {
-        return {make_command_error(event->conn_id, env.type(),
+    const auto* cmd = get_parsed<sercom::protocol::command::CreateHub>(*event);
+    if (!cmd) {
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_INVALID_FORMAT,
-                                   "Invalid HUB_CREATE payload")};
+                                   "Invalid HUB_CREATE payload"));
     }
 
     auto user_exp = ctx.session_manager.sessionOfConnection(event->conn_id);
     if (!user_exp.has_value()) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_UNAUTHORIZED,
-                                   "Authenticate first")};
+                                   "Authenticate first"));
     }
     const UserId user_id = user_exp.value();
 
-    std::string name = sanitize_name(cmd.name());
+    std::string name = sanitize_name(cmd->name());
     if (name.empty()) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
-                                   "Hub name is required")};
+                                   "Hub name is required"));
     }
 
     HubId hub_id;
     try {
         hub_id = ctx.hub_service.createHub(name, user_id);
     } catch (const std::exception& ex) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
-                                   ex.what())};
+                                   ex.what()));
     } catch (...) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
-                                   "Failed to create hub")};
+                                   "Failed to create hub"));
     }
 
     try {
@@ -143,10 +143,12 @@ std::vector<net::outbound::OutgoingMessage> CreateHubCommand::execute(CommandCon
     std::string bytes;
     out_env.SerializeToString(&bytes);
 
-    return {net::outbound::OutgoingMessage{
+    return single_outgoing(net::outbound::OutgoingMessage{
         .target = net::outbound::Target::one(event->conn_id),
-        .action = net::outbound::SendPayload{
-            .payload = net::outbound::Payload{.data = std::move(bytes), .is_binary = true}}}};
+        .action =
+            net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
+                                  net::outbound::SendPayload{.payload = net::outbound::Payload{
+                                      .data = std::move(bytes), .is_binary = true}}}});
 }
 
 }  // namespace app

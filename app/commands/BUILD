@@ -14,5 +14,6 @@ cc_library(
         "//proto:envelope_cc_proto",
         "//proto/command:message_cc_proto",
         "//proto/event:error_cc_proto",
+        "//utils:metrics",
     ],
 )

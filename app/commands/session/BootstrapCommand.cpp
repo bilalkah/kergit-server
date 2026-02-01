@@ -1,5 +1,6 @@
 #include "app/commands/session/BootstrapCommand.h"
 
+#include "app/commands/utils.h"
 #include "app/converters/ProtoConverters.h"
 #include "app/managers/subscription/Topic.h"
 #include "domains/Channel.h"
@@ -29,33 +30,36 @@ std::vector<net::outbound::OutgoingMessage> BootstrapCommand::execute(CommandCon
 
     const UserId user_id = event->user_id;
     if (user_id.value.empty()) {
-        return {net::outbound::OutgoingMessage{
+        return single_outgoing(net::outbound::OutgoingMessage{
             .target = net::outbound::Target::one(event->conn_id),
-            .action = net::outbound::DropConnection{
-                .code = static_cast<int>(
-                    sercom::protocol::event::CommandErrorCode::CommandErrorCode_UNAUTHORIZED),
-                .reason = "missing_user_id"}}};
+            .action =
+                net::outbound::Action{std::in_place_type<net::outbound::DropConnection>,
+                                      static_cast<int>(sercom::protocol::event::CommandErrorCode::
+                                                           CommandErrorCode_UNAUTHORIZED),
+                                      "missing_user_id"}});
     }
 
     auto db_user = ctx.user_service.getUser(user_id);
     if (!db_user) {
-        return {net::outbound::OutgoingMessage{
+        return single_outgoing(net::outbound::OutgoingMessage{
             .target = net::outbound::Target::one(event->conn_id),
-            .action = net::outbound::DropConnection{
-                .code = static_cast<int>(
-                    sercom::protocol::event::CommandErrorCode::CommandErrorCode_UNAUTHORIZED),
-                .reason = "User not found"}}};
+            .action =
+                net::outbound::Action{std::in_place_type<net::outbound::DropConnection>,
+                                      static_cast<int>(sercom::protocol::event::CommandErrorCode::
+                                                           CommandErrorCode_UNAUTHORIZED),
+                                      "User not found"}});
     }
 
     // Atomically try to create session - prevents race condition where two connections
     // for the same user could both pass hasSession check before either creates the session
     if (!ctx.session_manager.tryCreateSession(event->conn_id, user_id)) {
-        return {net::outbound::OutgoingMessage{
+        return single_outgoing(net::outbound::OutgoingMessage{
             .target = net::outbound::Target::one(event->conn_id),
-            .action = net::outbound::DropConnection{
-                .code = static_cast<int>(
-                    sercom::protocol::event::CommandErrorCode::CommandErrorCode_INVALID_SESSION),
-                .reason = "duplicate_session"}}};
+            .action =
+                net::outbound::Action{std::in_place_type<net::outbound::DropConnection>,
+                                      static_cast<int>(sercom::protocol::event::CommandErrorCode::
+                                                           CommandErrorCode_INVALID_SESSION),
+                                      "duplicate_session"}});
     }
 
     const auto hubs = ctx.hub_service.getUserHubs(user_id);
@@ -147,12 +151,13 @@ std::vector<net::outbound::OutgoingMessage> BootstrapCommand::execute(CommandCon
                 std::string bytes;
                 penv.SerializeToString(&bytes);
 
-                out.push_back(net::outbound::OutgoingMessage{
-                    .priority = net::outbound::OutboundPriority::Low,
-                    .target = net::outbound::Target::many(std::move(targets)),
-                    .action = net::outbound::SendPayload{
-                        .payload =
-                            net::outbound::Payload{.data = std::move(bytes), .is_binary = true}}});
+                out.emplace_back();
+                auto& msg = out.back();
+                msg.priority = net::outbound::OutboundPriority::Low;
+                msg.target = net::outbound::Target::many(std::move(targets));
+                msg.action.emplace<net::outbound::SendPayload>(net::outbound::SendPayload{
+                    .payload = net::outbound::Payload{.data = std::move(bytes),
+                                                      .is_binary = true}});
             }
         }
     }
@@ -169,10 +174,12 @@ std::vector<net::outbound::OutgoingMessage> BootstrapCommand::execute(CommandCon
     std::string out_bytes;
     env.SerializeToString(&out_bytes);
 
-    out.push_back(net::outbound::OutgoingMessage{
-        .target = net::outbound::Target::one(event->conn_id),
-        .action = net::outbound::SendPayload{
-            .payload = net::outbound::Payload{.data = std::move(out_bytes), .is_binary = true}}});
+    out.emplace_back();
+    auto& msg = out.back();
+    msg.target = net::outbound::Target::one(event->conn_id);
+    msg.action.emplace<net::outbound::SendPayload>(net::outbound::SendPayload{
+        .payload =
+            net::outbound::Payload{.data = std::move(out_bytes), .is_binary = true}});
 
     return out;
 }

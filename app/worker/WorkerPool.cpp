@@ -101,7 +101,7 @@ void WorkerPool::worker_loop(std::size_t worker_index) {
             event);
 
         for (const auto& intent : intents) {
-            (void)out_queue_.push(intent);
+            (void)out_queue_.push(std::move(intent));
             utils::metrics::counters().outbound_msgs_total.fetch_add(1,
                                                                      std::memory_order_relaxed);
         }
@@ -149,24 +149,26 @@ void WorkerPool::unmark_executing(GlobalConnId conn, sercom::protocol::Envelope:
     }
 }
 
-std::vector<net::outbound::OutgoingMessage> WorkerPool::handle_event(
-    const queue::MessageEvent& msg_evt) {
+std::vector<net::outbound::OutgoingMessage> WorkerPool::handle_event(queue::MessageEvent& msg_evt) {
     std::vector<net::outbound::OutgoingMessage> result;
     const auto& env = msg_evt.payload.env;
 
-    auto env_validation = proto_validator_.validate_envelope(env);
-    if (!env_validation.has_value()) {
-        utils::metrics::counters().parse_fail_total.fetch_add(1, std::memory_order_relaxed);
+    utils::metrics::counters().payload_parse_total.fetch_add(1, std::memory_order_relaxed);
+    auto parsed = proto_validator_.parse_and_validate(env);
+    if (!parsed.has_value()) {
+        utils::metrics::counters().payload_parse_fail_total.fetch_add(1,
+                                                                      std::memory_order_relaxed);
         // Drop connection on invalid envelope
         result.emplace_back(net::outbound::OutgoingMessage{
             .target = net::outbound::Target::one(msg_evt.conn_id),
-            .action = net::outbound::DropConnection{
-                .code = static_cast<int>(
-                    sercom::protocol::event::CommandErrorCode::CommandErrorCode_INVALID_FORMAT),
-                .reason = "Invalid envelope: " + env_validation.error(),
-            }});
+            .action =
+                net::outbound::Action{std::in_place_type<net::outbound::DropConnection>,
+                                      static_cast<int>(sercom::protocol::event::CommandErrorCode::
+                                                           CommandErrorCode_INVALID_FORMAT),
+                                      "Invalid envelope: " + parsed.error()}});
         return result;
     }
+    msg_evt.payload.parsed = std::move(parsed.value());
 
     if (!try_mark_executing(msg_evt.conn_id, env.type())) {
         utils::metrics::counters().dropped_inbound_total.fetch_add(1, std::memory_order_relaxed);

@@ -26,8 +26,8 @@ std::vector<net::outbound::OutgoingMessage> SelectActiveChannelCommand::execute(
                                      "Invalid ACTIVE_CHANNEL envelope type")};
     }
 
-    sercom::protocol::command::SelectActiveChannel cmd;
-    if (!cmd.ParseFromString(env.payload())) {
+    const auto* cmd = get_parsed<sercom::protocol::command::SelectActiveChannel>(*event);
+    if (!cmd) {
         return {make_drop_connection(event->conn_id,
                                      sercom::protocol::event::CommandErrorCode_INVALID_FORMAT,
                                      "Invalid ACTIVE_CHANNEL payload")};
@@ -41,31 +41,31 @@ std::vector<net::outbound::OutgoingMessage> SelectActiveChannelCommand::execute(
     }
     const UserId user_id = user_exp.value();
 
-    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd.hub_id()});
+    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd->hub_id()});
     if (!hub_id_opt.has_value()) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_NOT_FOUND,
-                                   "Hub not found")};
+                                   "Hub not found"));
     }
 
-    auto channel_id_opt = ctx.ids.to_internal(PublicChannelId{cmd.channel_id()});
+    auto channel_id_opt = ctx.ids.to_internal(PublicChannelId{cmd->channel_id()});
     if (!channel_id_opt.has_value()) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_NOT_FOUND,
-                                   "Channel not found")};
+                                   "Channel not found"));
     }
 
     auto channel_opt = ctx.channel_service.getChannel(*channel_id_opt);
     if (!channel_opt.has_value() || channel_opt->hub_id != *hub_id_opt) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_NOT_FOUND,
-                                   "Channel not found")};
+                                   "Channel not found"));
     }
 
     if (!ctx.hub_service.isHubMember(*hub_id_opt, user_id)) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_FORBIDDEN,
-                                   "Join the hub before selecting a channel")};
+                                   "Join the hub before selecting a channel"));
     }
 
     auto session = ctx.session_manager.getSession(user_id);

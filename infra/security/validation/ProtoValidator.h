@@ -1,14 +1,8 @@
 #ifndef INFRA_SECURITY_VALIDATION_PROTO_MESSAGE_VALIDATOR_H
 #define INFRA_SECURITY_VALIDATION_PROTO_MESSAGE_VALIDATOR_H
 
-#include "proto/command/activity.pb.h"
-#include "proto/command/channel.pb.h"
-#include "proto/command/hub.pb.h"
-#include "proto/command/message.pb.h"
-#include "proto/command/session.pb.h"
-#include "proto/command/user.pb.h"
+#include "proto/ParsedPayload.h"
 #include "proto/envelope.pb.h"
-#include "proto/system/heartbeat.pb.h"
 
 #include <expected>
 #include <string>
@@ -32,6 +26,8 @@ class ProtoMessageValidator {
     ~ProtoMessageValidator() = default;
 
     std::expected<void, ValidationError> validate_envelope(const sercom::protocol::Envelope& env);
+    std::expected<sercom::protocol::ParsedPayload, ValidationError> parse_and_validate(
+        const sercom::protocol::Envelope& env);
 
    private:
     // Per-message validators

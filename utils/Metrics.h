@@ -27,6 +27,12 @@ struct Counters {
     std::atomic<uint64_t> dropped_inbound_low_overflow{0};
     std::atomic<uint64_t> dropped_inbound_high_overflow{0};
     std::atomic<uint64_t> evicted_inbound_low_for_high{0};
+    std::atomic<uint64_t> payload_parse_total{0};
+    std::atomic<uint64_t> payload_parse_fail_total{0};
+    std::atomic<uint64_t> command_reparse_total{0};
+    std::atomic<uint64_t> registry_copy_eliminated_total{0};
+    std::atomic<uint64_t> fanout_subscriber_snapshot_total{0};
+    std::atomic<uint64_t> fanout_payload_shared_total{0};
     std::array<std::atomic<uint64_t>, 6> outbound_msgs_per_tick_buckets{};
 
     Counters() {

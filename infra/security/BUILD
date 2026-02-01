@@ -41,6 +41,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//proto:envelope_cc_proto",
+        "//proto:parsed_payload",
         "//proto/command:activity_cc_proto",
         "//proto/command:channel_cc_proto",
         "//proto/command:hub_cc_proto",
