@@ -59,7 +59,7 @@ std::vector<net::outbound::OutgoingMessage> JoinVoiceChannelCommand::execute(
     }
 
     auto channel_opt = ctx.channel_service.getChannel(*channel_id_opt);
-    if (!channel_opt.has_value() || channel_opt->hub_id != *hub_id_opt) {
+    if (!channel_opt || channel_opt->hub_id != *hub_id_opt) {
         return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_NOT_FOUND,
                                    "Channel not found"));
@@ -81,21 +81,22 @@ std::vector<net::outbound::OutgoingMessage> JoinVoiceChannelCommand::execute(
     std::optional<HubId> prev_voice_hub;
     std::optional<ChannelId> prev_voice_channel;
     if (session && session->current_voice_hub && session->current_voice_channel) {
-        prev_voice_hub = session->current_voice_hub.value();
-        prev_voice_channel = session->current_voice_channel.value();
+        prev_voice_hub = session->current_voice_hub;
+        prev_voice_channel = session->current_voice_channel;
     }
 
     auto publish_participants = [&](const HubId& hub, const ChannelId& channel) {
+        utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(
+            1, std::memory_order_relaxed);
         auto subs = ctx.subscription_manager.getSubscribers(Topic::HubTopic(hub));
-        if (!subs.has_value() || subs->empty()) {
+        if (!subs || subs->empty()) {
             return std::vector<net::outbound::OutgoingMessage>{};
         }
 
         std::vector<GlobalConnId> conns;
         conns.reserve(subs->size());
-        for (const auto& uid : subs.value()) {
-            auto conn = ctx.session_manager.getMainConnection(uid);
-            if (conn.has_value()) conns.push_back(conn.value());
+        for (const auto& conn : *subs) {
+            conns.push_back(conn);
         }
         if (conns.empty()) {
             return std::vector<net::outbound::OutgoingMessage>{};
@@ -124,23 +125,22 @@ std::vector<net::outbound::OutgoingMessage> JoinVoiceChannelCommand::execute(
             .action =
                 net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
                                       net::outbound::SendPayload{
-                                          .payload = net::outbound::Payload{
-                                              .data = std::move(bytes),
-                                              .is_binary = true}}}});
+                                          .payload = net::outbound::Payload{std::move(bytes), true}}}});
     };
 
     auto publish_presence = [&](const HubId& hub, const ChannelId& channel,
                                 sercom::protocol::event::VoiceChannelPresence_State state) {
+        utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(
+            1, std::memory_order_relaxed);
         auto subs = ctx.subscription_manager.getSubscribers(Topic::HubTopic(hub));
-        if (!subs.has_value() || subs->empty()) {
+        if (!subs || subs->empty()) {
             return std::vector<net::outbound::OutgoingMessage>{};
         }
 
         std::vector<GlobalConnId> conns;
         conns.reserve(subs->size());
-        for (const auto& uid : subs.value()) {
-            auto conn = ctx.session_manager.getMainConnection(uid);
-            if (conn.has_value()) conns.push_back(conn.value());
+        for (const auto& conn : *subs) {
+            conns.push_back(conn);
         }
         if (conns.empty()) {
             return std::vector<net::outbound::OutgoingMessage>{};
@@ -166,9 +166,7 @@ std::vector<net::outbound::OutgoingMessage> JoinVoiceChannelCommand::execute(
             .action =
                 net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
                                       net::outbound::SendPayload{
-                                          .payload = net::outbound::Payload{
-                                              .data = std::move(bytes),
-                                              .is_binary = true}}}});
+                                          .payload = net::outbound::Payload{std::move(bytes), true}}}});
     };
 
     std::vector<net::outbound::OutgoingMessage> out;
@@ -212,9 +210,7 @@ std::vector<net::outbound::OutgoingMessage> JoinVoiceChannelCommand::execute(
             .target = net::outbound::Target::one(event->conn_id),
             .action = net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
                                             net::outbound::SendPayload{
-                                                .payload = net::outbound::Payload{
-                                                    .data = std::move(bytes),
-                                                    .is_binary = true}}}});
+                                                .payload = net::outbound::Payload{std::move(bytes), true}}}});
 
         return out;
     }

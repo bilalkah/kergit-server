@@ -35,6 +35,7 @@ struct Counters {
     // Number of outbound messages processed without copying ConnectionContext.
     // Increments once per outbound message, independent of fan-out size.
     std::atomic<uint64_t> registry_copy_eliminated_total{0};
+    // Increments once per fan-out broadcast that uses a subscriber snapshot.
     std::atomic<uint64_t> fanout_subscriber_snapshot_total{0};
     std::atomic<uint64_t> fanout_payload_shared_total{0};
     std::array<std::atomic<uint64_t>, 6> outbound_msgs_per_tick_buckets{};

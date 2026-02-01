@@ -4,6 +4,7 @@
 #include "domains/ids/Ids.h"
 
 #include <chrono>
+#include <memory>
 #include <string>
 #include <variant>
 #include <vector>
@@ -16,8 +17,14 @@ enum class OutboundPriority : uint8_t {
 };
 
 struct Payload {
-    std::string data;      // serialized bytes
+    std::shared_ptr<const std::string> data;  // serialized bytes (shared)
     bool is_binary{true};  // default for protobuf
+
+    Payload() = default;
+    explicit Payload(std::string bytes, bool binary = true)
+        : data(std::make_shared<const std::string>(std::move(bytes))), is_binary(binary) {}
+    explicit Payload(std::shared_ptr<const std::string> bytes, bool binary = true)
+        : data(std::move(bytes)), is_binary(binary) {}
 };
 
 struct Target {

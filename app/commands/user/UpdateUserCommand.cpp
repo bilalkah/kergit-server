@@ -93,14 +93,14 @@ std::vector<net::outbound::OutgoingMessage> UpdateUserCommand::execute(CommandCo
         }
     }
 
-    if (!username_opt.has_value() && !avatar_seed_opt.has_value()) {
+    if (!username_opt && !avatar_seed_opt) {
         return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
                                    "No changes requested"));
     }
 
     auto update_res = ctx.user_service.updateSettings(user_id, username_opt, avatar_seed_opt);
-    if (!update_res.has_value()) {
+    if (!update_res) {
         return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
                                    "Unable to update user settings"));
@@ -134,11 +134,12 @@ std::vector<net::outbound::OutgoingMessage> UpdateUserCommand::execute(CommandCo
 
     const auto hubs = ctx.hub_service.getUserHubs(user_id);
     for (const auto& hub : hubs) {
+        utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(
+            1, std::memory_order_relaxed);
         auto subs = ctx.subscription_manager.getSubscribers(Topic::HubTopic(hub.id));
-        if (!subs.has_value()) continue;
-        for (const auto& uid : subs.value()) {
-            auto conn = ctx.session_manager.getMainConnection(uid);
-            if (conn.has_value()) conn_set.insert(conn.value());
+        if (!subs) continue;
+        for (const auto& conn : *subs) {
+            conn_set.insert(conn);
         }
     }
 
@@ -156,8 +157,7 @@ std::vector<net::outbound::OutgoingMessage> UpdateUserCommand::execute(CommandCo
         .target = net::outbound::Target::many(std::move(conns)),
         .action =
             net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
-                                  net::outbound::SendPayload{.payload = net::outbound::Payload{
-                                      .data = std::move(bytes), .is_binary = true}}}});
+                                  net::outbound::SendPayload{.payload = net::outbound::Payload{std::move(bytes), true}}}});
 }
 
 }  // namespace app

@@ -49,7 +49,7 @@ std::vector<net::outbound::OutgoingMessage> LeaveHubCommand::execute(CommandCont
     const HubId hub_id = hub_id_opt.value();
 
     auto role = ctx.hub_service.getMembershipRole(hub_id, user_id);
-    if (!role.has_value()) {
+    if (!role) {
         return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_FORBIDDEN,
                                    "Join the hub before leaving it"));
@@ -73,36 +73,35 @@ std::vector<net::outbound::OutgoingMessage> LeaveHubCommand::execute(CommandCont
     }
 
     const auto channels = ctx.channel_service.getHubChannels(hub_id);
-    ctx.subscription_manager.unsubscribe(user_id, Topic::HubTopic(hub_id));
+    ctx.subscription_manager.unsubscribeConnection(event->conn_id, Topic::HubTopic(hub_id));
     for (const auto& ch : channels) {
-        ctx.subscription_manager.unsubscribe(user_id, Topic::ChannelTopic(hub_id, ch.id));
+        ctx.subscription_manager.unsubscribeConnection(event->conn_id,
+                                                       Topic::ChannelTopic(hub_id, ch.id));
     }
 
     const auto public_hub_id = ctx.ids.to_public(hub_id).value;
     const auto public_user_id = ctx.ids.to_public(user_id).value;
 
     std::vector<GlobalConnId> conns;
+    utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(
+        1, std::memory_order_relaxed);
     auto subs = ctx.subscription_manager.getSubscribers(Topic::HubTopic(hub_id));
-    if (subs.has_value()) {
+    if (subs) {
         conns.reserve(subs->size() + 1);
-        for (const auto& uid : subs.value()) {
-            auto conn = ctx.session_manager.getMainConnection(uid);
-            if (conn.has_value()) conns.push_back(conn.value());
+        for (const auto& conn : *subs) {
+            conns.push_back(conn);
         }
     }
 
-    auto self_conn = ctx.session_manager.getMainConnection(user_id);
-    if (self_conn.has_value()) {
-        bool exists = false;
-        for (const auto& existing : conns) {
-            if (existing == self_conn.value()) {
-                exists = true;
-                break;
-            }
+    bool exists = false;
+    for (const auto& existing : conns) {
+        if (existing == event->conn_id) {
+            exists = true;
+            break;
         }
-        if (!exists) {
-            conns.push_back(self_conn.value());
-        }
+    }
+    if (!exists) {
+        conns.push_back(event->conn_id);
     }
 
     if (conns.empty()) {
@@ -125,8 +124,7 @@ std::vector<net::outbound::OutgoingMessage> LeaveHubCommand::execute(CommandCont
         .target = net::outbound::Target::many(std::move(conns)),
         .action =
             net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
-                                  net::outbound::SendPayload{.payload = net::outbound::Payload{
-                                      .data = std::move(bytes), .is_binary = true}}}});
+                                  net::outbound::SendPayload{.payload = net::outbound::Payload{std::move(bytes), true}}}});
 }
 
 }  // namespace app

@@ -89,7 +89,7 @@ std::vector<net::outbound::OutgoingMessage> CreateChannelCommand::execute(Comman
     }
 
     auto role = ctx.hub_service.getMembershipRole(hub_id, user_id);
-    if (!role.has_value() || (*role != Role::OWNER && *role != Role::ADMIN)) {
+    if (!role || (*role != Role::OWNER && *role != Role::ADMIN)) {
         return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_FORBIDDEN,
                                    "Only admins/owners can create channels"));
@@ -136,16 +136,17 @@ std::vector<net::outbound::OutgoingMessage> CreateChannelCommand::execute(Comman
     std::string bytes;
     out_env.SerializeToString(&bytes);
 
+    utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(
+        1, std::memory_order_relaxed);
     auto subs = ctx.subscription_manager.getSubscribers(Topic::HubTopic(hub_id));
-    if (!subs.has_value() || subs->empty()) {
+    if (!subs || subs->empty()) {
         return {};
     }
 
     std::vector<GlobalConnId> conns;
     conns.reserve(subs->size());
-    for (const auto& uid : subs.value()) {
-        auto conn = ctx.session_manager.getMainConnection(uid);
-        if (conn.has_value()) conns.push_back(conn.value());
+    for (const auto& conn : *subs) {
+        conns.push_back(conn);
     }
     if (conns.empty()) {
         return {};
@@ -155,8 +156,7 @@ std::vector<net::outbound::OutgoingMessage> CreateChannelCommand::execute(Comman
         .target = net::outbound::Target::many(std::move(conns)),
         .action =
             net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
-                                  net::outbound::SendPayload{.payload = net::outbound::Payload{
-                                      .data = std::move(bytes), .is_binary = true}}}});
+                                  net::outbound::SendPayload{.payload = net::outbound::Payload{std::move(bytes), true}}}});
 }
 
 }  // namespace app

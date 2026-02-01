@@ -70,12 +70,13 @@ std::vector<net::outbound::OutgoingMessage> SelectActiveChannelCommand::execute(
 
     auto session = ctx.session_manager.getSession(user_id);
     if (session.has_value() && session->current_text_channel && session->current_hub) {
-        ctx.subscription_manager.unsubscribe(
-            user_id, Topic::ChannelTopic(session->current_hub.value(),
+        ctx.subscription_manager.unsubscribeConnection(
+            event->conn_id, Topic::ChannelTopic(session->current_hub.value(),
                                          session->current_text_channel.value()));
     }
 
-    ctx.subscription_manager.subscribe(user_id, Topic::ChannelTopic(*hub_id_opt, *channel_id_opt));
+    ctx.subscription_manager.subscribeConnection(
+        event->conn_id, Topic::ChannelTopic(*hub_id_opt, *channel_id_opt));
     ctx.session_manager.joinTextChannel(user_id, *hub_id_opt, *channel_id_opt);
 
     return {};

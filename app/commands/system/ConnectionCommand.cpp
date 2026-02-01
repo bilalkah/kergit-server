@@ -39,7 +39,7 @@ std::vector<net::outbound::OutgoingMessage> ConnectionCommand::execute(CommandCo
     ctx.session_manager.createSession(input->conn, user_id);
     const auto hubs = ctx.hub_service.getUserHubs(user_id);
     for (const auto& hub : hubs) {
-        ctx.subscription_manager.subscribe(user_id, Topic::HubTopic(hub.id));
+        ctx.subscription_manager.subscribeConnection(input->conn, Topic::HubTopic(hub.id));
     }
 
     const auto public_user_id = ctx.ids.to_public(user_id);

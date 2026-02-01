@@ -104,7 +104,7 @@ std::vector<net::outbound::OutgoingMessage> CreateHubCommand::execute(CommandCon
     } catch (...) {
     }
 
-    ctx.subscription_manager.subscribe(user_id, Topic::HubTopic(hub_id));
+    ctx.subscription_manager.subscribeConnection(event->conn_id, Topic::HubTopic(hub_id));
 
     const auto public_hub_id = ctx.ids.to_public(hub_id).value;
     const auto public_user_id = ctx.ids.to_public(user_id).value;
@@ -147,8 +147,7 @@ std::vector<net::outbound::OutgoingMessage> CreateHubCommand::execute(CommandCon
         .target = net::outbound::Target::one(event->conn_id),
         .action =
             net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
-                                  net::outbound::SendPayload{.payload = net::outbound::Payload{
-                                      .data = std::move(bytes), .is_binary = true}}}});
+                                  net::outbound::SendPayload{.payload = net::outbound::Payload{std::move(bytes), true}}}});
 }
 
 }  // namespace app

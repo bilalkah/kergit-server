@@ -71,6 +71,11 @@ void OutgoingWorker::tick() {
     auto process_message = [&](const OutgoingMessage& msg) {
         utils::metrics::counters().registry_copy_eliminated_total.fetch_add(
             1, std::memory_order_relaxed);
+        if (msg.target.conns.size() > 1 &&
+            std::holds_alternative<SendPayload>(msg.action)) {
+            utils::metrics::counters().fanout_payload_shared_total.fetch_add(
+                1, std::memory_order_relaxed);
+        }
         for (const auto& global_id : msg.target.conns) {
             auto view = conns_.get_view(global_id.conn_id);
             if (!view.has_value()) {
@@ -92,8 +97,8 @@ void OutgoingWorker::tick() {
                     using T = std::decay_t<decltype(action)>;
                     if constexpr (std::is_same_v<T, SendPayload>) {
                         if (!handle.valid()) return;
-                        const auto status =
-                            handle.send(action.payload.data, action.payload.is_binary);
+                        const auto& bytes = *action.payload.data;
+                        const auto status = handle.send(bytes, action.payload.is_binary);
                         if (status == transport::websocket::UwsSocket::SendStatus::SUCCESS) {
                             // hot-path: avoid per-message logging
                         } else if (status ==
@@ -106,7 +111,7 @@ void OutgoingWorker::tick() {
 #endif
                             conns_.mutate(conn_id, [&](auto& ctx) {
                                 ctx.pending.push_back(std::make_pair(
-                                    action.payload.data,
+                                    bytes,
                                     action.payload.is_binary ? uWS::OpCode::BINARY
                                                              : uWS::OpCode::TEXT));
                             });

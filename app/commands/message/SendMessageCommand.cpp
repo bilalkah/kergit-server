@@ -89,7 +89,7 @@ std::vector<net::outbound::OutgoingMessage> SendMessageCommand::execute(CommandC
     }
 
     auto channel_opt = ctx.channel_service.getChannel(*channel_id_opt);
-    if (!channel_opt.has_value() || channel_opt->hub_id != *hub_id_opt) {
+    if (!channel_opt || channel_opt->hub_id != *hub_id_opt) {
         return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_NOT_FOUND,
                                    "Channel not found"));
@@ -102,8 +102,8 @@ std::vector<net::outbound::OutgoingMessage> SendMessageCommand::execute(CommandC
     }
 
     auto session = ctx.session_manager.getSession(user_id);
-    if (!session.has_value() || !session->current_text_channel ||
-        session->current_text_channel.value() != *channel_id_opt) {
+    if (!session || !session->current_text_channel ||
+        session->current_text_channel != *channel_id_opt) {
         return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
                                    "Channel is not active"));
@@ -132,14 +132,13 @@ std::vector<net::outbound::OutgoingMessage> SendMessageCommand::execute(CommandC
     out_env.SerializeToString(&bytes);
 
     std::vector<GlobalConnId> conns;
+    utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(
+        1, std::memory_order_relaxed);
     auto subs =
         ctx.subscription_manager.getSubscribers(Topic::ChannelTopic(*hub_id_opt, *channel_id_opt));
-    if (subs.has_value()) {
-        for (const auto& uid : subs.value()) {
-            auto conn = ctx.session_manager.getMainConnection(uid);
-            if (conn.has_value()) {
-                conns.push_back(conn.value());
-            }
+    if (subs) {
+        for (const auto& conn : *subs) {
+            conns.push_back(conn);
         }
     }
 
@@ -151,8 +150,7 @@ std::vector<net::outbound::OutgoingMessage> SendMessageCommand::execute(CommandC
         .target = net::outbound::Target::many(std::move(conns)),
         .action =
             net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
-                                  net::outbound::SendPayload{.payload = net::outbound::Payload{
-                                      .data = std::move(bytes), .is_binary = true}}}});
+                                  net::outbound::SendPayload{.payload = net::outbound::Payload{std::move(bytes), true}}}});
 }
 
 }  // namespace app

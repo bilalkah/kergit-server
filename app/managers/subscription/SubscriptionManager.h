@@ -3,6 +3,7 @@
 
 #include "app/managers/subscription/ISubscriptionManager.h"
 
+#include <memory>
 #include <mutex>
 #include <shared_mutex>
 #include <unordered_map>
@@ -10,22 +11,29 @@
 namespace app {
 class SubscriptionManager final : public ISubscriptionManager {
    public:
-    bool subscribe(const UserId& user, const Topic& topic) override;
-    bool unsubscribe(const UserId& user, const Topic& topic) override;
+    bool subscribeConnection(const GlobalConnId& conn, const Topic& topic) override;
+    bool unsubscribeConnection(const GlobalConnId& conn, const Topic& topic) override;
 
-    bool isSubscribed(const UserId& user, const Topic& topic) const override;
+    bool isSubscribed(const GlobalConnId& conn, const Topic& topic) const override;
 
-    std::expected<std::unordered_set<UserId>, SubscriptionError> getSubscribers(
+    std::shared_ptr<const std::unordered_set<GlobalConnId>> getSubscribers(
         const Topic& topic) const override;
-    std::expected<std::unordered_set<Topic>, SubscriptionError> getSubscriptions(
-        const UserId& user) const override;
+    std::expected<std::unordered_set<Topic>, SubscriptionError>
+    getSubscriptionsForConnection(const GlobalConnId& conn) const override;
 
-    void removeAllForUser(const UserId& user) override;
+    void removeAllForConnection(const GlobalConnId& conn) override;
     void removeAllForTopic(const Topic& topic) override;
 
    private:
-    std::unordered_map<Topic, std::unordered_set<UserId>> topic_to_users_;
-    std::unordered_map<UserId, std::unordered_set<Topic>> user_to_topics_;
+    using SubscriberSet = std::unordered_set<GlobalConnId>;
+    using SubscriberSetPtr = std::shared_ptr<SubscriberSet>;
+
+    // Subscriptions are connection-scoped.
+    // Each subscription represents a single active connection.
+    // The system currently enforces at most one connection per user.
+    // User-level aggregation (presence, UI) is handled elsewhere.
+    std::unordered_map<Topic, SubscriberSetPtr> topic_to_conns_;
+    std::unordered_map<GlobalConnId, std::unordered_set<Topic>> conn_to_topics_;
     mutable std::shared_mutex mu_;
 };
 

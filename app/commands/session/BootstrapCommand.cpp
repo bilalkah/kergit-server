@@ -64,7 +64,7 @@ std::vector<net::outbound::OutgoingMessage> BootstrapCommand::execute(CommandCon
 
     const auto hubs = ctx.hub_service.getUserHubs(user_id);
     for (const auto& hub : hubs) {
-        ctx.subscription_manager.subscribe(user_id, Topic::HubTopic(hub.id));
+        ctx.subscription_manager.subscribeConnection(event->conn_id, Topic::HubTopic(hub.id));
     }
 
     // --- build bootstrap payload ---
@@ -156,8 +156,7 @@ std::vector<net::outbound::OutgoingMessage> BootstrapCommand::execute(CommandCon
                 msg.priority = net::outbound::OutboundPriority::Low;
                 msg.target = net::outbound::Target::many(std::move(targets));
                 msg.action.emplace<net::outbound::SendPayload>(net::outbound::SendPayload{
-                    .payload = net::outbound::Payload{.data = std::move(bytes),
-                                                      .is_binary = true}});
+                    .payload = net::outbound::Payload{std::move(bytes), true}});
             }
         }
     }
@@ -179,7 +178,7 @@ std::vector<net::outbound::OutgoingMessage> BootstrapCommand::execute(CommandCon
     msg.target = net::outbound::Target::one(event->conn_id);
     msg.action.emplace<net::outbound::SendPayload>(net::outbound::SendPayload{
         .payload =
-            net::outbound::Payload{.data = std::move(out_bytes), .is_binary = true}});
+            net::outbound::Payload{std::move(out_bytes), true}});
 
     return out;
 }
