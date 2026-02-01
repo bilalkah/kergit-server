@@ -60,6 +60,14 @@ void maybe_log() {
         c.fanout_subscriber_snapshot_total.load(std::memory_order_relaxed);
     const auto fanout_payload_shared =
         c.fanout_payload_shared_total.load(std::memory_order_relaxed);
+    const auto per_conn_enq =
+        c.per_conn_queue_enqueued_total.load(std::memory_order_relaxed);
+    const auto per_conn_drop_low =
+        c.per_conn_queue_dropped_low_total.load(std::memory_order_relaxed);
+    const auto per_conn_overflow =
+        c.per_conn_queue_overflow_total.load(std::memory_order_relaxed);
+    const auto slow_conn_dropped =
+        c.slow_connection_dropped_total.load(std::memory_order_relaxed);
     const auto outbound_backpressure =
         c.outbound_backpressure_total.load(std::memory_order_relaxed);
     const auto event_hiwat =
@@ -84,13 +92,16 @@ void maybe_log() {
             "membership_fail={} payload_parse_total={} payload_parse_fail_total={} "
             "parsed_payload_violation_total={} registry_view_access_total={} registry_miss_total={} "
             "registry_copy_elim_total={} "
-            "fanout_sub_snapshot_total={} fanout_payload_shared_total={} dropped_in={} "
+            "fanout_sub_snapshot_total={} fanout_payload_shared_total={} "
+            "per_conn_enqueued_total={} per_conn_dropped_low_total={} "
+            "per_conn_overflow_total={} slow_connection_dropped_total={} dropped_in={} "
             "dropped_in_low={} dropped_in_high={} evicted_in_low_for_high={} dropped_out={} "
             "dropped_out_low={} dropped_out_high={} outbound_backpressure={} event_hiwat={} "
             "outbound_hiwat={} outbound_tick_hist=[{} {} {} {} {} {}]",
             inbound, outbound, parse_fail, auth_fail, membership_fail, payload_parse,
             payload_parse_fail, parsed_payload_violation, registry_view_access, registry_miss,
-            registry_copy_elim, fanout_sub_snap, fanout_payload_shared, dropped_in,
+            registry_copy_elim, fanout_sub_snap, fanout_payload_shared, per_conn_enq,
+            per_conn_drop_low, per_conn_overflow, slow_conn_dropped, dropped_in,
             dropped_in_low, dropped_in_high,
             evicted_in_low_for_high, dropped_out, dropped_out_low, dropped_out_high,
             outbound_backpressure, event_hiwat, outbound_hiwat, b0, b1, b2, b3, b4, b5));

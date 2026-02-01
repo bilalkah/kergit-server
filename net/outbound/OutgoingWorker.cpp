@@ -1,6 +1,8 @@
 #include "net/outbound/OutgoingWorker.h"
 #include "utils/Metrics.h"
 
+#include <algorithm>
+
 namespace net::outbound {
 OutgoingWorker::OutgoingWorker(transport::ILoop& loop, connection::ConnectionRegistery& conns,
                                OutgoingQueue& out_q, OutgoingWorkerConfig cfg)
@@ -68,7 +70,64 @@ void OutgoingWorker::tick() {
     const auto start = std::chrono::steady_clock::now();
     std::size_t processed = 0;
 
-    auto process_message = [&](const OutgoingMessage& msg) {
+    auto enqueue_to_connection = [&](const GlobalConnId& global_id,
+                                     const OutgoingMessage& msg) {
+        OutgoingMessage per_conn;
+        per_conn.priority = msg.priority;
+        per_conn.target = Target::one(global_id);
+        per_conn.action = msg.action;
+
+        auto result = conns_.mutate(global_id.conn_id, [&](auto& ctx) {
+            auto& ob = ctx.outbox;
+            if (ob.q.size() < ob.capacity) {
+                ob.q.push_back(std::move(per_conn));
+                utils::metrics::counters().per_conn_queue_enqueued_total.fetch_add(
+                    1, std::memory_order_relaxed);
+                return;
+            }
+
+            if (per_conn.priority == OutboundPriority::Low) {
+                utils::metrics::counters().per_conn_queue_dropped_low_total.fetch_add(
+                    1, std::memory_order_relaxed);
+                return;
+            }
+
+            auto rit = std::find_if(ob.q.rbegin(), ob.q.rend(),
+                                    [](const OutgoingMessage& m) {
+                                        return m.priority == OutboundPriority::Low;
+                                    });
+            if (rit != ob.q.rend()) {
+                ob.q.erase(std::next(rit).base());
+                utils::metrics::counters().per_conn_queue_dropped_low_total.fetch_add(
+                    1, std::memory_order_relaxed);
+                ob.q.push_back(std::move(per_conn));
+                utils::metrics::counters().per_conn_queue_enqueued_total.fetch_add(
+                    1, std::memory_order_relaxed);
+                return;
+            }
+
+            utils::metrics::counters().per_conn_queue_overflow_total.fetch_add(
+                1, std::memory_order_relaxed);
+            ob.slow_hits += 1;
+            if (ob.slow_hits >= 4) {
+                if (ctx.handle.valid()) {
+                    ctx.handle.end(1013, "slow consumer");
+                }
+                utils::metrics::counters().slow_connection_dropped_total.fetch_add(
+                    1, std::memory_order_relaxed);
+                ob.q.clear();
+            }
+        });
+
+        if (!result.has_value()) {
+            utils::metrics::counters().registry_miss_total.fetch_add(
+                1, std::memory_order_relaxed);
+            utils::metrics::counters().dropped_outbound_total.fetch_add(
+                1, std::memory_order_relaxed);
+        }
+    };
+
+    auto distribute_message = [&](const OutgoingMessage& msg) {
         utils::metrics::counters().registry_copy_eliminated_total.fetch_add(
             1, std::memory_order_relaxed);
         if (msg.target.conns.size() > 1 &&
@@ -77,76 +136,7 @@ void OutgoingWorker::tick() {
                 1, std::memory_order_relaxed);
         }
         for (const auto& global_id : msg.target.conns) {
-            auto view = conns_.get_view(global_id.conn_id);
-            if (!view.has_value()) {
-                utils::metrics::counters().registry_miss_total.fetch_add(
-                    1, std::memory_order_relaxed);
-                utils::metrics::counters().dropped_outbound_total.fetch_add(
-                    1, std::memory_order_relaxed);
-                continue;
-            }
-            utils::metrics::counters().registry_view_access_total.fetch_add(
-                1, std::memory_order_relaxed);
-
-            const auto conn_id = view->conn_id;
-            auto handle = view->handle;
-
-            // Process action
-            std::visit(
-                [&](const auto& action) {
-                    using T = std::decay_t<decltype(action)>;
-                    if constexpr (std::is_same_v<T, SendPayload>) {
-                        if (!handle.valid()) return;
-                        const auto& bytes = *action.payload.data;
-                        const auto status = handle.send(bytes, action.payload.is_binary);
-                        if (status == transport::websocket::UwsSocket::SendStatus::SUCCESS) {
-                            // hot-path: avoid per-message logging
-                        } else if (status ==
-                                   transport::websocket::UwsSocket::SendStatus::BACKPRESSURE) {
-                            utils::metrics::counters().outbound_backpressure_total.fetch_add(
-                                1, std::memory_order_relaxed);
-#if defined(SERCOM_DEBUG_LOGS)
-                            log(utils::LogLevel::WARN, "Backpressure on connection: ",
-                                conn_id.value);
-#endif
-                            conns_.mutate(conn_id, [&](auto& ctx) {
-                                ctx.pending.push_back(std::make_pair(
-                                    bytes,
-                                    action.payload.is_binary ? uWS::OpCode::BINARY
-                                                             : uWS::OpCode::TEXT));
-                            });
-                        } else if (transport::websocket::UwsSocket::SendStatus::DROPPED ==
-                                   status) {
-                            utils::metrics::counters().dropped_outbound_total.fetch_add(
-                                1, std::memory_order_relaxed);
-#if defined(SERCOM_DEBUG_LOGS)
-                            log(utils::LogLevel::ERROR,
-                                "Connection closed while sending to: ", conn_id.value);
-#endif
-                        }
-                    } else if constexpr (std::is_same_v<T, UpdateAuthState>) {
-                        auto result = conns_.mutate(conn_id, [&](auto& ctx) {
-                            ctx.auth.is_authenticated = action.is_authenticated;
-                            ctx.auth.expires_at = action.expires_at;
-                        });
-                        if (!result.has_value()) {
-                            utils::metrics::counters().dropped_outbound_total.fetch_add(
-                                1, std::memory_order_relaxed);
-#if defined(SERCOM_DEBUG_LOGS)
-                            log(utils::LogLevel::ERROR,
-                                "Failed to update auth state for connection: ", conn_id.value);
-#endif
-                        }
-                    } else if constexpr (std::is_same_v<T, DropConnection>) {
-                        if (!handle.valid()) return;
-                        handle.end(action.code, action.reason);
-#if defined(SERCOM_DEBUG_LOGS)
-                        log(utils::LogLevel::INFO, "Dropped connection: ", conn_id.value,
-                            " Reason: ", action.reason);
-#endif
-                    }
-                },
-                msg.action);
+            enqueue_to_connection(global_id, msg);
         }
     };
 
@@ -163,8 +153,81 @@ void OutgoingWorker::tick() {
             break;
         }
 
-        process_message(msg);
+        distribute_message(msg);
         ++processed;
+    }
+
+    const auto conn_ids = conns_.get_ids();
+    for (const auto& conn_id : conn_ids) {
+        if (cfg_.time_budget.count() > 0) {
+            const auto now = std::chrono::steady_clock::now();
+            if (now - start >= cfg_.time_budget) {
+                break;
+            }
+        }
+
+        auto view = conns_.get_view(conn_id);
+        if (!view.has_value()) {
+            continue;
+        }
+        utils::metrics::counters().registry_view_access_total.fetch_add(
+            1, std::memory_order_relaxed);
+
+        OutgoingMessage msg;
+        bool has_msg = false;
+        auto pop_result = conns_.mutate(conn_id, [&](auto& ctx) {
+            if (ctx.outbox.q.empty()) {
+                return;
+            }
+            msg = std::move(ctx.outbox.q.front());
+            ctx.outbox.q.pop_front();
+            has_msg = true;
+        });
+        if (!pop_result.has_value() || !has_msg) {
+            continue;
+        }
+
+        auto handle = view->handle;
+        std::visit(
+            [&](const auto& action) {
+                using T = std::decay_t<decltype(action)>;
+                if constexpr (std::is_same_v<T, SendPayload>) {
+                    if (!handle.valid()) {
+                        return;
+                    }
+                    const auto& bytes = *action.payload.data;
+                    const auto status = handle.send(bytes, action.payload.is_binary);
+                    if (status == transport::websocket::UwsSocket::SendStatus::SUCCESS) {
+                        conns_.mutate(conn_id, [&](auto& ctx) { ctx.outbox.slow_hits = 0; });
+                    } else if (status ==
+                               transport::websocket::UwsSocket::SendStatus::BACKPRESSURE) {
+                        utils::metrics::counters().outbound_backpressure_total.fetch_add(
+                            1, std::memory_order_relaxed);
+                        conns_.mutate(conn_id, [&](auto& ctx) {
+                            ctx.outbox.q.push_front(std::move(msg));
+                        });
+                    } else if (transport::websocket::UwsSocket::SendStatus::DROPPED ==
+                               status) {
+                        utils::metrics::counters().dropped_outbound_total.fetch_add(
+                            1, std::memory_order_relaxed);
+                    }
+                } else if constexpr (std::is_same_v<T, UpdateAuthState>) {
+                    conns_.mutate(conn_id, [&](auto& ctx) {
+                        ctx.auth.is_authenticated = action.is_authenticated;
+                        ctx.auth.expires_at = action.expires_at;
+                        ctx.outbox.slow_hits = 0;
+                    });
+                } else if constexpr (std::is_same_v<T, DropConnection>) {
+                    if (handle.valid()) {
+                        handle.end(action.code, action.reason);
+                    }
+                    conns_.mutate(conn_id, [&](auto& ctx) {
+                        ctx.outbox.q.clear();
+                        ctx.outbox.slow_hits = 0;
+                    });
+                }
+            },
+            msg.action);
     }
 
     utils::metrics::observe_outbound_msgs_per_tick(processed);
