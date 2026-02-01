@@ -1,4 +1,5 @@
 #include "app/managers/session/SessionManager.h"
+#include "utils/Metrics.h"
 
 namespace app {
 
@@ -16,6 +17,7 @@ void SessionManager::createSession(const GlobalConnId& main_conn, const UserId& 
 
     sessions_.emplace(session, std::move(info));
     conn_to_session_[main_conn] = session;
+    utils::metrics::counters().active_users.fetch_add(1, std::memory_order_relaxed);
 }
 
 bool SessionManager::tryCreateSession(const GlobalConnId& main_conn, const UserId& user) {
@@ -32,6 +34,7 @@ bool SessionManager::tryCreateSession(const GlobalConnId& main_conn, const UserI
 
     sessions_.emplace(session, std::move(info));
     conn_to_session_[main_conn] = session;
+    utils::metrics::counters().active_users.fetch_add(1, std::memory_order_relaxed);
     return true;
 }
 
@@ -58,6 +61,7 @@ void SessionManager::removeConnection(const GlobalConnId& conn) {
 
     // Remove session
     sessions_.erase(sit);
+    utils::metrics::counters().active_users.fetch_sub(1, std::memory_order_relaxed);
 }
 
 void SessionManager::joinTextChannel(const UserId& session, const HubId& hub,

@@ -86,6 +86,12 @@ void maybe_log() {
         c.outbound_flush_send_fail_total.load(std::memory_order_relaxed);
     const auto outbound_backpressured =
         c.outbound_backpressured_total.load(std::memory_order_relaxed);
+    const auto active_connections =
+        c.active_connections.load(std::memory_order_relaxed);
+    const auto active_users =
+        c.active_users.load(std::memory_order_relaxed);
+    const auto server_ping_ms =
+        c.server_ping_ms.load(std::memory_order_relaxed);
     const auto outbound_backpressure =
         c.outbound_backpressure_total.load(std::memory_order_relaxed);
     const auto event_hiwat =
@@ -117,7 +123,8 @@ void maybe_log() {
             "outbound_flush_send_fail_total={} outbound_backpressured_total={} dropped_in={} "
             "dropped_in_low={} dropped_in_high={} evicted_in_low_for_high={} dropped_out={} "
             "dropped_out_low={} dropped_out_high={} outbound_backpressure={} event_hiwat={} "
-            "outbound_hiwat={} outbound_tick_hist=[{} {} {} {} {} {}]",
+            "outbound_hiwat={} active_connections={} active_users={} server_ping_ms={} "
+            "outbound_tick_hist=[{} {} {} {} {} {}]",
             inbound, outbound, parse_fail, auth_fail, membership_fail, payload_parse,
             payload_parse_fail, parsed_payload_violation, registry_view_access, registry_miss,
             registry_copy_elim, fanout_sub_snap, fanout_payload_shared, per_conn_enq,
@@ -125,59 +132,73 @@ void maybe_log() {
             outbound_flush_empty, outbound_flush_fail, outbound_backpressured, dropped_in,
             dropped_in_low, dropped_in_high,
             evicted_in_low_for_high, dropped_out, dropped_out_low, dropped_out_high,
-            outbound_backpressure, event_hiwat, outbound_hiwat, b0, b1, b2, b3, b4, b5));
+            outbound_backpressure, event_hiwat, outbound_hiwat, active_connections,
+            active_users, server_ping_ms, b0, b1, b2, b3, b4, b5));
 }
 
 static MetricsSnapshot capture_snapshot(uint64_t ts_sec) {
     auto& c = counters();
     MetricsSnapshot s{};
     s.timestamp_sec = ts_sec;
-    s.inbound_total = c.inbound_msgs_total.load(std::memory_order_relaxed);
-    s.outbound_total = c.outbound_msgs_total.load(std::memory_order_relaxed);
-    s.parse_fail = c.parse_fail_total.load(std::memory_order_relaxed);
-    s.auth_fail = c.auth_fail_total.load(std::memory_order_relaxed);
-    s.membership_fail = c.membership_fail_total.load(std::memory_order_relaxed);
-    s.payload_parse_total = c.payload_parse_total.load(std::memory_order_relaxed);
-    s.payload_parse_fail_total = c.payload_parse_fail_total.load(std::memory_order_relaxed);
-    s.parsed_payload_violation_total =
+    s.counters.inbound_total = c.inbound_msgs_total.load(std::memory_order_relaxed);
+    s.counters.outbound_total = c.outbound_msgs_total.load(std::memory_order_relaxed);
+    s.counters.parse_fail = c.parse_fail_total.load(std::memory_order_relaxed);
+    s.counters.auth_fail = c.auth_fail_total.load(std::memory_order_relaxed);
+    s.counters.membership_fail = c.membership_fail_total.load(std::memory_order_relaxed);
+    s.counters.payload_parse_total = c.payload_parse_total.load(std::memory_order_relaxed);
+    s.counters.payload_parse_fail_total =
+        c.payload_parse_fail_total.load(std::memory_order_relaxed);
+    s.counters.parsed_payload_violation_total =
         c.parsed_payload_violation_total.load(std::memory_order_relaxed);
-    s.registry_view_access_total =
+    s.counters.registry_view_access_total =
         c.registry_view_access_total.load(std::memory_order_relaxed);
-    s.registry_miss_total = c.registry_miss_total.load(std::memory_order_relaxed);
-    s.registry_copy_elim_total =
+    s.counters.registry_miss_total =
+        c.registry_miss_total.load(std::memory_order_relaxed);
+    s.counters.registry_copy_elim_total =
         c.registry_copy_eliminated_total.load(std::memory_order_relaxed);
-    s.fanout_sub_snapshot_total =
+    s.counters.fanout_sub_snapshot_total =
         c.fanout_subscriber_snapshot_total.load(std::memory_order_relaxed);
-    s.fanout_payload_shared_total =
+    s.counters.fanout_payload_shared_total =
         c.fanout_payload_shared_total.load(std::memory_order_relaxed);
-    s.per_conn_enqueued_total =
+    s.counters.per_conn_enqueued_total =
         c.per_conn_queue_enqueued_total.load(std::memory_order_relaxed);
-    s.per_conn_dropped_low_total =
+    s.counters.per_conn_dropped_low_total =
         c.per_conn_queue_dropped_low_total.load(std::memory_order_relaxed);
-    s.per_conn_overflow_total =
+    s.counters.per_conn_overflow_total =
         c.per_conn_queue_overflow_total.load(std::memory_order_relaxed);
-    s.slow_connection_dropped_total =
+    s.counters.slow_connection_dropped_total =
         c.slow_connection_dropped_total.load(std::memory_order_relaxed);
-    s.outbound_flush_total = c.outbound_flush_total.load(std::memory_order_relaxed);
-    s.outbound_flush_empty_total =
+    s.counters.outbound_flush_total =
+        c.outbound_flush_total.load(std::memory_order_relaxed);
+    s.counters.outbound_flush_empty_total =
         c.outbound_flush_empty_total.load(std::memory_order_relaxed);
-    s.outbound_flush_send_fail_total =
+    s.counters.outbound_flush_send_fail_total =
         c.outbound_flush_send_fail_total.load(std::memory_order_relaxed);
-    s.outbound_backpressured_total =
+    s.counters.outbound_backpressured_total =
         c.outbound_backpressured_total.load(std::memory_order_relaxed);
-    s.dropped_in = c.dropped_inbound_total.load(std::memory_order_relaxed);
-    s.dropped_in_low = c.dropped_inbound_low_overflow.load(std::memory_order_relaxed);
-    s.dropped_in_high = c.dropped_inbound_high_overflow.load(std::memory_order_relaxed);
-    s.evicted_in_low_for_high =
+    s.counters.dropped_in =
+        c.dropped_inbound_total.load(std::memory_order_relaxed);
+    s.counters.dropped_in_low =
+        c.dropped_inbound_low_overflow.load(std::memory_order_relaxed);
+    s.counters.dropped_in_high =
+        c.dropped_inbound_high_overflow.load(std::memory_order_relaxed);
+    s.counters.evicted_in_low_for_high =
         c.evicted_inbound_low_for_high.load(std::memory_order_relaxed);
-    s.dropped_out = c.dropped_outbound_total.load(std::memory_order_relaxed);
-    s.dropped_out_low = c.dropped_outbound_overflow_low_pri.load(std::memory_order_relaxed);
-    s.dropped_out_high = c.dropped_outbound_overflow_high_pri.load(std::memory_order_relaxed);
-    s.outbound_backpressure = c.outbound_backpressure_total.load(std::memory_order_relaxed);
-    s.event_hiwat = c.event_queue_highwater.load(std::memory_order_relaxed);
-    s.outbound_hiwat = c.outbound_queue_highwater.load(std::memory_order_relaxed);
-    for (std::size_t i = 0; i < s.outbound_tick_hist.size(); ++i) {
-        s.outbound_tick_hist[i] =
+    s.counters.dropped_out =
+        c.dropped_outbound_total.load(std::memory_order_relaxed);
+    s.counters.dropped_out_low =
+        c.dropped_outbound_overflow_low_pri.load(std::memory_order_relaxed);
+    s.counters.dropped_out_high =
+        c.dropped_outbound_overflow_high_pri.load(std::memory_order_relaxed);
+    s.counters.outbound_backpressure =
+        c.outbound_backpressure_total.load(std::memory_order_relaxed);
+    s.gauges.event_hiwat = c.event_queue_highwater.load(std::memory_order_relaxed);
+    s.gauges.outbound_hiwat = c.outbound_queue_highwater.load(std::memory_order_relaxed);
+    s.gauges.active_connections = c.active_connections.load(std::memory_order_relaxed);
+    s.gauges.active_users = c.active_users.load(std::memory_order_relaxed);
+    s.gauges.server_ping_ms = c.server_ping_ms.load(std::memory_order_relaxed);
+    for (std::size_t i = 0; i < s.histograms.outbound_tick_hist.size(); ++i) {
+        s.histograms.outbound_tick_hist[i] =
             c.outbound_msgs_per_tick_buckets[i].load(std::memory_order_relaxed);
     }
     return s;

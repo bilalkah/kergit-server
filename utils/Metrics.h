@@ -47,6 +47,9 @@ struct Counters {
     std::atomic<uint64_t> outbound_flush_empty_total{0};
     std::atomic<uint64_t> outbound_flush_send_fail_total{0};
     std::atomic<uint64_t> outbound_backpressured_total{0};
+    std::atomic<uint64_t> active_connections{0};
+    std::atomic<uint64_t> active_users{0};
+    std::atomic<uint64_t> server_ping_ms{0};
     std::array<std::atomic<uint64_t>, 6> outbound_msgs_per_tick_buckets{};
 
     Counters() {
@@ -60,8 +63,7 @@ Counters& counters();
 
 void maybe_log();
 
-struct MetricsSnapshot {
-    uint64_t timestamp_sec{0};
+struct SnapshotCounters {
     uint64_t inbound_total{0};
     uint64_t outbound_total{0};
     uint64_t parse_fail{0};
@@ -91,9 +93,25 @@ struct MetricsSnapshot {
     uint64_t dropped_out_low{0};
     uint64_t dropped_out_high{0};
     uint64_t outbound_backpressure{0};
+};
+
+struct SnapshotGauges {
     uint64_t event_hiwat{0};
     uint64_t outbound_hiwat{0};
+    uint64_t active_connections{0};
+    uint64_t active_users{0};
+    uint64_t server_ping_ms{0};
+};
+
+struct SnapshotHistograms {
     std::array<uint64_t, 6> outbound_tick_hist{};
+};
+
+struct MetricsSnapshot {
+    uint64_t timestamp_sec{0};
+    SnapshotCounters counters{};
+    SnapshotGauges gauges{};
+    SnapshotHistograms histograms{};
 };
 
 MetricsSnapshot snapshot_now();

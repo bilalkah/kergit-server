@@ -16,6 +16,7 @@ void OutboundFlushEngine::start() {
     if (timer_) return;
     auto* loop = uWS::Loop::get();
     if (!loop) return;
+    loop_ = loop;
     timer_ = us_create_timer(reinterpret_cast<us_loop_t*>(loop), 0, sizeof(OutboundFlushEngine*));
     if (!timer_) return;
     auto** slot = reinterpret_cast<OutboundFlushEngine**>(us_timer_ext(timer_));
@@ -28,7 +29,8 @@ void OutboundFlushEngine::stop() {
     auto* timer = timer_;
     if (!timer) return;
     timer_ = nullptr;
-    if (auto* loop = uWS::Loop::get()) {
+    auto* loop = loop_;
+    if (loop) {
         loop->defer([timer]() {
             if (!timer) return;
             auto** slot = reinterpret_cast<OutboundFlushEngine**>(us_timer_ext(timer));
@@ -42,6 +44,7 @@ void OutboundFlushEngine::stop() {
         us_timer_set(timer, nullptr, 0, 0);
         us_timer_close(timer);
     }
+    loop_ = nullptr;
 }
 
 void OutboundFlushEngine::on_timer(us_timer_t* timer) {

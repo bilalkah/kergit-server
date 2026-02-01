@@ -13,5 +13,6 @@ cc_library(
     visibility = ["//app:__subpackages__"],
     deps = [
         "//domains/ids:domain_ids",
+        "//utils:metrics",
     ],
 )
