@@ -69,27 +69,31 @@ void OutgoingWorker::tick() {
     std::size_t processed = 0;
 
     auto process_message = [&](const OutgoingMessage& msg) {
-        auto conn_opt = conns_.get(msg.target.conns);
-        for (auto& conn_res : conn_opt) {
-            if (!conn_res.has_value()) {
+        utils::metrics::counters().registry_copy_eliminated_total.fetch_add(
+            1, std::memory_order_relaxed);
+        for (const auto& global_id : msg.target.conns) {
+            auto view = conns_.get_view(global_id.conn_id);
+            if (!view.has_value()) {
+                utils::metrics::counters().registry_miss_total.fetch_add(
+                    1, std::memory_order_relaxed);
                 utils::metrics::counters().dropped_outbound_total.fetch_add(
                     1, std::memory_order_relaxed);
-#if defined(SERCOM_DEBUG_LOGS)
-                log(utils::LogLevel::ERROR,
-                    "Connection not found for outgoing message: ", conn_res.error().message);
-#endif
                 continue;
             }
+            utils::metrics::counters().registry_view_access_total.fetch_add(
+                1, std::memory_order_relaxed);
 
-            auto& conn_ctx = conn_res.value();
+            const auto conn_id = view->conn_id;
+            auto handle = view->handle;
+
             // Process action
             std::visit(
                 [&](const auto& action) {
                     using T = std::decay_t<decltype(action)>;
                     if constexpr (std::is_same_v<T, SendPayload>) {
-                        if (!conn_ctx.handle.valid()) return;
+                        if (!handle.valid()) return;
                         const auto status =
-                            conn_ctx.handle.send(action.payload.data, action.payload.is_binary);
+                            handle.send(action.payload.data, action.payload.is_binary);
                         if (status == transport::websocket::UwsSocket::SendStatus::SUCCESS) {
                             // hot-path: avoid per-message logging
                         } else if (status ==
@@ -97,10 +101,10 @@ void OutgoingWorker::tick() {
                             utils::metrics::counters().outbound_backpressure_total.fetch_add(
                                 1, std::memory_order_relaxed);
 #if defined(SERCOM_DEBUG_LOGS)
-                            log(utils::LogLevel::WARN,
-                                "Backpressure on connection: ", conn_ctx.conn_id.value);
+                            log(utils::LogLevel::WARN, "Backpressure on connection: ",
+                                conn_id.value);
 #endif
-                            conns_.mutate(conn_ctx.conn_id, [&](auto& ctx) {
+                            conns_.mutate(conn_id, [&](auto& ctx) {
                                 ctx.pending.push_back(std::make_pair(
                                     action.payload.data,
                                     action.payload.is_binary ? uWS::OpCode::BINARY
@@ -112,11 +116,11 @@ void OutgoingWorker::tick() {
                                 1, std::memory_order_relaxed);
 #if defined(SERCOM_DEBUG_LOGS)
                             log(utils::LogLevel::ERROR,
-                                "Connection closed while sending to: ", conn_ctx.conn_id.value);
+                                "Connection closed while sending to: ", conn_id.value);
 #endif
                         }
                     } else if constexpr (std::is_same_v<T, UpdateAuthState>) {
-                        auto result = conns_.mutate(conn_ctx.conn_id, [&](auto& ctx) {
+                        auto result = conns_.mutate(conn_id, [&](auto& ctx) {
                             ctx.auth.is_authenticated = action.is_authenticated;
                             ctx.auth.expires_at = action.expires_at;
                         });
@@ -125,15 +129,14 @@ void OutgoingWorker::tick() {
                                 1, std::memory_order_relaxed);
 #if defined(SERCOM_DEBUG_LOGS)
                             log(utils::LogLevel::ERROR,
-                                "Failed to update auth state for connection: ",
-                                conn_ctx.conn_id.value);
+                                "Failed to update auth state for connection: ", conn_id.value);
 #endif
                         }
                     } else if constexpr (std::is_same_v<T, DropConnection>) {
-                        if (!conn_ctx.handle.valid()) return;
-                        conn_ctx.handle.end(action.code, action.reason);
+                        if (!handle.valid()) return;
+                        handle.end(action.code, action.reason);
 #if defined(SERCOM_DEBUG_LOGS)
-                        log(utils::LogLevel::INFO, "Dropped connection: ", conn_ctx.conn_id.value,
+                        log(utils::LogLevel::INFO, "Dropped connection: ", conn_id.value,
                             " Reason: ", action.reason);
 #endif
                     }

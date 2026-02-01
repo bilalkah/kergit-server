@@ -48,6 +48,20 @@ std::vector<ConnectionResult> ConnectionRegistery::get() const {
     return result;
 }
 
+std::optional<ConnectionView> ConnectionRegistery::get_view(const ConnId& conn_id) const {
+    // Hot-path: returns a snapshot only; no containers are copied.
+    std::shared_lock lock(mutex_);
+    auto it = connections_.find(conn_id);
+    if (it == connections_.end()) {
+        return std::nullopt;
+    }
+    const auto& ctx = it->second;
+    return ConnectionView{.conn_id = ctx.conn_id,
+                          .handle = ctx.handle,
+                          .kind = ctx.kind,
+                          .auth = ctx.auth};
+}
+
 std::expected<void, ConnectionError> ConnectionRegistery::mutate(
     const ConnId& conn_id, const std::function<void(ConnectionContext&)>& mutator) {
     std::unique_lock lock(mutex_);

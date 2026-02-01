@@ -30,6 +30,10 @@ struct Counters {
     std::atomic<uint64_t> payload_parse_total{0};
     std::atomic<uint64_t> payload_parse_fail_total{0};
     std::atomic<uint64_t> command_reparse_total{0};
+    std::atomic<uint64_t> registry_view_access_total{0};
+    std::atomic<uint64_t> registry_miss_total{0};
+    // Number of outbound messages processed without copying ConnectionContext.
+    // Increments once per outbound message, independent of fan-out size.
     std::atomic<uint64_t> registry_copy_eliminated_total{0};
     std::atomic<uint64_t> fanout_subscriber_snapshot_total{0};
     std::atomic<uint64_t> fanout_payload_shared_total{0};
