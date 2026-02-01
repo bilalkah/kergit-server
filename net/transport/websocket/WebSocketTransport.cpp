@@ -1,4 +1,5 @@
 #include "net/transport/websocket/WebSocketTransport.h"
+#include "net/outbound/OutboundFlushEngine.h"
 #include "net/transport/websocket/WsAppFactory.h"
 #include "net/transport/websocket/utils.h"
 
@@ -53,6 +54,11 @@ void TextWSServer::stop() {
     heartbeat_service_.stop();
     out_worker_.stop();
 
+    if (flush_engine_) {
+        flush_engine_->stop();
+        flush_engine_.reset();
+    }
+
     if (auto* loop = loop_.load(std::memory_order_acquire)) {
         loop->defer([this]() {
             log(utils::LogLevel::INFO, "Defer close uWS app loop from stop()");
@@ -70,6 +76,18 @@ const char* TextWSServer::name() const { return "TextWSServer"; }
 void* TextWSServer::loop_id() const { return reinterpret_cast<void*>(app_->getUwsLoop()); }
 
 void TextWSServer::set_hooks(const Hooks hooks) { hooks_ = hooks; }
+
+bool TextWSServer::send(transport::WsHandle& handle, std::string_view payload,
+                        bool binary) noexcept {
+    if (!handle.valid()) return false;
+    const auto status = handle.send(payload, binary);
+    return status == transport::websocket::UwsSocket::SendStatus::SUCCESS;
+}
+
+bool TextWSServer::is_backpressured(const transport::WsHandle& handle) const noexcept {
+    (void)handle;
+    return false;
+}
 
 void TextWSServer::wire() {
     app_->uws().ws<PerSocketData>(
@@ -216,6 +234,11 @@ void TextWSServer::wire() {
 
     heartbeat_service_.start();
     out_worker_.start();
+
+    flush_engine_ =
+        std::make_unique<outbound::OutboundFlushEngine>(conns_, *this,
+                                                        std::chrono::milliseconds{1});
+    flush_engine_->start();
 }
 
 }  // namespace net::transport::websocket

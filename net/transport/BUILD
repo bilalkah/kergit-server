@@ -26,3 +26,13 @@ cc_library(
     copts = ["-std=gnu++23"],
     visibility = ["//net:__subpackages__"],
 )
+
+cc_library(
+    name = "outbound_transport_iface",
+    hdrs = ["IOutboundTransport.h"],
+    copts = ["-std=gnu++23"],
+    visibility = ["//net:__subpackages__"],
+    deps = [
+        ":handle",
+    ],
+)
