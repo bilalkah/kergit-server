@@ -85,8 +85,9 @@ bool TextWSServer::send(transport::WsHandle& handle, std::string_view payload,
 }
 
 bool TextWSServer::is_backpressured(const transport::WsHandle& handle) const noexcept {
-    (void)handle;
-    return false;
+    static constexpr std::size_t kBackpressureHighWatermark = 512 * 1024;
+    if (!handle.valid()) return false;
+    return handle.ws->getBufferedAmount() >= kBackpressureHighWatermark;
 }
 
 void TextWSServer::wire() {

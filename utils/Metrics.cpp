@@ -74,6 +74,8 @@ void maybe_log() {
         c.outbound_flush_empty_total.load(std::memory_order_relaxed);
     const auto outbound_flush_fail =
         c.outbound_flush_send_fail_total.load(std::memory_order_relaxed);
+    const auto outbound_backpressured =
+        c.outbound_backpressured_total.load(std::memory_order_relaxed);
     const auto outbound_backpressure =
         c.outbound_backpressure_total.load(std::memory_order_relaxed);
     const auto event_hiwat =
@@ -102,7 +104,7 @@ void maybe_log() {
             "per_conn_enqueued_total={} per_conn_dropped_low_total={} "
             "per_conn_overflow_total={} slow_connection_dropped_total={} "
             "outbound_flush_total={} outbound_flush_empty_total={} "
-            "outbound_flush_send_fail_total={} dropped_in={} "
+            "outbound_flush_send_fail_total={} outbound_backpressured_total={} dropped_in={} "
             "dropped_in_low={} dropped_in_high={} evicted_in_low_for_high={} dropped_out={} "
             "dropped_out_low={} dropped_out_high={} outbound_backpressure={} event_hiwat={} "
             "outbound_hiwat={} outbound_tick_hist=[{} {} {} {} {} {}]",
@@ -110,7 +112,7 @@ void maybe_log() {
             payload_parse_fail, parsed_payload_violation, registry_view_access, registry_miss,
             registry_copy_elim, fanout_sub_snap, fanout_payload_shared, per_conn_enq,
             per_conn_drop_low, per_conn_overflow, slow_conn_dropped, outbound_flush,
-            outbound_flush_empty, outbound_flush_fail, dropped_in,
+            outbound_flush_empty, outbound_flush_fail, outbound_backpressured, dropped_in,
             dropped_in_low, dropped_in_high,
             evicted_in_low_for_high, dropped_out, dropped_out_low, dropped_out_high,
             outbound_backpressure, event_hiwat, outbound_hiwat, b0, b1, b2, b3, b4, b5));
