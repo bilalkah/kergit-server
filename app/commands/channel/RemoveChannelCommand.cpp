@@ -27,12 +27,7 @@ std::vector<net::outbound::OutgoingMessage> RemoveChannelCommand::execute(Comman
         return {};
     }
 
-    const auto* cmd = get_parsed<sercom::protocol::command::RemoveChannel>(*event);
-    if (!cmd) {
-        return single_outgoing(make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_INVALID_FORMAT,
-                                   "Invalid CHANNEL_REMOVE payload"));
-    }
+    const auto& cmd = require_parsed<sercom::protocol::command::RemoveChannel>(*event);
 
     auto user_exp = ctx.session_manager.sessionOfConnection(event->conn_id);
     if (!user_exp.has_value()) {
@@ -42,7 +37,7 @@ std::vector<net::outbound::OutgoingMessage> RemoveChannelCommand::execute(Comman
     }
     const UserId user_id = user_exp.value();
 
-    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd->hub_id()});
+    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd.hub_id()});
     if (!hub_id_opt.has_value()) {
         return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_NOT_FOUND,
@@ -50,7 +45,7 @@ std::vector<net::outbound::OutgoingMessage> RemoveChannelCommand::execute(Comman
     }
     const HubId hub_id = hub_id_opt.value();
 
-    auto channel_id_opt = ctx.ids.to_internal(PublicChannelId{cmd->channel_id()});
+    auto channel_id_opt = ctx.ids.to_internal(PublicChannelId{cmd.channel_id()});
     if (!channel_id_opt.has_value()) {
         return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_NOT_FOUND,

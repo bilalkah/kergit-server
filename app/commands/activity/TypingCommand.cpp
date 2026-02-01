@@ -27,12 +27,7 @@ std::vector<net::outbound::OutgoingMessage> TypingCommand::execute(CommandContex
                                      "Invalid TYPING envelope type")};
     }
 
-    const auto* cmd = get_parsed<sercom::protocol::command::Typing>(*event);
-    if (!cmd) {
-        return {make_drop_connection(event->conn_id,
-                                     sercom::protocol::event::CommandErrorCode_INVALID_FORMAT,
-                                     "Invalid TYPING payload")};
-    }
+    const auto& cmd = require_parsed<sercom::protocol::command::Typing>(*event);
 
     auto user_exp = ctx.session_manager.sessionOfConnection(event->conn_id);
     if (!user_exp.has_value()) {
@@ -42,14 +37,14 @@ std::vector<net::outbound::OutgoingMessage> TypingCommand::execute(CommandContex
     }
     const UserId user_id = user_exp.value();
 
-    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd->hub_id()});
+    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd.hub_id()});
     if (!hub_id_opt.has_value()) {
         return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_NOT_FOUND,
                                    "Hub not found"));
     }
 
-    auto channel_id_opt = ctx.ids.to_internal(PublicChannelId{cmd->channel_id()});
+    auto channel_id_opt = ctx.ids.to_internal(PublicChannelId{cmd.channel_id()});
     if (!channel_id_opt.has_value()) {
         return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_NOT_FOUND,
@@ -70,12 +65,12 @@ std::vector<net::outbound::OutgoingMessage> TypingCommand::execute(CommandContex
     }
 
     sercom::protocol::event::PresenceEvent presence;
-    if (cmd->state() == sercom::protocol::command::Typing::STATE_STARTED) {
+    if (cmd.state() == sercom::protocol::command::Typing::STATE_STARTED) {
         auto* payload = presence.mutable_typing_started();
         payload->set_hub_id(ctx.ids.to_public(*hub_id_opt).value);
         payload->set_user_id(ctx.ids.to_public(user_id).value);
         payload->set_channel_id(ctx.ids.to_public(*channel_id_opt).value);
-    } else if (cmd->state() == sercom::protocol::command::Typing::STATE_STOPPED) {
+    } else if (cmd.state() == sercom::protocol::command::Typing::STATE_STOPPED) {
         auto* payload = presence.mutable_typing_stopped();
         payload->set_hub_id(ctx.ids.to_public(*hub_id_opt).value);
         payload->set_user_id(ctx.ids.to_public(user_id).value);

@@ -64,12 +64,7 @@ std::vector<net::outbound::OutgoingMessage> CreateHubCommand::execute(CommandCon
         return {};
     }
 
-    const auto* cmd = get_parsed<sercom::protocol::command::CreateHub>(*event);
-    if (!cmd) {
-        return single_outgoing(make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_INVALID_FORMAT,
-                                   "Invalid HUB_CREATE payload"));
-    }
+    const auto& cmd = require_parsed<sercom::protocol::command::CreateHub>(*event);
 
     auto user_exp = ctx.session_manager.sessionOfConnection(event->conn_id);
     if (!user_exp.has_value()) {
@@ -79,7 +74,7 @@ std::vector<net::outbound::OutgoingMessage> CreateHubCommand::execute(CommandCon
     }
     const UserId user_id = user_exp.value();
 
-    std::string name = sanitize_name(cmd->name());
+    std::string name = sanitize_name(cmd.name());
     if (name.empty()) {
         return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,

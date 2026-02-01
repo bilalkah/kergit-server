@@ -48,12 +48,7 @@ std::vector<net::outbound::OutgoingMessage> SendMessageCommand::execute(CommandC
         return {};
     }
 
-    const auto* cmd = get_parsed<sercom::protocol::command::SendMessage>(*event);
-    if (!cmd) {
-        return single_outgoing(make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_INVALID_FORMAT,
-                                   "Invalid MESSAGE_SEND payload"));
-    }
+    const auto& cmd = require_parsed<sercom::protocol::command::SendMessage>(*event);
 
     auto user_exp = ctx.session_manager.sessionOfConnection(event->conn_id);
     if (!user_exp.has_value()) {
@@ -63,25 +58,25 @@ std::vector<net::outbound::OutgoingMessage> SendMessageCommand::execute(CommandC
     }
     const UserId user_id = user_exp.value();
 
-    if (cmd->content().empty()) {
+    if (cmd.content().empty()) {
         return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
                                    "Message content cannot be empty"));
     }
-    if (cmd->content().size() > kMaxMessageLength) {
+    if (cmd.content().size() > kMaxMessageLength) {
         return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
                                    "Message exceeds maximum length"));
     }
 
-    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd->hub_id()});
+    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd.hub_id()});
     if (!hub_id_opt.has_value()) {
         return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_NOT_FOUND,
                                    "Hub not found"));
     }
 
-    auto channel_id_opt = ctx.ids.to_internal(PublicChannelId{cmd->channel_id()});
+    auto channel_id_opt = ctx.ids.to_internal(PublicChannelId{cmd.channel_id()});
     if (!channel_id_opt.has_value()) {
         return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_NOT_FOUND,
@@ -110,7 +105,7 @@ std::vector<net::outbound::OutgoingMessage> SendMessageCommand::execute(CommandC
     }
 
     auto saved_exp =
-        ctx.channel_service.sendMessage(*channel_id_opt, user_id, cmd->content());
+        ctx.channel_service.sendMessage(*channel_id_opt, user_id, cmd.content());
     if (!saved_exp.has_value()) {
         return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,

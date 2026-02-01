@@ -28,12 +28,7 @@ std::vector<net::outbound::OutgoingMessage> VoiceChannelActivityCommand::execute
                                      "Invalid VOICE_ACTIVITY envelope type")};
     }
 
-    const auto* cmd = get_parsed<sercom::protocol::command::VoiceChannelActivity>(*event);
-    if (!cmd) {
-        return {make_drop_connection(event->conn_id,
-                                     sercom::protocol::event::CommandErrorCode_INVALID_FORMAT,
-                                     "Invalid VOICE_ACTIVITY payload")};
-    }
+    const auto& cmd = require_parsed<sercom::protocol::command::VoiceChannelActivity>(*event);
 
     auto user_exp = ctx.session_manager.sessionOfConnection(event->conn_id);
     if (!user_exp.has_value()) {
@@ -43,14 +38,14 @@ std::vector<net::outbound::OutgoingMessage> VoiceChannelActivityCommand::execute
     }
     const UserId user_id = user_exp.value();
 
-    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd->hub_id()});
+    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd.hub_id()});
     if (!hub_id_opt.has_value()) {
         return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_NOT_FOUND,
                                    "Hub not found"));
     }
 
-    auto channel_id_opt = ctx.ids.to_internal(PublicChannelId{cmd->channel_id()});
+    auto channel_id_opt = ctx.ids.to_internal(PublicChannelId{cmd.channel_id()});
     if (!channel_id_opt.has_value()) {
         return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_NOT_FOUND,
@@ -92,7 +87,7 @@ std::vector<net::outbound::OutgoingMessage> VoiceChannelActivityCommand::execute
     }
 
     bool changed = false;
-    auto state = cmd->state();
+    auto state = cmd.state();
     if (state == sercom::protocol::command::VoiceChannelActivity::STATE_MUTE) {
         changed = ctx.session_manager.setVoiceMuted(user_id, true);
     } else if (state == sercom::protocol::command::VoiceChannelActivity::STATE_UNMUTE) {
