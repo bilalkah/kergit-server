@@ -62,41 +62,41 @@ std::vector<net::outbound::OutgoingMessage> JoinHubByInviteCommand::execute(
         return {};
     }
 
-    sercom::protocol::command::JoinHub cmd;
-    if (!cmd.ParseFromString(env.payload())) {
-        return {make_command_error(event->conn_id, env.type(),
+    const auto* cmd = get_parsed<sercom::protocol::command::JoinHub>(*event);
+    if (!cmd) {
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_INVALID_FORMAT,
-                                   "Invalid HUB_JOIN payload")};
+                                   "Invalid HUB_JOIN payload"));
     }
 
     auto user_exp = ctx.session_manager.sessionOfConnection(event->conn_id);
     if (!user_exp.has_value()) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_UNAUTHORIZED,
-                                   "Authenticate first")};
+                                   "Authenticate first"));
     }
     const UserId user_id = user_exp.value();
 
     uint64_t join_code = 0;
-    if (!parse_join_code(cmd.join_code(), join_code)) {
-        return {make_command_error(event->conn_id, env.type(),
+    if (!parse_join_code(cmd->join_code(), join_code)) {
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
-                                   "Join code is invalid")};
+                                   "Join code is invalid"));
     }
 
     auto hub_id_opt = ctx.ids.to_internal(PublicHubId{join_code});
     if (!hub_id_opt.has_value()) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_NOT_FOUND,
-                                   "Hub not found")};
+                                   "Hub not found"));
     }
     const HubId hub_id = hub_id_opt.value();
 
     const auto snapshot = ctx.hub_service.getOrBuildSnapshot(hub_id);
     if (snapshot.name.empty()) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_NOT_FOUND,
-                                   "Hub not found")};
+                                   "Hub not found"));
     }
 
     const bool already_member = ctx.hub_service.isHubMember(hub_id, user_id);
@@ -104,13 +104,13 @@ std::vector<net::outbound::OutgoingMessage> JoinHubByInviteCommand::execute(
         try {
             ctx.hub_service.addMember(hub_id, user_id, Role::USER);
         } catch (const std::exception& ex) {
-            return {make_command_error(event->conn_id, env.type(),
+            return single_outgoing(make_command_error(event->conn_id, env.type(),
                                        sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
-                                       ex.what())};
+                                       ex.what()));
         } catch (...) {
-            return {make_command_error(event->conn_id, env.type(),
+            return single_outgoing(make_command_error(event->conn_id, env.type(),
                                        sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
-                                       "Failed to join hub")};
+                                       "Failed to join hub"));
         }
     }
 
@@ -140,11 +140,14 @@ std::vector<net::outbound::OutgoingMessage> JoinHubByInviteCommand::execute(
         std::string already_bytes;
         already_env.SerializeToString(&already_bytes);
 
-        return {net::outbound::OutgoingMessage{
+        return single_outgoing(net::outbound::OutgoingMessage{
             .target = net::outbound::Target::one(event->conn_id),
-            .action = net::outbound::SendPayload{
-                .payload = net::outbound::Payload{.data = std::move(already_bytes),
-                                                  .is_binary = true}}}};
+            .action =
+                net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
+                                      net::outbound::SendPayload{
+                                          .payload = net::outbound::Payload{
+                                              .data = std::move(already_bytes),
+                                              .is_binary = true}}}});
     }
 
     sercom::protocol::event::SessionBootstrap bootstrap;
@@ -189,10 +192,12 @@ std::vector<net::outbound::OutgoingMessage> JoinHubByInviteCommand::execute(
     joined_env.SerializeToString(&joined_bytes);
 
     std::vector<net::outbound::OutgoingMessage> out;
-    out.push_back(net::outbound::OutgoingMessage{
-        .target = net::outbound::Target::one(event->conn_id),
-        .action = net::outbound::SendPayload{
-            .payload = net::outbound::Payload{.data = std::move(joined_bytes), .is_binary = true}}});
+    out.emplace_back();
+    auto& joined_msg = out.back();
+    joined_msg.target = net::outbound::Target::one(event->conn_id);
+    joined_msg.action.emplace<net::outbound::SendPayload>(net::outbound::SendPayload{
+        .payload = net::outbound::Payload{.data = std::move(joined_bytes),
+                                          .is_binary = true}});
 
     if (!already_member) {
         auto subs = ctx.subscription_manager.getSubscribers(Topic::HubTopic(hub_id));
@@ -224,11 +229,12 @@ std::vector<net::outbound::OutgoingMessage> JoinHubByInviteCommand::execute(
                 std::string bytes;
                 env_out.SerializeToString(&bytes);
 
-                out.push_back(net::outbound::OutgoingMessage{
-                    .target = net::outbound::Target::many(std::move(conns)),
-                    .action = net::outbound::SendPayload{
-                        .payload =
-                            net::outbound::Payload{.data = std::move(bytes), .is_binary = true}}});
+                out.emplace_back();
+                auto& member_msg = out.back();
+                member_msg.target = net::outbound::Target::many(std::move(conns));
+                member_msg.action.emplace<net::outbound::SendPayload>(
+                    net::outbound::SendPayload{.payload = net::outbound::Payload{
+                        .data = std::move(bytes), .is_binary = true}});
             }
         }
     }

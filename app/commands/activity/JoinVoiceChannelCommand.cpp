@@ -29,8 +29,8 @@ std::vector<net::outbound::OutgoingMessage> JoinVoiceChannelCommand::execute(
                                      "Invalid VOICE_JOIN envelope type")};
     }
 
-    sercom::protocol::command::VoiceChannelMembership cmd;
-    if (!cmd.ParseFromString(env.payload())) {
+    const auto* cmd = get_parsed<sercom::protocol::command::VoiceChannelMembership>(*event);
+    if (!cmd) {
         return {make_drop_connection(event->conn_id,
                                      sercom::protocol::event::CommandErrorCode_INVALID_FORMAT,
                                      "Invalid VOICE_JOIN payload")};
@@ -44,37 +44,37 @@ std::vector<net::outbound::OutgoingMessage> JoinVoiceChannelCommand::execute(
     }
     const UserId user_id = user_exp.value();
 
-    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd.hub_id()});
+    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd->hub_id()});
     if (!hub_id_opt.has_value()) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_NOT_FOUND,
-                                   "Hub not found")};
+                                   "Hub not found"));
     }
 
-    auto channel_id_opt = ctx.ids.to_internal(PublicChannelId{cmd.channel_id()});
+    auto channel_id_opt = ctx.ids.to_internal(PublicChannelId{cmd->channel_id()});
     if (!channel_id_opt.has_value()) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_NOT_FOUND,
-                                   "Channel not found")};
+                                   "Channel not found"));
     }
 
     auto channel_opt = ctx.channel_service.getChannel(*channel_id_opt);
     if (!channel_opt.has_value() || channel_opt->hub_id != *hub_id_opt) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_NOT_FOUND,
-                                   "Channel not found")};
+                                   "Channel not found"));
     }
 
     if (channel_opt->type != ChannelType::VOICE) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
-                                   "Channel is not a voice channel")};
+                                   "Channel is not a voice channel"));
     }
 
     if (!ctx.hub_service.isHubMember(*hub_id_opt, user_id)) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_FORBIDDEN,
-                                   "Join the hub before joining voice")};
+                                   "Join the hub before joining voice"));
     }
 
     const auto session = ctx.session_manager.getSession(user_id);
@@ -118,11 +118,15 @@ std::vector<net::outbound::OutgoingMessage> JoinVoiceChannelCommand::execute(
         std::string bytes;
         out_env.SerializeToString(&bytes);
 
-        return std::vector<net::outbound::OutgoingMessage>{net::outbound::OutgoingMessage{
+        return single_outgoing(net::outbound::OutgoingMessage{
             .priority = net::outbound::OutboundPriority::Low,
             .target = net::outbound::Target::many(std::move(conns)),
-            .action = net::outbound::SendPayload{
-                .payload = net::outbound::Payload{.data = std::move(bytes), .is_binary = true}}}};
+            .action =
+                net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
+                                      net::outbound::SendPayload{
+                                          .payload = net::outbound::Payload{
+                                              .data = std::move(bytes),
+                                              .is_binary = true}}}});
     };
 
     auto publish_presence = [&](const HubId& hub, const ChannelId& channel,
@@ -156,20 +160,24 @@ std::vector<net::outbound::OutgoingMessage> JoinVoiceChannelCommand::execute(
         std::string bytes;
         out_env.SerializeToString(&bytes);
 
-        return std::vector<net::outbound::OutgoingMessage>{net::outbound::OutgoingMessage{
+        return single_outgoing(net::outbound::OutgoingMessage{
             .priority = net::outbound::OutboundPriority::Low,
             .target = net::outbound::Target::many(std::move(conns)),
-            .action = net::outbound::SendPayload{
-                .payload = net::outbound::Payload{.data = std::move(bytes), .is_binary = true}}}};
+            .action =
+                net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
+                                      net::outbound::SendPayload{
+                                          .payload = net::outbound::Payload{
+                                              .data = std::move(bytes),
+                                              .is_binary = true}}}});
     };
 
     std::vector<net::outbound::OutgoingMessage> out;
 
-    if (cmd.state() == sercom::protocol::command::VoiceChannelMembership::STATE_REQUEST_LEAVE) {
+    if (cmd->state() == sercom::protocol::command::VoiceChannelMembership::STATE_REQUEST_LEAVE) {
         return out;
     }
 
-    if (cmd.state() == sercom::protocol::command::VoiceChannelMembership::STATE_REQUEST_JOIN) {
+    if (cmd->state() == sercom::protocol::command::VoiceChannelMembership::STATE_REQUEST_JOIN) {
         services::livekit::LiveKitTokenService::TokenRequest token_req{
             user_id, *channel_id_opt, true, true, std::chrono::seconds{3600},
         };
@@ -178,13 +186,13 @@ std::vector<net::outbound::OutgoingMessage> JoinVoiceChannelCommand::execute(
         try {
             token = ctx.livekit_token_service.mint_token(token_req);
         } catch (const std::exception& ex) {
-            return {make_command_error(event->conn_id, env.type(),
+            return single_outgoing(make_command_error(event->conn_id, env.type(),
                                        sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
-                                       ex.what())};
+                                       ex.what()));
         } catch (...) {
-            return {make_command_error(event->conn_id, env.type(),
+            return single_outgoing(make_command_error(event->conn_id, env.type(),
                                        sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
-                                       "Unable to mint voice token")};
+                                       "Unable to mint voice token"));
         }
 
         sercom::protocol::event::VoiceTokenIssued issued;
@@ -202,13 +210,16 @@ std::vector<net::outbound::OutgoingMessage> JoinVoiceChannelCommand::execute(
 
         out.push_back(net::outbound::OutgoingMessage{
             .target = net::outbound::Target::one(event->conn_id),
-            .action = net::outbound::SendPayload{
-                .payload = net::outbound::Payload{.data = std::move(bytes), .is_binary = true}}});
+            .action = net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
+                                            net::outbound::SendPayload{
+                                                .payload = net::outbound::Payload{
+                                                    .data = std::move(bytes),
+                                                    .is_binary = true}}}});
 
         return out;
     }
 
-    if (cmd.state() == sercom::protocol::command::VoiceChannelMembership::STATE_LEAVE) {
+    if (cmd->state() == sercom::protocol::command::VoiceChannelMembership::STATE_LEAVE) {
         if (prev_voice_hub && prev_voice_channel && *prev_voice_hub == *hub_id_opt &&
             *prev_voice_channel == *channel_id_opt) {
             ctx.session_manager.leaveVoiceChannel(user_id);
@@ -222,7 +233,7 @@ std::vector<net::outbound::OutgoingMessage> JoinVoiceChannelCommand::execute(
         return out;
     }
 
-    if (cmd.state() == sercom::protocol::command::VoiceChannelMembership::STATE_JOIN) {
+    if (cmd->state() == sercom::protocol::command::VoiceChannelMembership::STATE_JOIN) {
         if (prev_voice_hub && prev_voice_channel && *prev_voice_hub == *hub_id_opt &&
             *prev_voice_channel == *channel_id_opt) {
             return {};
@@ -248,9 +259,9 @@ std::vector<net::outbound::OutgoingMessage> JoinVoiceChannelCommand::execute(
         return out;
     }
 
-    return {make_command_error(event->conn_id, env.type(),
+    return single_outgoing(make_command_error(event->conn_id, env.type(),
                                sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
-                               "Voice channel state is unspecified")};
+                               "Voice channel state is unspecified"));
 }
 
 }  // namespace app

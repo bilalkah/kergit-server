@@ -7,6 +7,7 @@ cc_library(
     visibility = ["//app:__subpackages__"],
     deps = [
         "//domains/ids:domain_ids",
+        "//proto:parsed_payload",
         "//proto:envelope_cc_proto",
     ],
 )

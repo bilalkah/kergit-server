@@ -16,9 +16,7 @@ class IOutboundSink {
    public:
     virtual ~IOutboundSink() = default;
 
-    virtual PushResult push(const OutgoingMessage& msg) = 0;
-
-    virtual PushResult push(OutgoingMessage&& msg) = 0;
+    virtual PushResult push(OutgoingMessage msg) = 0;
 };
 
 }  // namespace net::outbound

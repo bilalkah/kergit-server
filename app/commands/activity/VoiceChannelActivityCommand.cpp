@@ -28,8 +28,8 @@ std::vector<net::outbound::OutgoingMessage> VoiceChannelActivityCommand::execute
                                      "Invalid VOICE_ACTIVITY envelope type")};
     }
 
-    sercom::protocol::command::VoiceChannelActivity cmd;
-    if (!cmd.ParseFromString(env.payload())) {
+    const auto* cmd = get_parsed<sercom::protocol::command::VoiceChannelActivity>(*event);
+    if (!cmd) {
         return {make_drop_connection(event->conn_id,
                                      sercom::protocol::event::CommandErrorCode_INVALID_FORMAT,
                                      "Invalid VOICE_ACTIVITY payload")};
@@ -43,56 +43,56 @@ std::vector<net::outbound::OutgoingMessage> VoiceChannelActivityCommand::execute
     }
     const UserId user_id = user_exp.value();
 
-    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd.hub_id()});
+    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd->hub_id()});
     if (!hub_id_opt.has_value()) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_NOT_FOUND,
-                                   "Hub not found")};
+                                   "Hub not found"));
     }
 
-    auto channel_id_opt = ctx.ids.to_internal(PublicChannelId{cmd.channel_id()});
+    auto channel_id_opt = ctx.ids.to_internal(PublicChannelId{cmd->channel_id()});
     if (!channel_id_opt.has_value()) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_NOT_FOUND,
-                                   "Channel not found")};
+                                   "Channel not found"));
     }
 
     auto channel_opt = ctx.channel_service.getChannel(*channel_id_opt);
     if (!channel_opt.has_value() || channel_opt->hub_id != *hub_id_opt) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_NOT_FOUND,
-                                   "Channel not found")};
+                                   "Channel not found"));
     }
 
     if (channel_opt->type != ChannelType::VOICE) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
-                                   "Channel is not a voice channel")};
+                                   "Channel is not a voice channel"));
     }
 
     if (!ctx.hub_service.isHubMember(*hub_id_opt, user_id)) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_FORBIDDEN,
-                                   "Join the hub before updating voice state")};
+                                   "Join the hub before updating voice state"));
     }
 
     const auto session = ctx.session_manager.getSession(user_id);
     if (!session.has_value() || !session->current_voice_hub ||
         !session->current_voice_channel) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
-                                   "Join a voice channel first")};
+                                   "Join a voice channel first"));
     }
 
     if (session->current_voice_hub.value() != *hub_id_opt ||
         session->current_voice_channel.value() != *channel_id_opt) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
-                                   "Voice activity must target the active voice channel")};
+                                   "Voice activity must target the active voice channel"));
     }
 
     bool changed = false;
-    auto state = cmd.state();
+    auto state = cmd->state();
     if (state == sercom::protocol::command::VoiceChannelActivity::STATE_MUTE) {
         changed = ctx.session_manager.setVoiceMuted(user_id, true);
     } else if (state == sercom::protocol::command::VoiceChannelActivity::STATE_UNMUTE) {
@@ -102,9 +102,9 @@ std::vector<net::outbound::OutgoingMessage> VoiceChannelActivityCommand::execute
     } else if (state == sercom::protocol::command::VoiceChannelActivity::STATE_UNDEAFEN) {
         changed = ctx.session_manager.setVoiceDeafened(user_id, false);
     } else {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
-                                   "Voice activity state is unspecified")};
+                                   "Voice activity state is unspecified"));
     }
 
     if (!changed) {
@@ -152,11 +152,13 @@ std::vector<net::outbound::OutgoingMessage> VoiceChannelActivityCommand::execute
     std::string bytes;
     out_env.SerializeToString(&bytes);
 
-    return {net::outbound::OutgoingMessage{
+    return single_outgoing(net::outbound::OutgoingMessage{
         .priority = net::outbound::OutboundPriority::Low,
         .target = net::outbound::Target::many(std::move(conns)),
-        .action = net::outbound::SendPayload{
-            .payload = net::outbound::Payload{.data = std::move(bytes), .is_binary = true}}}};
+        .action =
+            net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
+                                  net::outbound::SendPayload{.payload = net::outbound::Payload{
+                                      .data = std::move(bytes), .is_binary = true}}}});
 }
 
 }  // namespace app

@@ -1,5 +1,6 @@
 #include "app/commands/session/AuthenticateCommand.h"
 
+#include "app/commands/utils.h"
 #include "proto/command/session.pb.h"
 #include "proto/envelope.pb.h"
 #include "proto/event/error.pb.h"
@@ -22,63 +23,62 @@ std::vector<net::outbound::OutgoingMessage> AuthenticateCommand::execute(Command
         return {};
     }
 
-    sercom::protocol::command::Authenticate auth;
-    auth.ParseFromString(env.payload());
-
-    if (!auth.ParseFromString(env.payload())) {
+    const auto* auth = get_parsed<sercom::protocol::command::Authenticate>(*event);
+    if (!auth) {
         result.emplace_back(net::outbound::OutgoingMessage{
             .target = net::outbound::Target::one(event->conn_id),
-            .action = net::outbound::DropConnection{
-                .code = static_cast<int>(
-                    sercom::protocol::event::CommandErrorCode::CommandErrorCode_INVALID_FORMAT),
-                .reason = "Invalid AUTH payload",
-            }});
+            .action =
+                net::outbound::Action{std::in_place_type<net::outbound::DropConnection>,
+                                      static_cast<int>(sercom::protocol::event::CommandErrorCode::
+                                                           CommandErrorCode_INVALID_FORMAT),
+                                      "Invalid AUTH payload"}});
         return result;
     }
 
     // 4. Validate command fields
-    if (auth.type() != sercom::protocol::command::AuthType_REAUTH &&
-        auth.type() != sercom::protocol::command::AuthType_AUTH) {
+    if (auth->type() != sercom::protocol::command::AuthType_REAUTH &&
+        auth->type() != sercom::protocol::command::AuthType_AUTH) {
         result.emplace_back(net::outbound::OutgoingMessage{
             .target = net::outbound::Target::one(event->conn_id),
-            .action = net::outbound::DropConnection{
-                .code = static_cast<int>(
-                    sercom::protocol::event::CommandErrorCode::CommandErrorCode_INVALID_ARGUMENT),
-                .reason = "Unsupported auth type",
-            }});
+            .action =
+                net::outbound::Action{std::in_place_type<net::outbound::DropConnection>,
+                                      static_cast<int>(sercom::protocol::event::CommandErrorCode::
+                                                           CommandErrorCode_INVALID_ARGUMENT),
+                                      "Unsupported auth type"}});
         return result;
     }
 
-    if (auth.provider() != sercom::protocol::command::AuthProvider_SUPABASE) {
+    if (auth->provider() != sercom::protocol::command::AuthProvider_SUPABASE) {
         result.emplace_back(net::outbound::OutgoingMessage{
             .target = net::outbound::Target::one(event->conn_id),
-            .action = net::outbound::DropConnection{
-                .code = static_cast<int>(
-                    sercom::protocol::event::CommandErrorCode::CommandErrorCode_INVALID_ARGUMENT),
-                .reason = "Unsupported auth provider",
-            }});
+            .action =
+                net::outbound::Action{std::in_place_type<net::outbound::DropConnection>,
+                                      static_cast<int>(sercom::protocol::event::CommandErrorCode::
+                                                           CommandErrorCode_INVALID_ARGUMENT),
+                                      "Unsupported auth provider"}});
         return result;
     }
 
-    if (auth.token().empty()) {
+    if (auth->token().empty()) {
         result.emplace_back(net::outbound::OutgoingMessage{
             .target = net::outbound::Target::one(event->conn_id),
-            .action = net::outbound::DropConnection{
-                .code = static_cast<int>(
-                    sercom::protocol::event::CommandErrorCode::CommandErrorCode_INVALID_ARGUMENT),
-                .reason = "Token is required",
-            }});
+            .action =
+                net::outbound::Action{std::in_place_type<net::outbound::DropConnection>,
+                                      static_cast<int>(sercom::protocol::event::CommandErrorCode::
+                                                           CommandErrorCode_INVALID_ARGUMENT),
+                                      "Token is required"}});
         return result;
     }
 
-    auto auth_result = ctx.auth_service.authenticate(auth.token());
+    auto auth_result = ctx.auth_service.authenticate(auth->token());
     if (!auth_result.has_value()) {
         result.emplace_back(net::outbound::OutgoingMessage{
             .target = net::outbound::Target::one(event->conn_id),
-            .action = net::outbound::DropConnection{
-                .code = static_cast<int>(sercom::protocol::event::CommandErrorCode_UNAUTHORIZED),
-                .reason = "Authentication failed",
-            }});
+            .action =
+                net::outbound::Action{std::in_place_type<net::outbound::DropConnection>,
+                                      static_cast<int>(
+                                          sercom::protocol::event::CommandErrorCode_UNAUTHORIZED),
+                                      "Authentication failed"}});
         return result;
     }
 
@@ -89,19 +89,21 @@ std::vector<net::outbound::OutgoingMessage> AuthenticateCommand::execute(Command
     if (existing && existing->value != claims.id) {
         result.emplace_back(net::outbound::OutgoingMessage{
             .target = net::outbound::Target::one(event->conn_id),
-            .action = net::outbound::DropConnection{
-                .code = static_cast<int>(sercom::protocol::event::CommandErrorCode_FORBIDDEN),
-                .reason = "Auth user mismatch",
-            }});
+            .action =
+                net::outbound::Action{std::in_place_type<net::outbound::DropConnection>,
+                                      static_cast<int>(
+                                          sercom::protocol::event::CommandErrorCode_FORBIDDEN),
+                                      "Auth user mismatch"}});
         return result;
     }
 
     result.emplace_back(net::outbound::OutgoingMessage{
         .target = net::outbound::Target::one(event->conn_id),
-        .action = net::outbound::UpdateAuthState{
-            .is_authenticated = true,
-            .expires_at =
-                std::chrono::system_clock::time_point{std::chrono::seconds{claims.exp}}}});
+        .action = net::outbound::Action{std::in_place_type<net::outbound::UpdateAuthState>,
+                                        net::outbound::UpdateAuthState{
+                                            .is_authenticated = true,
+                                            .expires_at = std::chrono::system_clock::time_point{
+                                                std::chrono::seconds{claims.exp}}}}});
 
     return result;
 }

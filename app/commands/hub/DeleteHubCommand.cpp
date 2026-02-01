@@ -26,58 +26,58 @@ std::vector<net::outbound::OutgoingMessage> DeleteHubCommand::execute(CommandCon
         return {};
     }
 
-    sercom::protocol::command::RemoveHub cmd;
-    if (!cmd.ParseFromString(env.payload())) {
-        return {make_command_error(event->conn_id, env.type(),
+    const auto* cmd = get_parsed<sercom::protocol::command::RemoveHub>(*event);
+    if (!cmd) {
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_INVALID_FORMAT,
-                                   "Invalid HUB_REMOVE payload")};
+                                   "Invalid HUB_REMOVE payload"));
     }
 
     auto user_exp = ctx.session_manager.sessionOfConnection(event->conn_id);
     if (!user_exp.has_value()) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_UNAUTHORIZED,
-                                   "Authenticate first")};
+                                   "Authenticate first"));
     }
     const UserId user_id = user_exp.value();
 
-    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd.hub_id()});
+    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd->hub_id()});
     if (!hub_id_opt.has_value()) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_NOT_FOUND,
-                                   "Hub not found")};
+                                   "Hub not found"));
     }
     const HubId hub_id = hub_id_opt.value();
 
     if (!ctx.hub_service.isHubMember(hub_id, user_id)) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_FORBIDDEN,
-                                   "Join the hub before removing it")};
+                                   "Join the hub before removing it"));
     }
 
     auto role = ctx.hub_service.getMembershipRole(hub_id, user_id);
     if (!role.has_value() || *role != Role::OWNER) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_FORBIDDEN,
-                                   "Only owners can remove hubs")};
+                                   "Only owners can remove hubs"));
     }
 
     const auto channels = ctx.channel_service.getHubChannels(hub_id);
 
     try {
         if (!ctx.hub_service.deleteHub(hub_id, user_id)) {
-            return {make_command_error(event->conn_id, env.type(),
+            return single_outgoing(make_command_error(event->conn_id, env.type(),
                                        sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
-                                       "Unable to remove hub at this time")};
+                                       "Unable to remove hub at this time"));
         }
     } catch (const std::exception& ex) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
-                                   ex.what())};
+                                   ex.what()));
     } catch (...) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
-                                   "Unable to remove hub at this time")};
+                                   "Unable to remove hub at this time"));
     }
 
     auto subs = ctx.subscription_manager.getSubscribers(Topic::HubTopic(hub_id));
@@ -110,10 +110,12 @@ std::vector<net::outbound::OutgoingMessage> DeleteHubCommand::execute(CommandCon
         return {};
     }
 
-    return {net::outbound::OutgoingMessage{
+    return single_outgoing(net::outbound::OutgoingMessage{
         .target = net::outbound::Target::many(std::move(conns)),
-        .action = net::outbound::SendPayload{
-            .payload = net::outbound::Payload{.data = std::move(bytes), .is_binary = true}}}};
+        .action =
+            net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
+                                  net::outbound::SendPayload{.payload = net::outbound::Payload{
+                                      .data = std::move(bytes), .is_binary = true}}}});
 }
 
 }  // namespace app

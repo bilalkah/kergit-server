@@ -38,8 +38,23 @@ struct UpdateAuthState {
 };
 
 struct DropConnection {
-    int code{0};
-    std::string reason{};
+    int code = 0;
+    std::string reason;
+
+    DropConnection() = default;
+    DropConnection(int code_in, std::string reason_in = {})
+        : code(code_in), reason(std::move(reason_in)) {}
+    DropConnection(const DropConnection&) = default;
+    DropConnection& operator=(const DropConnection&) = default;
+    DropConnection(DropConnection&& other) noexcept
+        : code(other.code), reason(std::move(other.reason)) {}
+    DropConnection& operator=(DropConnection&& other) noexcept {
+        if (this != &other) {
+            code = other.code;
+            reason = std::move(other.reason);
+        }
+        return *this;
+    }
 };
 
 using Action = std::variant<SendPayload, UpdateAuthState, DropConnection>;

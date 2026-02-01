@@ -27,61 +27,61 @@ std::vector<net::outbound::OutgoingMessage> RemoveChannelCommand::execute(Comman
         return {};
     }
 
-    sercom::protocol::command::RemoveChannel cmd;
-    if (!cmd.ParseFromString(env.payload())) {
-        return {make_command_error(event->conn_id, env.type(),
+    const auto* cmd = get_parsed<sercom::protocol::command::RemoveChannel>(*event);
+    if (!cmd) {
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_INVALID_FORMAT,
-                                   "Invalid CHANNEL_REMOVE payload")};
+                                   "Invalid CHANNEL_REMOVE payload"));
     }
 
     auto user_exp = ctx.session_manager.sessionOfConnection(event->conn_id);
     if (!user_exp.has_value()) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_UNAUTHORIZED,
-                                   "Authenticate first")};
+                                   "Authenticate first"));
     }
     const UserId user_id = user_exp.value();
 
-    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd.hub_id()});
+    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd->hub_id()});
     if (!hub_id_opt.has_value()) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_NOT_FOUND,
-                                   "Hub not found")};
+                                   "Hub not found"));
     }
     const HubId hub_id = hub_id_opt.value();
 
-    auto channel_id_opt = ctx.ids.to_internal(PublicChannelId{cmd.channel_id()});
+    auto channel_id_opt = ctx.ids.to_internal(PublicChannelId{cmd->channel_id()});
     if (!channel_id_opt.has_value()) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_NOT_FOUND,
-                                   "Channel not found")};
+                                   "Channel not found"));
     }
 
     auto channel_opt = ctx.channel_service.getChannel(*channel_id_opt);
     if (!channel_opt.has_value() || channel_opt->hub_id != hub_id) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_NOT_FOUND,
-                                   "Channel not found")};
+                                   "Channel not found"));
     }
     const Channel channel = channel_opt.value();
 
     if (!ctx.hub_service.isHubMember(hub_id, user_id)) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_FORBIDDEN,
-                                   "Join the hub before removing channels")};
+                                   "Join the hub before removing channels"));
     }
 
     auto role = ctx.hub_service.getMembershipRole(hub_id, user_id);
     if (!role.has_value() || *role != Role::OWNER) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_FORBIDDEN,
-                                   "Only owners can delete channels")};
+                                   "Only owners can delete channels"));
     }
 
     if (!ctx.channel_service.deleteChannel(channel.id, hub_id)) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
-                                   "Unable to delete channel at this time")};
+                                   "Unable to delete channel at this time"));
     }
 
     ctx.subscription_manager.removeAllForTopic(Topic::ChannelTopic(hub_id, channel.id));
@@ -113,10 +113,12 @@ std::vector<net::outbound::OutgoingMessage> RemoveChannelCommand::execute(Comman
         return {};
     }
 
-    return {net::outbound::OutgoingMessage{
+    return single_outgoing(net::outbound::OutgoingMessage{
         .target = net::outbound::Target::many(std::move(conns)),
-        .action = net::outbound::SendPayload{
-            .payload = net::outbound::Payload{.data = std::move(bytes), .is_binary = true}}}};
+        .action =
+            net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
+                                  net::outbound::SendPayload{.payload = net::outbound::Payload{
+                                      .data = std::move(bytes), .is_binary = true}}}});
 }
 
 }  // namespace app

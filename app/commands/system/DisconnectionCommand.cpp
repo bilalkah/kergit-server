@@ -58,7 +58,9 @@ std::vector<net::outbound::OutgoingMessage> DisconnectionCommand::execute(Comman
                 out.push_back(net::outbound::OutgoingMessage{
                     .priority = net::outbound::OutboundPriority::Low,
                     .target = net::outbound::Target::many(std::move(recipients)),
-                    .action = net::outbound::SendPayload{.payload = std::move(payload)}});
+                    .action = net::outbound::Action{
+                        std::in_place_type<net::outbound::SendPayload>,
+                        net::outbound::SendPayload{.payload = std::move(payload)}}});
             }
     }
 

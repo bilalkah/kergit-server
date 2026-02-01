@@ -1,11 +1,22 @@
 #include "infra/security/validation/ProtoValidator.h"
 
+#include <utility>
+
 namespace infra::security::validation {
 
 // ---------- entry point ----------
 
 std::expected<void, ValidationError> ProtoMessageValidator::validate_envelope(
     const sercom::protocol::Envelope& env) {
+    auto parsed = parse_and_validate(env);
+    if (!parsed.has_value()) {
+        return std::unexpected(parsed.error());
+    }
+    return {};
+}
+
+std::expected<sercom::protocol::ParsedPayload, ValidationError>
+ProtoMessageValidator::parse_and_validate(const sercom::protocol::Envelope& env) {
     if (env.version() != 1) {
         return std::unexpected("Unsupported protocol version");
     }
@@ -16,7 +27,9 @@ std::expected<void, ValidationError> ProtoMessageValidator::validate_envelope(
             if (!ping.ParseFromArray(env.payload().data(), env.payload().size())) {
                 return std::unexpected("Invalid PING payload");
             }
-            return validate_ping(ping);
+            auto res = validate_ping(ping);
+            if (!res.has_value()) return std::unexpected(res.error());
+            return sercom::protocol::ParsedPayload{std::move(ping)};
         }
 
         case sercom::protocol::Envelope::AUTH: {
@@ -24,7 +37,9 @@ std::expected<void, ValidationError> ProtoMessageValidator::validate_envelope(
             if (!auth.ParseFromArray(env.payload().data(), env.payload().size())) {
                 return std::unexpected("Invalid AUTH payload");
             }
-            return validate_authenticate(auth);
+            auto res = validate_authenticate(auth);
+            if (!res.has_value()) return std::unexpected(res.error());
+            return sercom::protocol::ParsedPayload{std::move(auth)};
         }
 
         case sercom::protocol::Envelope::TYPING: {
@@ -32,7 +47,9 @@ std::expected<void, ValidationError> ProtoMessageValidator::validate_envelope(
             if (!typing.ParseFromArray(env.payload().data(), env.payload().size())) {
                 return std::unexpected("Invalid TYPING payload");
             }
-            return validate_typing(typing);
+            auto res = validate_typing(typing);
+            if (!res.has_value()) return std::unexpected(res.error());
+            return sercom::protocol::ParsedPayload{std::move(typing)};
         }
 
         case sercom::protocol::Envelope::ACTIVE_CHANNEL: {
@@ -40,119 +57,153 @@ std::expected<void, ValidationError> ProtoMessageValidator::validate_envelope(
             if (!active_channel.ParseFromArray(env.payload().data(), env.payload().size())) {
                 return std::unexpected("Invalid ACTIVE_CHANNEL payload");
             }
-            return validate_active_channel(active_channel);
+            auto res = validate_active_channel(active_channel);
+            if (!res.has_value()) return std::unexpected(res.error());
+            return sercom::protocol::ParsedPayload{std::move(active_channel)};
         }
         case sercom::protocol::Envelope::VOICE_JOIN: {
             sercom::protocol::command::VoiceChannelMembership membership;
             if (!membership.ParseFromArray(env.payload().data(), env.payload().size())) {
                 return std::unexpected("Invalid VOICE_JOIN payload");
             }
-            return validate_voice_channel_membership(membership);
+            auto res = validate_voice_channel_membership(membership);
+            if (!res.has_value()) return std::unexpected(res.error());
+            return sercom::protocol::ParsedPayload{std::move(membership)};
         }
         case sercom::protocol::Envelope::VOICE_ACTIVITY: {
             sercom::protocol::command::VoiceChannelActivity activity;
             if (!activity.ParseFromArray(env.payload().data(), env.payload().size())) {
                 return std::unexpected("Invalid VOICE_ACTIVITY payload");
             }
-            return validate_voice_channel_activity(activity);
+            auto res = validate_voice_channel_activity(activity);
+            if (!res.has_value()) return std::unexpected(res.error());
+            return sercom::protocol::ParsedPayload{std::move(activity)};
         }
         case sercom::protocol::Envelope::MESSAGE_SEND: {
             sercom::protocol::command::SendMessage send_message;
             if (!send_message.ParseFromArray(env.payload().data(), env.payload().size())) {
                 return std::unexpected("Invalid MESSAGE_SEND payload");
             }
-            return validate_send_message(send_message);
+            auto res = validate_send_message(send_message);
+            if (!res.has_value()) return std::unexpected(res.error());
+            return sercom::protocol::ParsedPayload{std::move(send_message)};
         }
         case sercom::protocol::Envelope::MESSAGE_FETCH_LATEST: {
             sercom::protocol::command::FetchLatestMessages fetch_latest;
             if (!fetch_latest.ParseFromArray(env.payload().data(), env.payload().size())) {
                 return std::unexpected("Invalid MESSAGE_FETCH_LATEST payload");
             }
-            return validate_fetch_latest_messages(fetch_latest);
+            auto res = validate_fetch_latest_messages(fetch_latest);
+            if (!res.has_value()) return std::unexpected(res.error());
+            return sercom::protocol::ParsedPayload{std::move(fetch_latest)};
         }
         case sercom::protocol::Envelope::MESSAGE_FETCH_BEFORE: {
             sercom::protocol::command::FetchMessagesBefore fetch_before;
             if (!fetch_before.ParseFromArray(env.payload().data(), env.payload().size())) {
                 return std::unexpected("Invalid MESSAGE_FETCH_BEFORE payload");
             }
-            return validate_fetch_messages_before(fetch_before);
+            auto res = validate_fetch_messages_before(fetch_before);
+            if (!res.has_value()) return std::unexpected(res.error());
+            return sercom::protocol::ParsedPayload{std::move(fetch_before)};
         }
         case sercom::protocol::Envelope::HUB_CREATE: {
             sercom::protocol::command::CreateHub create_hub;
             if (!create_hub.ParseFromArray(env.payload().data(), env.payload().size())) {
                 return std::unexpected("Invalid HUB_CREATE payload");
             }
-            return validate_create_hub(create_hub);
+            auto res = validate_create_hub(create_hub);
+            if (!res.has_value()) return std::unexpected(res.error());
+            return sercom::protocol::ParsedPayload{std::move(create_hub)};
         }
         case sercom::protocol::Envelope::CHANNEL_CREATE: {
             sercom::protocol::command::CreateChannel create_channel;
             if (!create_channel.ParseFromArray(env.payload().data(), env.payload().size())) {
                 return std::unexpected("Invalid CHANNEL_CREATE payload");
             }
-            return validate_create_channel(create_channel);
+            auto res = validate_create_channel(create_channel);
+            if (!res.has_value()) return std::unexpected(res.error());
+            return sercom::protocol::ParsedPayload{std::move(create_channel)};
         }
         case sercom::protocol::Envelope::CHANNEL_RENAME: {
             sercom::protocol::command::UpdateChannel update_channel;
             if (!update_channel.ParseFromArray(env.payload().data(), env.payload().size())) {
                 return std::unexpected("Invalid CHANNEL_RENAME payload");
             }
-            return validate_update_channel(update_channel);
+            auto res = validate_update_channel(update_channel);
+            if (!res.has_value()) return std::unexpected(res.error());
+            return sercom::protocol::ParsedPayload{std::move(update_channel)};
         }
         case sercom::protocol::Envelope::CHANNEL_REMOVE: {
             sercom::protocol::command::RemoveChannel remove_channel;
             if (!remove_channel.ParseFromArray(env.payload().data(), env.payload().size())) {
                 return std::unexpected("Invalid CHANNEL_REMOVE payload");
             }
-            return validate_remove_channel(remove_channel);
+            auto res = validate_remove_channel(remove_channel);
+            if (!res.has_value()) return std::unexpected(res.error());
+            return sercom::protocol::ParsedPayload{std::move(remove_channel)};
         }
         case sercom::protocol::Envelope::HUB_JOIN: {
             sercom::protocol::command::JoinHub join_hub;
             if (!join_hub.ParseFromArray(env.payload().data(), env.payload().size())) {
                 return std::unexpected("Invalid HUB_JOIN payload");
             }
-            return validate_join_hub(join_hub);
+            auto res = validate_join_hub(join_hub);
+            if (!res.has_value()) return std::unexpected(res.error());
+            return sercom::protocol::ParsedPayload{std::move(join_hub)};
         }
         case sercom::protocol::Envelope::HUB_CREATE_JOIN_CODE: {
             sercom::protocol::command::CreateHubJoinCode create_join_code;
             if (!create_join_code.ParseFromArray(env.payload().data(), env.payload().size())) {
                 return std::unexpected("Invalid HUB_CREATE_JOIN_CODE payload");
             }
-            return validate_create_hub_join_code(create_join_code);
+            auto res = validate_create_hub_join_code(create_join_code);
+            if (!res.has_value()) return std::unexpected(res.error());
+            return sercom::protocol::ParsedPayload{std::move(create_join_code)};
         }
         case sercom::protocol::Envelope::HUB_LEAVE: {
             sercom::protocol::command::LeaveHub leave_hub;
             if (!leave_hub.ParseFromArray(env.payload().data(), env.payload().size())) {
                 return std::unexpected("Invalid HUB_LEAVE payload");
             }
-            return validate_leave_hub(leave_hub);
+            auto res = validate_leave_hub(leave_hub);
+            if (!res.has_value()) return std::unexpected(res.error());
+            return sercom::protocol::ParsedPayload{std::move(leave_hub)};
         }
         case sercom::protocol::Envelope::HUB_REMOVE: {
             sercom::protocol::command::RemoveHub remove_hub;
             if (!remove_hub.ParseFromArray(env.payload().data(), env.payload().size())) {
                 return std::unexpected("Invalid HUB_REMOVE payload");
             }
-            return validate_remove_hub(remove_hub);
+            auto res = validate_remove_hub(remove_hub);
+            if (!res.has_value()) return std::unexpected(res.error());
+            return sercom::protocol::ParsedPayload{std::move(remove_hub)};
         }
         case sercom::protocol::Envelope::HUB_RENAME: {
             sercom::protocol::command::RenameHub rename_hub;
             if (!rename_hub.ParseFromArray(env.payload().data(), env.payload().size())) {
                 return std::unexpected("Invalid HUB_RENAME payload");
             }
-            return validate_rename_hub(rename_hub);
+            auto res = validate_rename_hub(rename_hub);
+            if (!res.has_value()) return std::unexpected(res.error());
+            return sercom::protocol::ParsedPayload{std::move(rename_hub)};
         }
         case sercom::protocol::Envelope::HUB_UPDATE: {
             sercom::protocol::command::UpdateHub update_hub;
             if (!update_hub.ParseFromArray(env.payload().data(), env.payload().size())) {
                 return std::unexpected("Invalid HUB_UPDATE payload");
             }
-            return validate_update_hub(update_hub);
+            auto res = validate_update_hub(update_hub);
+            if (!res.has_value()) return std::unexpected(res.error());
+            return sercom::protocol::ParsedPayload{std::move(update_hub)};
         }
         case sercom::protocol::Envelope::USER_UPDATE: {
             sercom::protocol::command::UpdateUser update_user;
             if (!update_user.ParseFromArray(env.payload().data(), env.payload().size())) {
                 return std::unexpected("Invalid USER_UPDATE payload");
             }
-            return validate_update_user(update_user);
+            auto res = validate_update_user(update_user);
+            if (!res.has_value()) return std::unexpected(res.error());
+            return sercom::protocol::ParsedPayload{std::move(update_user)};
         }
 
         case sercom::protocol::Envelope::UNKNOWN:

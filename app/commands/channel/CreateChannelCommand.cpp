@@ -52,73 +52,73 @@ std::vector<net::outbound::OutgoingMessage> CreateChannelCommand::execute(Comman
         return {};
     }
 
-    sercom::protocol::command::CreateChannel cmd;
-    if (!cmd.ParseFromString(env.payload())) {
-        return {make_command_error(event->conn_id, env.type(),
+    const auto* cmd = get_parsed<sercom::protocol::command::CreateChannel>(*event);
+    if (!cmd) {
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_INVALID_FORMAT,
-                                   "Invalid CHANNEL_CREATE payload")};
+                                   "Invalid CHANNEL_CREATE payload"));
     }
 
     auto user_exp = ctx.session_manager.sessionOfConnection(event->conn_id);
     if (!user_exp.has_value()) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_UNAUTHORIZED,
-                                   "Authenticate first")};
+                                   "Authenticate first"));
     }
     const UserId user_id = user_exp.value();
 
-    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd.hub_id()});
+    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd->hub_id()});
     if (!hub_id_opt.has_value()) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_NOT_FOUND,
-                                   "Hub not found")};
+                                   "Hub not found"));
     }
     const HubId hub_id = hub_id_opt.value();
 
-    std::string name = sanitize_name(cmd.name());
+    std::string name = sanitize_name(cmd->name());
     if (name.empty()) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
-                                   "Channel name is required")};
+                                   "Channel name is required"));
     }
 
     if (!ctx.hub_service.isHubMember(hub_id, user_id)) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_FORBIDDEN,
-                                   "Join the hub before creating channels")};
+                                   "Join the hub before creating channels"));
     }
 
     auto role = ctx.hub_service.getMembershipRole(hub_id, user_id);
     if (!role.has_value() || (*role != Role::OWNER && *role != Role::ADMIN)) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_FORBIDDEN,
-                                   "Only admins/owners can create channels")};
+                                   "Only admins/owners can create channels"));
     }
 
     const auto existing = ctx.channel_service.getHubChannels(hub_id);
     const auto normalized = normalize_name(name);
     for (const auto& channel : existing) {
         if (normalize_name(channel.name) == normalized) {
-            return {make_command_error(event->conn_id, env.type(),
+            return single_outgoing(make_command_error(event->conn_id, env.type(),
                                        sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
-                                       "Channel name already exists")};
+                                       "Channel name already exists"));
         }
     }
 
-    const ChannelType channel_type = converters::from_proto_channel_type(cmd.type());
+    const ChannelType channel_type = converters::from_proto_channel_type(cmd->type());
     const std::string type_str = channel_type == ChannelType::VOICE ? "voice" : "text";
 
     ChannelId created;
     try {
         created = ctx.channel_service.createChannel(hub_id, name, type_str);
     } catch (const std::exception& ex) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
-                                   ex.what())};
+                                   ex.what()));
     } catch (...) {
-        return {make_command_error(event->conn_id, env.type(),
+        return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
-                                   "Unable to create channel")};
+                                   "Unable to create channel"));
     }
 
     sercom::protocol::event::ChannelCreated created_evt;
@@ -151,10 +151,12 @@ std::vector<net::outbound::OutgoingMessage> CreateChannelCommand::execute(Comman
         return {};
     }
 
-    return {net::outbound::OutgoingMessage{
+    return single_outgoing(net::outbound::OutgoingMessage{
         .target = net::outbound::Target::many(std::move(conns)),
-        .action = net::outbound::SendPayload{
-            .payload = net::outbound::Payload{.data = std::move(bytes), .is_binary = true}}}};
+        .action =
+            net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
+                                  net::outbound::SendPayload{.payload = net::outbound::Payload{
+                                      .data = std::move(bytes), .is_binary = true}}}});
 }
 
 }  // namespace app

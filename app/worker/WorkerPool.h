@@ -84,7 +84,7 @@ class WorkerPool : public utils::Loggable {
     /**
      * Handle different event types
      */
-    std::vector<net::outbound::OutgoingMessage> handle_event(const queue::MessageEvent& msg_evt);
+    std::vector<net::outbound::OutgoingMessage> handle_event(queue::MessageEvent& msg_evt);
     std::vector<net::outbound::OutgoingMessage> handle_event(const queue::ConnectionEvent& evt);
     std::vector<net::outbound::OutgoingMessage> handle_event(const queue::DisconnectionEvent& evt);
 };
