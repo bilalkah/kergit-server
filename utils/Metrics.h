@@ -4,6 +4,7 @@
 #include <array>
 #include <atomic>
 #include <cstdint>
+#include <vector>
 
 namespace utils::metrics {
 
@@ -58,6 +59,47 @@ struct Counters {
 Counters& counters();
 
 void maybe_log();
+
+struct MetricsSnapshot {
+    uint64_t timestamp_sec{0};
+    uint64_t inbound_total{0};
+    uint64_t outbound_total{0};
+    uint64_t parse_fail{0};
+    uint64_t auth_fail{0};
+    uint64_t membership_fail{0};
+    uint64_t payload_parse_total{0};
+    uint64_t payload_parse_fail_total{0};
+    uint64_t parsed_payload_violation_total{0};
+    uint64_t registry_view_access_total{0};
+    uint64_t registry_miss_total{0};
+    uint64_t registry_copy_elim_total{0};
+    uint64_t fanout_sub_snapshot_total{0};
+    uint64_t fanout_payload_shared_total{0};
+    uint64_t per_conn_enqueued_total{0};
+    uint64_t per_conn_dropped_low_total{0};
+    uint64_t per_conn_overflow_total{0};
+    uint64_t slow_connection_dropped_total{0};
+    uint64_t outbound_flush_total{0};
+    uint64_t outbound_flush_empty_total{0};
+    uint64_t outbound_flush_send_fail_total{0};
+    uint64_t outbound_backpressured_total{0};
+    uint64_t dropped_in{0};
+    uint64_t dropped_in_low{0};
+    uint64_t dropped_in_high{0};
+    uint64_t evicted_in_low_for_high{0};
+    uint64_t dropped_out{0};
+    uint64_t dropped_out_low{0};
+    uint64_t dropped_out_high{0};
+    uint64_t outbound_backpressure{0};
+    uint64_t event_hiwat{0};
+    uint64_t outbound_hiwat{0};
+    std::array<uint64_t, 6> outbound_tick_hist{};
+};
+
+MetricsSnapshot snapshot_now();
+std::vector<MetricsSnapshot> timeseries(uint32_t window_sec);
+void start_timeseries();
+void stop_timeseries();
 
 inline void update_highwater(std::atomic<uint64_t>& highwater, uint64_t value) {
     uint64_t current = highwater.load(std::memory_order_relaxed);
