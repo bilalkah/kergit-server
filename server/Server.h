@@ -6,6 +6,7 @@
 
 // Appstack and network stack
 #include "app/AppStack.h"
+#include "control/http/HttpServer.h"
 #include "net/NetworkRouter.h"
 #include "net/NetworkStack.h"
 
@@ -26,6 +27,7 @@ class Server {
 
     app::AppStack app_stack_;
     net::NetworkRouter network_router_;
+    control::http::HttpServer control_http_;
 };
 
 }  // namespace server

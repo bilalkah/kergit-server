@@ -47,10 +47,12 @@ cc_binary(
     }),
     deps = [
         "//app:app_stack",
+        "//control/http:control_http_server",
         "//core:server_config",
         "//net:network_router",
         "//net:network_stack",
         "//utils:env_loader",
         "//utils:loggable",
+        "//utils:metrics",
     ],
 )

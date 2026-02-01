@@ -56,10 +56,16 @@ struct AppStackConfig {
     std::size_t event_queue_capacity{30000};
 };
 
+struct ControlPlaneConfig {
+    std::string host{"127.0.0.1"};
+    uint16_t port{8081};
+};
+
 struct ServerConfig {
     NetworkStackConfig network{};
     DataBaseConfig database{};
     AppStackConfig app_stack{};
+    ControlPlaneConfig control{};
 };
 
 class ServerConfigFiller {
@@ -89,6 +95,9 @@ class ServerConfigFiller {
         cfg.app_stack.event_queue_capacity = static_cast<std::size_t>(std::stoul(
             utils::EnvLoader::get_env("EVENT_QUEUE_CAPACITY",
                                       std::to_string(cfg.app_stack.event_queue_capacity))));
+        cfg.control.host = utils::EnvLoader::get_env("CONTROL_HOST", cfg.control.host);
+        cfg.control.port = std::stoi(utils::EnvLoader::get_env(
+            "CONTROL_PORT", std::to_string(cfg.control.port)));
     }
 };
 
