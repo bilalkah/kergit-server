@@ -76,6 +76,14 @@ void OutboundFlushEngine::on_tick() {
 
         auto& msg = ready->msg;
         auto handle = ready->handle;
+        if (transport_.is_backpressured(handle)) {
+            utils::metrics::counters().outbound_backpressured_total.fetch_add(
+                1, std::memory_order_relaxed);
+            registry_.mutate(conn_id, [&](auto& ctx) {
+                ctx.outbox.q.push_front(std::move(msg));
+            });
+            continue;
+        }
         std::visit(
             [&](const auto& action) {
                 using T = std::decay_t<decltype(action)>;
