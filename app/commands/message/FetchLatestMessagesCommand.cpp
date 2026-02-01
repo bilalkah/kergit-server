@@ -54,12 +54,7 @@ std::vector<net::outbound::OutgoingMessage> FetchLatestMessagesCommand::execute(
         return {};
     }
 
-    const auto* cmd = get_parsed<sercom::protocol::command::FetchLatestMessages>(*event);
-    if (!cmd) {
-        return single_outgoing(make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_INVALID_FORMAT,
-                                   "Invalid MESSAGE_FETCH_LATEST payload"));
-    }
+    const auto& cmd = require_parsed<sercom::protocol::command::FetchLatestMessages>(*event);
 
     auto user_exp = ctx.session_manager.sessionOfConnection(event->conn_id);
     if (!user_exp.has_value()) {
@@ -69,14 +64,14 @@ std::vector<net::outbound::OutgoingMessage> FetchLatestMessagesCommand::execute(
     }
     const UserId user_id = user_exp.value();
 
-    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd->hub_id()});
+    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd.hub_id()});
     if (!hub_id_opt.has_value()) {
         return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_NOT_FOUND,
                                    "Hub not found"));
     }
 
-    auto channel_id_opt = ctx.ids.to_internal(PublicChannelId{cmd->channel_id()});
+    auto channel_id_opt = ctx.ids.to_internal(PublicChannelId{cmd.channel_id()});
     if (!channel_id_opt.has_value()) {
         return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_NOT_FOUND,
@@ -96,11 +91,11 @@ std::vector<net::outbound::OutgoingMessage> FetchLatestMessagesCommand::execute(
                                    "Join the hub before fetching messages"));
     }
 
-    const int limit = clamp_limit(cmd->limit());
+    const int limit = clamp_limit(cmd.limit());
 
     std::optional<MessageId> after_id;
-    if (cmd->has_known_latest_message_id() && cmd->known_latest_message_id() != 0) {
-        auto internal = ctx.ids.to_internal(PublicMessageId{cmd->known_latest_message_id()});
+    if (cmd.has_known_latest_message_id() && cmd.known_latest_message_id() != 0) {
+        auto internal = ctx.ids.to_internal(PublicMessageId{cmd.known_latest_message_id()});
         if (internal.has_value()) {
             after_id = internal.value();
         }

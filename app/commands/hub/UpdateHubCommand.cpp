@@ -43,12 +43,7 @@ std::vector<net::outbound::OutgoingMessage> UpdateHubCommand::execute(CommandCon
         return {};
     }
 
-    const auto* cmd = get_parsed<sercom::protocol::command::UpdateHub>(*event);
-    if (!cmd) {
-        return single_outgoing(make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_INVALID_FORMAT,
-                                   "Invalid HUB_UPDATE payload"));
-    }
+    const auto& cmd = require_parsed<sercom::protocol::command::UpdateHub>(*event);
 
     auto user_exp = ctx.session_manager.sessionOfConnection(event->conn_id);
     if (!user_exp.has_value()) {
@@ -61,8 +56,8 @@ std::vector<net::outbound::OutgoingMessage> UpdateHubCommand::execute(CommandCon
     std::optional<std::string> requested_name;
     std::optional<std::string> requested_seed;
 
-    for (int i = 0; i < cmd->changes_size(); ++i) {
-        const auto& change = cmd->changes(i);
+    for (int i = 0; i < cmd.changes_size(); ++i) {
+        const auto& change = cmd.changes(i);
         switch (change.change_case()) {
             case sercom::protocol::command::HubChange::kName: {
                 auto name = sanitize(change.name());
@@ -98,7 +93,7 @@ std::vector<net::outbound::OutgoingMessage> UpdateHubCommand::execute(CommandCon
                                    "No changes requested"));
     }
 
-    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd->hub_id()});
+    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd.hub_id()});
     if (!hub_id_opt.has_value()) {
         return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_NOT_FOUND,

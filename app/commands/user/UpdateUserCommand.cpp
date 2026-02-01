@@ -42,12 +42,7 @@ std::vector<net::outbound::OutgoingMessage> UpdateUserCommand::execute(CommandCo
         return {};
     }
 
-    const auto* cmd = get_parsed<sercom::protocol::command::UpdateUser>(*event);
-    if (!cmd) {
-        return single_outgoing(make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_INVALID_FORMAT,
-                                   "Invalid USER_UPDATE payload"));
-    }
+    const auto& cmd = require_parsed<sercom::protocol::command::UpdateUser>(*event);
 
     auto user_exp = ctx.session_manager.sessionOfConnection(event->conn_id);
     if (!user_exp.has_value()) {
@@ -60,8 +55,8 @@ std::vector<net::outbound::OutgoingMessage> UpdateUserCommand::execute(CommandCo
     std::optional<std::string> username_opt;
     std::optional<std::string> avatar_seed_opt;
 
-    for (int i = 0; i < cmd->changes_size(); ++i) {
-        const auto& change = cmd->changes(i);
+    for (int i = 0; i < cmd.changes_size(); ++i) {
+        const auto& change = cmd.changes(i);
         switch (change.change_case()) {
             case sercom::protocol::command::UserChange::kUsername: {
                 auto username = sanitize(change.username());

@@ -3,6 +3,7 @@
 #include "proto/event/error.pb.h"
 #include "utils/Metrics.h"
 
+#include <cassert>
 #include <chrono>
 #include <limits>
 #include <thread>
@@ -169,6 +170,7 @@ std::vector<net::outbound::OutgoingMessage> WorkerPool::handle_event(queue::Mess
         return result;
     }
     msg_evt.payload.parsed = std::move(parsed.value());
+    assert(!std::holds_alternative<std::monostate>(msg_evt.payload.parsed));
 
     if (!try_mark_executing(msg_evt.conn_id, env.type())) {
         utils::metrics::counters().dropped_inbound_total.fetch_add(1, std::memory_order_relaxed);

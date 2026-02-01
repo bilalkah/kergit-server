@@ -23,21 +23,11 @@ std::vector<net::outbound::OutgoingMessage> AuthenticateCommand::execute(Command
         return {};
     }
 
-    const auto* auth = get_parsed<sercom::protocol::command::Authenticate>(*event);
-    if (!auth) {
-        result.emplace_back(net::outbound::OutgoingMessage{
-            .target = net::outbound::Target::one(event->conn_id),
-            .action =
-                net::outbound::Action{std::in_place_type<net::outbound::DropConnection>,
-                                      static_cast<int>(sercom::protocol::event::CommandErrorCode::
-                                                           CommandErrorCode_INVALID_FORMAT),
-                                      "Invalid AUTH payload"}});
-        return result;
-    }
+    const auto& auth = require_parsed<sercom::protocol::command::Authenticate>(*event);
 
     // 4. Validate command fields
-    if (auth->type() != sercom::protocol::command::AuthType_REAUTH &&
-        auth->type() != sercom::protocol::command::AuthType_AUTH) {
+    if (auth.type() != sercom::protocol::command::AuthType_REAUTH &&
+        auth.type() != sercom::protocol::command::AuthType_AUTH) {
         result.emplace_back(net::outbound::OutgoingMessage{
             .target = net::outbound::Target::one(event->conn_id),
             .action =
@@ -48,7 +38,7 @@ std::vector<net::outbound::OutgoingMessage> AuthenticateCommand::execute(Command
         return result;
     }
 
-    if (auth->provider() != sercom::protocol::command::AuthProvider_SUPABASE) {
+    if (auth.provider() != sercom::protocol::command::AuthProvider_SUPABASE) {
         result.emplace_back(net::outbound::OutgoingMessage{
             .target = net::outbound::Target::one(event->conn_id),
             .action =
@@ -59,7 +49,7 @@ std::vector<net::outbound::OutgoingMessage> AuthenticateCommand::execute(Command
         return result;
     }
 
-    if (auth->token().empty()) {
+    if (auth.token().empty()) {
         result.emplace_back(net::outbound::OutgoingMessage{
             .target = net::outbound::Target::one(event->conn_id),
             .action =
@@ -70,7 +60,7 @@ std::vector<net::outbound::OutgoingMessage> AuthenticateCommand::execute(Command
         return result;
     }
 
-    auto auth_result = ctx.auth_service.authenticate(auth->token());
+    auto auth_result = ctx.auth_service.authenticate(auth.token());
     if (!auth_result.has_value()) {
         result.emplace_back(net::outbound::OutgoingMessage{
             .target = net::outbound::Target::one(event->conn_id),

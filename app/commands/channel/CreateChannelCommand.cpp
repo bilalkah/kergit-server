@@ -52,12 +52,7 @@ std::vector<net::outbound::OutgoingMessage> CreateChannelCommand::execute(Comman
         return {};
     }
 
-    const auto* cmd = get_parsed<sercom::protocol::command::CreateChannel>(*event);
-    if (!cmd) {
-        return single_outgoing(make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_INVALID_FORMAT,
-                                   "Invalid CHANNEL_CREATE payload"));
-    }
+    const auto& cmd = require_parsed<sercom::protocol::command::CreateChannel>(*event);
 
     auto user_exp = ctx.session_manager.sessionOfConnection(event->conn_id);
     if (!user_exp.has_value()) {
@@ -67,7 +62,7 @@ std::vector<net::outbound::OutgoingMessage> CreateChannelCommand::execute(Comman
     }
     const UserId user_id = user_exp.value();
 
-    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd->hub_id()});
+    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd.hub_id()});
     if (!hub_id_opt.has_value()) {
         return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_NOT_FOUND,
@@ -75,7 +70,7 @@ std::vector<net::outbound::OutgoingMessage> CreateChannelCommand::execute(Comman
     }
     const HubId hub_id = hub_id_opt.value();
 
-    std::string name = sanitize_name(cmd->name());
+    std::string name = sanitize_name(cmd.name());
     if (name.empty()) {
         return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
@@ -105,7 +100,7 @@ std::vector<net::outbound::OutgoingMessage> CreateChannelCommand::execute(Comman
         }
     }
 
-    const ChannelType channel_type = converters::from_proto_channel_type(cmd->type());
+    const ChannelType channel_type = converters::from_proto_channel_type(cmd.type());
     const std::string type_str = channel_type == ChannelType::VOICE ? "voice" : "text";
 
     ChannelId created;

@@ -29,7 +29,7 @@ struct Counters {
     std::atomic<uint64_t> evicted_inbound_low_for_high{0};
     std::atomic<uint64_t> payload_parse_total{0};
     std::atomic<uint64_t> payload_parse_fail_total{0};
-    std::atomic<uint64_t> command_reparse_total{0};
+    std::atomic<uint64_t> parsed_payload_violation_total{0};
     std::atomic<uint64_t> registry_view_access_total{0};
     std::atomic<uint64_t> registry_miss_total{0};
     // Number of outbound messages processed without copying ConnectionContext.

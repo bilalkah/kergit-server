@@ -29,12 +29,7 @@ std::vector<net::outbound::OutgoingMessage> JoinVoiceChannelCommand::execute(
                                      "Invalid VOICE_JOIN envelope type")};
     }
 
-    const auto* cmd = get_parsed<sercom::protocol::command::VoiceChannelMembership>(*event);
-    if (!cmd) {
-        return {make_drop_connection(event->conn_id,
-                                     sercom::protocol::event::CommandErrorCode_INVALID_FORMAT,
-                                     "Invalid VOICE_JOIN payload")};
-    }
+    const auto& cmd = require_parsed<sercom::protocol::command::VoiceChannelMembership>(*event);
 
     auto user_exp = ctx.session_manager.sessionOfConnection(event->conn_id);
     if (!user_exp.has_value()) {
@@ -44,14 +39,14 @@ std::vector<net::outbound::OutgoingMessage> JoinVoiceChannelCommand::execute(
     }
     const UserId user_id = user_exp.value();
 
-    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd->hub_id()});
+    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd.hub_id()});
     if (!hub_id_opt.has_value()) {
         return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_NOT_FOUND,
                                    "Hub not found"));
     }
 
-    auto channel_id_opt = ctx.ids.to_internal(PublicChannelId{cmd->channel_id()});
+    auto channel_id_opt = ctx.ids.to_internal(PublicChannelId{cmd.channel_id()});
     if (!channel_id_opt.has_value()) {
         return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_NOT_FOUND,
@@ -171,11 +166,11 @@ std::vector<net::outbound::OutgoingMessage> JoinVoiceChannelCommand::execute(
 
     std::vector<net::outbound::OutgoingMessage> out;
 
-    if (cmd->state() == sercom::protocol::command::VoiceChannelMembership::STATE_REQUEST_LEAVE) {
+    if (cmd.state() == sercom::protocol::command::VoiceChannelMembership::STATE_REQUEST_LEAVE) {
         return out;
     }
 
-    if (cmd->state() == sercom::protocol::command::VoiceChannelMembership::STATE_REQUEST_JOIN) {
+    if (cmd.state() == sercom::protocol::command::VoiceChannelMembership::STATE_REQUEST_JOIN) {
         services::livekit::LiveKitTokenService::TokenRequest token_req{
             user_id, *channel_id_opt, true, true, std::chrono::seconds{3600},
         };
@@ -215,7 +210,7 @@ std::vector<net::outbound::OutgoingMessage> JoinVoiceChannelCommand::execute(
         return out;
     }
 
-    if (cmd->state() == sercom::protocol::command::VoiceChannelMembership::STATE_LEAVE) {
+    if (cmd.state() == sercom::protocol::command::VoiceChannelMembership::STATE_LEAVE) {
         if (prev_voice_hub && prev_voice_channel && *prev_voice_hub == *hub_id_opt &&
             *prev_voice_channel == *channel_id_opt) {
             ctx.session_manager.leaveVoiceChannel(user_id);
@@ -229,7 +224,7 @@ std::vector<net::outbound::OutgoingMessage> JoinVoiceChannelCommand::execute(
         return out;
     }
 
-    if (cmd->state() == sercom::protocol::command::VoiceChannelMembership::STATE_JOIN) {
+    if (cmd.state() == sercom::protocol::command::VoiceChannelMembership::STATE_JOIN) {
         if (prev_voice_hub && prev_voice_channel && *prev_voice_hub == *hub_id_opt &&
             *prev_voice_channel == *channel_id_opt) {
             return {};

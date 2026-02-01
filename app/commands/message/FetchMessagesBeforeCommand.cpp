@@ -54,12 +54,7 @@ std::vector<net::outbound::OutgoingMessage> FetchMessagesBeforeCommand::execute(
         return {};
     }
 
-    const auto* cmd = get_parsed<sercom::protocol::command::FetchMessagesBefore>(*event);
-    if (!cmd) {
-        return single_outgoing(make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_INVALID_FORMAT,
-                                   "Invalid MESSAGE_FETCH_BEFORE payload"));
-    }
+    const auto& cmd = require_parsed<sercom::protocol::command::FetchMessagesBefore>(*event);
 
     auto user_exp = ctx.session_manager.sessionOfConnection(event->conn_id);
     if (!user_exp.has_value()) {
@@ -69,14 +64,14 @@ std::vector<net::outbound::OutgoingMessage> FetchMessagesBeforeCommand::execute(
     }
     const UserId user_id = user_exp.value();
 
-    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd->hub_id()});
+    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd.hub_id()});
     if (!hub_id_opt.has_value()) {
         return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_NOT_FOUND,
                                    "Hub not found"));
     }
 
-    auto channel_id_opt = ctx.ids.to_internal(PublicChannelId{cmd->channel_id()});
+    auto channel_id_opt = ctx.ids.to_internal(PublicChannelId{cmd.channel_id()});
     if (!channel_id_opt.has_value()) {
         return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_NOT_FOUND,
@@ -96,14 +91,14 @@ std::vector<net::outbound::OutgoingMessage> FetchMessagesBeforeCommand::execute(
                                    "Join the hub before fetching messages"));
     }
 
-    auto before_internal = ctx.ids.to_internal(PublicMessageId{cmd->before_message_id()});
+    auto before_internal = ctx.ids.to_internal(PublicMessageId{cmd.before_message_id()});
     if (!before_internal.has_value()) {
         return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_NOT_FOUND,
                                    "Message not found"));
     }
 
-    const int limit = clamp_limit(cmd->limit());
+    const int limit = clamp_limit(cmd.limit());
     auto messages_exp =
         ctx.channel_service.fetchMessagesBefore(*channel_id_opt, *before_internal, limit);
     if (!messages_exp.has_value()) {

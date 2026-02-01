@@ -62,12 +62,7 @@ std::vector<net::outbound::OutgoingMessage> JoinHubByInviteCommand::execute(
         return {};
     }
 
-    const auto* cmd = get_parsed<sercom::protocol::command::JoinHub>(*event);
-    if (!cmd) {
-        return single_outgoing(make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_INVALID_FORMAT,
-                                   "Invalid HUB_JOIN payload"));
-    }
+    const auto& cmd = require_parsed<sercom::protocol::command::JoinHub>(*event);
 
     auto user_exp = ctx.session_manager.sessionOfConnection(event->conn_id);
     if (!user_exp.has_value()) {
@@ -78,7 +73,7 @@ std::vector<net::outbound::OutgoingMessage> JoinHubByInviteCommand::execute(
     const UserId user_id = user_exp.value();
 
     uint64_t join_code = 0;
-    if (!parse_join_code(cmd->join_code(), join_code)) {
+    if (!parse_join_code(cmd.join_code(), join_code)) {
         return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
                                    "Join code is invalid"));

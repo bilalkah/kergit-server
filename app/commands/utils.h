@@ -4,6 +4,7 @@
 #include "app/queue/Msg.h"
 #include "domains/ids/Ids.h"
 #include "net/outbound/Msg.h"
+#include "utils/Logger.h"
 #include "utils/Metrics.h"
 
 // Protobuf includes
@@ -11,19 +12,25 @@
 #include "proto/envelope.pb.h"
 #include "proto/event/error.pb.h"
 
+#include <exception>
 #include <string_view>
+#include <typeinfo>
 #include <vector>
 
 namespace app {
 
 template <typename T>
-inline const T* get_parsed(const queue::MessageEvent& event) {
+inline const T& require_parsed(const queue::MessageEvent& event) {
     const auto* cmd = std::get_if<T>(&event.payload.parsed);
-    if (!cmd) {
-        utils::metrics::counters().command_reparse_total.fetch_add(1,
-                                                                   std::memory_order_relaxed);
+    if (cmd) {
+        return *cmd;
     }
-    return cmd;
+    utils::metrics::counters().parsed_payload_violation_total.fetch_add(
+        1, std::memory_order_relaxed);
+    utils::log_line(utils::LogLevel::ERROR,
+                    std::string("Parsed payload invariant violated for command ") +
+                        typeid(T).name());
+    std::terminate();
 }
 
 // Helper to create a command error outbound message
