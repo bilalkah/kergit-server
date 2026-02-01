@@ -8,6 +8,7 @@
 #include <deque>
 #include <expected>
 #include <mutex>
+#include <optional>
 #include <shared_mutex>
 #include <string>
 #include <unordered_map>
@@ -76,6 +77,13 @@ struct ConnectionError {
  */
 using ConnectionResult = std::expected<ConnectionContext, ConnectionError>;
 
+struct ConnectionView {
+    ConnId conn_id{""};
+    transport::WsHandle handle{};
+    TransportKind kind{TransportKind::TextWebSocket};
+    AuthState auth{};
+};
+
 /**
  * Registry managing active connections.
  */
@@ -93,6 +101,10 @@ class ConnectionRegistery {
     ConnectionResult get(const ConnId& conn_id) const;
     std::vector<ConnectionResult> get(const std::vector<GlobalConnId>& global_ids) const;
     std::vector<ConnectionResult> get() const;
+    // Hot-path accessor.
+    // Returns a lightweight snapshot of connection state without copying
+    // any containers. No lock is held beyond this call.
+    std::optional<ConnectionView> get_view(const ConnId& conn_id) const;
 
     /**
      * Mutate in-place (no copies)

@@ -50,6 +50,10 @@ void maybe_log() {
         c.payload_parse_fail_total.load(std::memory_order_relaxed);
     const auto command_reparse =
         c.command_reparse_total.load(std::memory_order_relaxed);
+    const auto registry_view_access =
+        c.registry_view_access_total.load(std::memory_order_relaxed);
+    const auto registry_miss =
+        c.registry_miss_total.load(std::memory_order_relaxed);
     const auto registry_copy_elim =
         c.registry_copy_eliminated_total.load(std::memory_order_relaxed);
     const auto fanout_sub_snap =
@@ -78,14 +82,16 @@ void maybe_log() {
         fmt::format(
             "metrics inbound_total={} outbound_total={} parse_fail={} auth_fail={} "
             "membership_fail={} payload_parse_total={} payload_parse_fail_total={} "
-            "command_reparse_total={} registry_copy_elim_total={} "
+            "command_reparse_total={} registry_view_access_total={} registry_miss_total={} "
+            "registry_copy_elim_total={} "
             "fanout_sub_snapshot_total={} fanout_payload_shared_total={} dropped_in={} "
             "dropped_in_low={} dropped_in_high={} evicted_in_low_for_high={} dropped_out={} "
             "dropped_out_low={} dropped_out_high={} outbound_backpressure={} event_hiwat={} "
             "outbound_hiwat={} outbound_tick_hist=[{} {} {} {} {} {}]",
             inbound, outbound, parse_fail, auth_fail, membership_fail, payload_parse,
-            payload_parse_fail, command_reparse, registry_copy_elim, fanout_sub_snap,
-            fanout_payload_shared, dropped_in, dropped_in_low, dropped_in_high,
+            payload_parse_fail, command_reparse, registry_view_access, registry_miss,
+            registry_copy_elim, fanout_sub_snap, fanout_payload_shared, dropped_in,
+            dropped_in_low, dropped_in_high,
             evicted_in_low_for_high, dropped_out, dropped_out_low, dropped_out_high,
             outbound_backpressure, event_hiwat, outbound_hiwat, b0, b1, b2, b3, b4, b5));
 }
