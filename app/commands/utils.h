@@ -48,8 +48,9 @@ inline net::outbound::OutgoingMessage make_command_error(
     return net::outbound::OutgoingMessage{
         .target = net::outbound::Target::one(conn),
         .action = net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
-                                        net::outbound::SendPayload{.payload = net::outbound::Payload{
-                                            .data = std::move(bytes), .is_binary = true}}}};
+                                        net::outbound::SendPayload{
+                                            .payload = net::outbound::Payload{std::move(bytes),
+                                                                              true}}}};
 }
 
 // Helper to create a command drop connection outbound message

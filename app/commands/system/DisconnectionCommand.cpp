@@ -27,11 +27,12 @@ std::vector<net::outbound::OutgoingMessage> DisconnectionCommand::execute(Comman
     const UserId user_id = session_exp.value();
     const auto hubid_list = [&]() {
         std::vector<HubId> hubid_list;
-        const auto user_subs = ctx.subscription_manager.getSubscriptions(user_id);
-        if (!user_subs.has_value()) {
+        const auto conn_subs =
+            ctx.subscription_manager.getSubscriptionsForConnection(event->conn_id);
+        if (!conn_subs.has_value()) {
             return hubid_list;
         }
-        for (const auto& topic : user_subs.value()) {
+        for (const auto& topic : conn_subs.value()) {
             if (topic.kind != TopicKind::Hub) continue;
             hubid_list.emplace_back(topic_utils::extractHubId(topic));
         }
@@ -39,7 +40,7 @@ std::vector<net::outbound::OutgoingMessage> DisconnectionCommand::execute(Comman
     }();
 
     ctx.session_manager.removeConnection(event->conn_id);
-    ctx.subscription_manager.removeAllForUser(user_id);
+    ctx.subscription_manager.removeAllForConnection(event->conn_id);
 
     for (const auto& hub_id : hubid_list) {
         const auto online_members = ctx.presence_manager.onlineUsersInHub(hub_id);
@@ -53,15 +54,17 @@ std::vector<net::outbound::OutgoingMessage> DisconnectionCommand::execute(Comman
             recipients.push_back(conn_exp.value());
         }
 
-            if (!recipients.empty()) {
-                auto payload = ctx.hub_notifier.memberOffline(hub_id, user_id);
-                out.push_back(net::outbound::OutgoingMessage{
-                    .priority = net::outbound::OutboundPriority::Low,
-                    .target = net::outbound::Target::many(std::move(recipients)),
-                    .action = net::outbound::Action{
-                        std::in_place_type<net::outbound::SendPayload>,
-                        net::outbound::SendPayload{.payload = std::move(payload)}}});
-            }
+        if (!recipients.empty()) {
+            auto payload = ctx.hub_notifier.memberOffline(hub_id, user_id);
+            out.push_back(net::outbound::OutgoingMessage{
+                .priority = net::outbound::OutboundPriority::Low,
+                .target = net::outbound::Target::many(std::move(recipients)),
+                .action =
+                    net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
+                                          net::outbound::SendPayload{
+                                              .payload = net::outbound::Payload{std::move(payload),
+                                                                                true}}}});
+        }
     }
 
     return out;

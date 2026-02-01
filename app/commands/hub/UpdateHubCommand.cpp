@@ -92,7 +92,7 @@ std::vector<net::outbound::OutgoingMessage> UpdateHubCommand::execute(CommandCon
         }
     }
 
-    if (!requested_name.has_value() && !requested_seed.has_value()) {
+    if (!requested_name && !requested_seed) {
         return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
                                    "No changes requested"));
@@ -113,21 +113,21 @@ std::vector<net::outbound::OutgoingMessage> UpdateHubCommand::execute(CommandCon
     }
 
     auto role = ctx.hub_service.getMembershipRole(hub_id, user_id);
-    if (!role.has_value() || (*role != Role::OWNER && *role != Role::ADMIN)) {
+    if (!role || (*role != Role::OWNER && *role != Role::ADMIN)) {
         return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_FORBIDDEN,
                                    "Only admins or owners can update hub settings"));
     }
 
     try {
-        if (requested_name.has_value()) {
+        if (requested_name) {
             if (!ctx.hub_service.renameHub(hub_id, *requested_name)) {
                 return single_outgoing(make_command_error(event->conn_id, env.type(),
                                            sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
                                            "Unable to rename hub at this time"));
             }
         }
-        if (requested_seed.has_value()) {
+        if (requested_seed) {
             if (!ctx.hub_service.updateHubAvatarSeed(hub_id, *requested_seed)) {
                 return single_outgoing(make_command_error(event->conn_id, env.type(),
                                            sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
@@ -145,12 +145,13 @@ std::vector<net::outbound::OutgoingMessage> UpdateHubCommand::execute(CommandCon
     }
 
     std::vector<GlobalConnId> conns;
+    utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(
+        1, std::memory_order_relaxed);
     auto subs = ctx.subscription_manager.getSubscribers(Topic::HubTopic(hub_id));
-    if (subs.has_value()) {
+    if (subs) {
         conns.reserve(subs->size());
-        for (const auto& uid : subs.value()) {
-            auto conn = ctx.session_manager.getMainConnection(uid);
-            if (conn.has_value()) conns.push_back(conn.value());
+        for (const auto& conn : *subs) {
+            conns.push_back(conn);
         }
     }
 
@@ -159,7 +160,7 @@ std::vector<net::outbound::OutgoingMessage> UpdateHubCommand::execute(CommandCon
     }
 
     std::vector<net::outbound::OutgoingMessage> out;
-    if (requested_name.has_value()) {
+    if (requested_name) {
         sercom::protocol::event::HubRenamed renamed;
         renamed.set_hub_id(ctx.ids.to_public(hub_id).value);
         renamed.set_name(*requested_name);
@@ -176,11 +177,10 @@ std::vector<net::outbound::OutgoingMessage> UpdateHubCommand::execute(CommandCon
             .target = net::outbound::Target::many(conns),
             .action = net::outbound::Action{
                 std::in_place_type<net::outbound::SendPayload>,
-                net::outbound::SendPayload{.payload = net::outbound::Payload{
-                    .data = std::move(bytes), .is_binary = true}}}});
+                net::outbound::SendPayload{.payload = net::outbound::Payload{std::move(bytes), true}}}});
     }
 
-    if (requested_seed.has_value()) {
+    if (requested_seed) {
         sercom::protocol::event::HubAvatarChanged changed;
         changed.set_hub_id(ctx.ids.to_public(hub_id).value);
         changed.set_avatar_seed(*requested_seed);
@@ -197,8 +197,7 @@ std::vector<net::outbound::OutgoingMessage> UpdateHubCommand::execute(CommandCon
             .target = net::outbound::Target::many(conns),
             .action = net::outbound::Action{
                 std::in_place_type<net::outbound::SendPayload>,
-                net::outbound::SendPayload{.payload = net::outbound::Payload{
-                    .data = std::move(bytes), .is_binary = true}}}});
+                net::outbound::SendPayload{.payload = net::outbound::Payload{std::move(bytes), true}}}});
     }
 
     return out;

@@ -78,8 +78,7 @@ std::vector<net::outbound::OutgoingMessage> GetHubInviteCommand::execute(Command
         .target = net::outbound::Target::one(event->conn_id),
         .action =
             net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
-                                  net::outbound::SendPayload{.payload = net::outbound::Payload{
-                                      .data = std::move(bytes), .is_binary = true}}}});
+                                  net::outbound::SendPayload{.payload = net::outbound::Payload{std::move(bytes), true}}}});
 }
 
 }  // namespace app

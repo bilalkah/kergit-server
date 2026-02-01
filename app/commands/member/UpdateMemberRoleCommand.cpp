@@ -3,6 +3,7 @@
 #include "app/commands/CommandJson.h"
 #include "app/dispatcher/CommandContext.h"
 #include "domains/Hub.h"
+#include "utils/Metrics.h"
 
 #include <nlohmann/json.hpp>
 #include <string>
@@ -40,13 +41,13 @@ CommandResult UpdateMemberRoleCommand::execute(CommandContext& ctx, const Comman
 
     const std::string role_raw = j.value("role", "");
 
-    if (!hub_raw.has_value() || !user_raw.has_value() || role_raw.empty()) {
+    if (!hub_raw || !user_raw || role_raw.empty()) {
         return std::unexpected(CommandError{3, "hub_id, user_id and role are required"});
     }
 
-    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{hub_raw.value()});
-    auto target_id_opt = ctx.ids.to_internal(PublicUserId{user_raw.value()});
-    if (!hub_id_opt.has_value() || !target_id_opt.has_value()) {
+    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{hub_raw});
+    auto target_id_opt = ctx.ids.to_internal(PublicUserId{user_raw});
+    if (!hub_id_opt || !target_id_opt) {
         return std::unexpected(CommandError{4, "Invalid hub or user identifier"});
     }
     const HubId hub_id = hub_id_opt.value();
@@ -60,7 +61,7 @@ CommandResult UpdateMemberRoleCommand::execute(CommandContext& ctx, const Comman
 
     // actor must be owner
     auto actor_role = ctx.hub_service.getMembershipRole(hub_id, actor);
-    if (!actor_role.has_value()) {
+    if (!actor_role) {
         return std::unexpected(CommandError{6, "Join the hub before updating roles"});
     }
     if (*actor_role != Role::OWNER) {
@@ -69,7 +70,7 @@ CommandResult UpdateMemberRoleCommand::execute(CommandContext& ctx, const Comman
 
     // target must be a member and not owner
     auto target_role = ctx.hub_service.getMembershipRole(hub_id, target_id);
-    if (!target_role.has_value()) {
+    if (!target_role) {
         return std::unexpected(CommandError{8, "Target user is not a member"});
     }
     if (*target_role == Role::OWNER) {
@@ -93,13 +94,14 @@ CommandResult UpdateMemberRoleCommand::execute(CommandContext& ctx, const Comman
 
     CommandSuccess res;
     // Notify hub subscribers
+    utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(
+        1, std::memory_order_relaxed);
     auto subs = ctx.subscription_manager.getSubscribers(Topic::HubTopic(hub_id));
-    if (subs.has_value() && !subs->empty()) {
+    if (subs && !subs->empty()) {
         std::vector<GlobalConnId> conns;
         conns.reserve(subs->size());
-        for (const auto& uid : subs.value()) {
-            auto c = ctx.session_manager.getMainConnection(uid);
-            if (c.has_value()) conns.push_back(c.value());
+        for (const auto& conn : *subs) {
+            conns.push_back(conn);
         }
         if (!conns.empty()) {
             res.intents.push_back(Fanout{.conns = std::move(conns), .payload = payload});

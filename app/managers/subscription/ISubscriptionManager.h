@@ -5,6 +5,7 @@
 #include "domains/ids/Ids.h"
 
 #include <expected>
+#include <memory>
 #include <string>
 #include <unordered_set>
 
@@ -15,17 +16,17 @@ using SubscriptionError = std::string;
 struct ISubscriptionManager {
     virtual ~ISubscriptionManager() = default;
 
-    virtual bool subscribe(const UserId& user, const Topic& topic) = 0;
-    virtual bool unsubscribe(const UserId& user, const Topic& topic) = 0;
+    virtual bool subscribeConnection(const GlobalConnId& conn, const Topic& topic) = 0;
+    virtual bool unsubscribeConnection(const GlobalConnId& conn, const Topic& topic) = 0;
 
-    virtual bool isSubscribed(const UserId& user, const Topic& topic) const = 0;
+    virtual bool isSubscribed(const GlobalConnId& conn, const Topic& topic) const = 0;
 
-    virtual std::expected<std::unordered_set<UserId>, SubscriptionError> getSubscribers(
+    virtual std::shared_ptr<const std::unordered_set<GlobalConnId>> getSubscribers(
         const Topic& topic) const = 0;
-    virtual std::expected<std::unordered_set<Topic>, SubscriptionError> getSubscriptions(
-        const UserId& user) const = 0;
+    virtual std::expected<std::unordered_set<Topic>, SubscriptionError>
+    getSubscriptionsForConnection(const GlobalConnId& conn) const = 0;
 
-    virtual void removeAllForUser(const UserId& user) = 0;
+    virtual void removeAllForConnection(const GlobalConnId& conn) = 0;
     virtual void removeAllForTopic(const Topic& topic) = 0;
 };
 }  // namespace app

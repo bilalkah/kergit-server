@@ -91,11 +91,13 @@ CommandResult JoinChannelCommand::execute(CommandContext& ctx, const CommandInpu
     auto session = ctx.session_manager.getSession(user_id);
     if (session.has_value() && session->current_text_channel) {
         auto prev = session->current_text_channel.value();
-        ctx.subscription_manager.unsubscribe(user_id, Topic::ChannelTopic(hub_id, prev));
+        ctx.subscription_manager.unsubscribeConnection(
+            input->conn, Topic::ChannelTopic(hub_id, prev));
     }
 
     // Subscribe user to channel topic and record session context
-    ctx.subscription_manager.subscribe(user_id, Topic::ChannelTopic(hub_id, channel.id));
+    ctx.subscription_manager.subscribeConnection(
+        input->conn, Topic::ChannelTopic(hub_id, channel.id));
     ctx.session_manager.joinTextChannel(user_id, hub_id, channel.id);
 
     const auto public_channel_id = ctx.ids.to_public(channel.id);

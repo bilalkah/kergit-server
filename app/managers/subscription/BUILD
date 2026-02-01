@@ -25,5 +25,6 @@ cc_library(
     deps = [
         ":topic",
         "@fmt",
+        "//utils:metrics",
     ],
 )

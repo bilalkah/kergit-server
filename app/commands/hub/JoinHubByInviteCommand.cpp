@@ -31,7 +31,7 @@ std::string resolve_display_name(CommandContext& ctx, const UserId& user_id,
 }
 
 sercom::protocol::domain::HubRole role_to_proto(const std::optional<Role>& role) {
-    if (!role.has_value()) return sercom::protocol::domain::HubRole_MEMBER;
+    if (!role) return sercom::protocol::domain::HubRole_MEMBER;
     return converters::to_proto_hub_role(*role);
 }
 
@@ -114,7 +114,7 @@ std::vector<net::outbound::OutgoingMessage> JoinHubByInviteCommand::execute(
         }
     }
 
-    ctx.subscription_manager.subscribe(user_id, Topic::HubTopic(hub_id));
+    ctx.subscription_manager.subscribeConnection(event->conn_id, Topic::HubTopic(hub_id));
 
     const auto public_hub_id = ctx.ids.to_public(hub_id).value;
     const auto public_user_id = ctx.ids.to_public(user_id).value;
@@ -145,9 +145,7 @@ std::vector<net::outbound::OutgoingMessage> JoinHubByInviteCommand::execute(
             .action =
                 net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
                                       net::outbound::SendPayload{
-                                          .payload = net::outbound::Payload{
-                                              .data = std::move(already_bytes),
-                                              .is_binary = true}}}});
+                                          .payload = net::outbound::Payload{std::move(already_bytes), true}}}});
     }
 
     sercom::protocol::event::SessionBootstrap bootstrap;
@@ -196,18 +194,18 @@ std::vector<net::outbound::OutgoingMessage> JoinHubByInviteCommand::execute(
     auto& joined_msg = out.back();
     joined_msg.target = net::outbound::Target::one(event->conn_id);
     joined_msg.action.emplace<net::outbound::SendPayload>(net::outbound::SendPayload{
-        .payload = net::outbound::Payload{.data = std::move(joined_bytes),
-                                          .is_binary = true}});
+        .payload = net::outbound::Payload{std::move(joined_bytes), true}});
 
     if (!already_member) {
+        utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(
+            1, std::memory_order_relaxed);
         auto subs = ctx.subscription_manager.getSubscribers(Topic::HubTopic(hub_id));
-        if (subs.has_value()) {
+        if (subs) {
             std::vector<GlobalConnId> conns;
             conns.reserve(subs->size());
-            for (const auto& uid : subs.value()) {
-                if (uid == user_id) continue;
-                auto conn = ctx.session_manager.getMainConnection(uid);
-                if (conn.has_value()) conns.push_back(conn.value());
+            for (const auto& conn : *subs) {
+                if (conn == event->conn_id) continue;
+                conns.push_back(conn);
             }
             if (!conns.empty()) {
                 sercom::protocol::event::HubMemberJoined member_joined;
@@ -233,8 +231,7 @@ std::vector<net::outbound::OutgoingMessage> JoinHubByInviteCommand::execute(
                 auto& member_msg = out.back();
                 member_msg.target = net::outbound::Target::many(std::move(conns));
                 member_msg.action.emplace<net::outbound::SendPayload>(
-                    net::outbound::SendPayload{.payload = net::outbound::Payload{
-                        .data = std::move(bytes), .is_binary = true}});
+                    net::outbound::SendPayload{.payload = net::outbound::Payload{std::move(bytes), true}});
             }
         }
     }

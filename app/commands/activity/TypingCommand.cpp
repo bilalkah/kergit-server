@@ -63,9 +63,9 @@ std::vector<net::outbound::OutgoingMessage> TypingCommand::execute(CommandContex
     }
 
     auto session = ctx.session_manager.getSession(user_id);
-    if (!session.has_value() || !session->current_text_channel || !session->current_hub ||
-        session->current_text_channel.value() != *channel_id_opt ||
-        session->current_hub.value() != *hub_id_opt) {
+    if (!session || !session->current_text_channel || !session->current_hub ||
+        session->current_text_channel != *channel_id_opt ||
+        session->current_hub != *hub_id_opt) {
         return {};
     }
 
@@ -96,15 +96,14 @@ std::vector<net::outbound::OutgoingMessage> TypingCommand::execute(CommandContex
     out_env.SerializeToString(&bytes);
 
     std::vector<GlobalConnId> conns;
+    utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(
+        1, std::memory_order_relaxed);
     auto subs =
         ctx.subscription_manager.getSubscribers(Topic::ChannelTopic(*hub_id_opt, *channel_id_opt));
-    if (subs.has_value()) {
-        for (const auto& uid : subs.value()) {
-            if (uid == user_id) continue;
-            auto conn = ctx.session_manager.getMainConnection(uid);
-            if (conn.has_value()) {
-                conns.push_back(conn.value());
-            }
+    if (subs) {
+        for (const auto& conn : *subs) {
+            if (conn == event->conn_id) continue;
+            conns.push_back(conn);
         }
     }
 
@@ -117,8 +116,7 @@ std::vector<net::outbound::OutgoingMessage> TypingCommand::execute(CommandContex
         .target = net::outbound::Target::many(std::move(conns)),
         .action =
             net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
-                                  net::outbound::SendPayload{.payload = net::outbound::Payload{
-                                      .data = std::move(bytes), .is_binary = true}}}});
+                                  net::outbound::SendPayload{.payload = net::outbound::Payload{std::move(bytes), true}}}});
 }
 
 }  // namespace app
