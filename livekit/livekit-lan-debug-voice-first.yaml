@@ -1,0 +1,29 @@
+# Single-node, LAN-optimized LiveKit configuration for voice-first applications. Uses explicit UDP port ranges (no mux) 
+# for transparent ICE debugging, forces loopback candidates, disables external IP discovery, enables aggressive TCP fallback, 
+# increases audio buffering for join stability, and exposes Prometheus metrics with verbose RTC (pion) logging. Intended for 
+# diagnosing intermittent connect/silent-audio issues before moving to production or UDP mux.
+
+port: 7880
+
+rtc:
+  port_range_start: 50000
+  port_range_end: 50100
+  tcp_port: 7881
+  enable_loopback_candidate: true
+  use_external_ip: false
+  node_ip: 192.168.0.15
+  allow_tcp_fallback: true
+  packet_buffer_size_audio: 300
+
+keys:
+  dev: a780bc5d7c0fddb53308e170d3bbef4e01fdf7d28a3c171cde429c58b794ddd4
+
+room:
+  enabled_codecs:
+    - mime: audio/opus
+
+logging:
+  level: debug
+  pion_level: info
+
+prometheus_port: 6789
