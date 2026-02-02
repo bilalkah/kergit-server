@@ -50,11 +50,12 @@ services:
     command: --config /config/livekit.yaml
 
     volumes:
-      - ../livekit/livekit.yaml:/config/livekit.yaml:ro
+      - ../livekit/livekit-lan-debug-voice-first.yaml:/config/livekit.yaml:ro
     ports:
       - "7880:7880"
       - "7881:7881/tcp"
-      - "7882:7882/udp"
+      - "50000-50100:50000-50100/udp"
+      - "6789:6789"
     restart: unless-stopped
 
   caddy:
@@ -88,4 +89,3 @@ networks:
   default:
     enable_ipv6: true
     
-
