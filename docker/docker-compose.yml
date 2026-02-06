@@ -48,14 +48,9 @@ services:
     image: livekit/livekit-server:latest
     container_name: livekit
     command: --config /config/livekit.yaml
-
+    network_mode: host
     volumes:
       - ../livekit/livekit-lan-debug-voice-first.yaml:/config/livekit.yaml:ro
-    ports:
-      - "7880:7880"
-      - "7881:7881/tcp"
-      - "50000-50100:50000-50100/udp"
-      - "6789:6789"
     restart: unless-stopped
 
   caddy:
@@ -63,8 +58,7 @@ services:
     container_name: livekit-caddy
     depends_on:
       - livekit
-    ports:
-      - "7883:7883"
+    network_mode: host
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ../certs:/certs:ro
