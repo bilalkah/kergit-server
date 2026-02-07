@@ -1,0 +1,30 @@
+port: 7890
+
+redis:
+  address: 127.0.0.1:6379
+
+rtc:
+  port_range_start: 50101
+  port_range_end: 50200
+
+  tcp_port: 7891
+  allow_tcp_fallback: true
+
+  enable_loopback_candidate: false
+  use_external_ip: false
+  node_ip: 192.168.0.226
+
+  packet_buffer_size_audio: 100
+
+keys:
+  dev: a780bc5d7c0fddb53308e170d3bbef4e01fdf7d28a3c171cde429c58b794ddd4
+
+room:
+  enabled_codecs:
+    - mime: audio/opus
+
+logging:
+  level: debug
+  pion_level: info
+
+prometheus_port: 6790

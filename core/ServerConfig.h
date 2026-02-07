@@ -71,8 +71,8 @@ struct ServerConfig {
 class ServerConfigFiller {
    public:
     static void fill_from_env(ServerConfig& cfg) {
-        cfg.network.host = utils::EnvLoader::get_env("SERVER_HOST", cfg.network.host);
-        cfg.network.port = std::stoi(utils::EnvLoader::get_env("SERVER_PORT", "9001"));
+        cfg.network.host = utils::EnvLoader::get_env("LISTEN_HOST", cfg.network.host);
+        cfg.network.port = std::stoi(utils::EnvLoader::get_env("SOCKET_PORT", "9001"));
         cfg.network.ws_path = utils::EnvLoader::get_env("SOCKET_PATTERN", cfg.network.ws_path);
         cfg.network.outbound_queue_capacity = static_cast<std::size_t>(std::stoul(
             utils::EnvLoader::get_env("OUTBOUND_QUEUE_CAPACITY",

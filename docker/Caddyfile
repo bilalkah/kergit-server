@@ -1,19 +1,38 @@
-:7883 {
+:443 {
   tls /certs/cert.pem /certs/key.pem
-  header {
-    Access-Control-Allow-Origin "https://192.168.0.15:3000"
-    Access-Control-Allow-Credentials "true"
-    Access-Control-Allow-Methods "GET, OPTIONS"
-    Access-Control-Allow-Headers "Authorization, Content-Type"
-  }
 
   @preflight method OPTIONS
   respond @preflight 204
 
-  reverse_proxy 192.168.0.15:7880 {
-    header_up Host {host}
-    header_up X-Forwarded-Proto {scheme}
-    header_up X-Forwarded-For {remote}
-    header_up Origin {http.request.header.Origin}
+  # LiveKit signaling (CORS only here)
+  handle_path /livekit* {
+    header {
+      Access-Control-Allow-Origin "{http.request.header.Origin}"
+      Access-Control-Allow-Credentials "true"
+      Access-Control-Allow-Methods "GET, OPTIONS"
+      Access-Control-Allow-Headers "Authorization, Content-Type, X-Room-ID"
+    }
+
+    reverse_proxy {
+      to 127.0.0.1:7880
+      to 127.0.0.1:7890
+      lb_policy header X-Room-ID
+    }
+  }
+
+  # Backend WebSocket server
+  handle_path /ws* {
+    reverse_proxy 127.0.0.1:9001 {
+      header_up Host {host}
+      header_up X-Forwarded-For {remote}
+      header_up X-Forwarded-Proto {scheme}
+      header_up Origin {http.request.header.Origin}
+      header_up Sec-WebSocket-Protocol {http.request.header.Sec-WebSocket-Protocol}
+    }
+  }
+
+  # Nuxt frontend
+  handle {
+    reverse_proxy 127.0.0.1:3000
   }
 }

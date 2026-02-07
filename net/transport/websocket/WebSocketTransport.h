@@ -40,11 +40,15 @@ struct WsLimits {
 struct OriginAllowlist {
     bool is_allowed(const std::string& origin) const {
         if (origin.empty()) return true;
-        return origin.find("http://localhost") == 0 || origin.find("https://localhost") == 0;
+
+        return origin.find("http://localhost") == 0 || origin.find("https://localhost") == 0 ||
+               origin.find("http://127.0.0.1") == 0 || origin.find("https://127.0.0.1") == 0 ||
+               origin.find("http://192.168.") == 0 || origin.find("https://192.168.") == 0;
     }
 };
 
-class TextWSServer : public ITransportServer, public transport::IOutboundTransport,
+class TextWSServer : public ITransportServer,
+                     public transport::IOutboundTransport,
                      public utils::Loggable {
    public:
     explicit TextWSServer(core::NetworkStackConfig cfg, connection::ConnectionRegistery& conns,
@@ -61,8 +65,7 @@ class TextWSServer : public ITransportServer, public transport::IOutboundTranspo
     const char* name() const override;
     void* loop_id() const override;
     void set_hooks(Hooks hooks) override;
-    bool send(transport::WsHandle& handle, std::string_view payload,
-              bool binary) noexcept override;
+    bool send(transport::WsHandle& handle, std::string_view payload, bool binary) noexcept override;
     bool is_backpressured(const transport::WsHandle& handle) const noexcept override;
 
    private:

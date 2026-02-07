@@ -101,21 +101,24 @@ void TextWSServer::wire() {
                 [this](auto* res, auto* req, auto* ctx) {
                     log(utils::LogLevel::WARN, "Incoming WebSocket upgrade request");
                     std::string origin = std::string(req->getHeader("origin"));
-                    // if (!origins_.is_allowed(origin)) {
-                    //     res->writeStatus("403 Forbidden")->end("Origin not allowed");
-                    //     return;
-                    // }
-
+                    if (!origins_.is_allowed(origin)) {
+                        res->writeStatus("403 Forbidden")->end("Origin not allowed");
+                        return;
+                    }
+                    log(utils::LogLevel::WARN, "origins_.is_allowed passed for origin: " + std::string(origin));
                     if (!auth_.has_value()) {
                         res->writeStatus("500")->end("Server misconfiguration");
                         return;
                     }
+                    log(utils::LogLevel::WARN, "Auth verifier is initialized");
 
                     if (active_connections_.load(std::memory_order_relaxed) >=
                         limits_.max_connections) {
                         res->writeStatus("503")->end("Max connections reached");
                         return;
                     }
+                    log(utils::LogLevel::WARN, "Connection limit check passed. Active connections: " +
+                        std::to_string(active_connections_.load(std::memory_order_relaxed)));
 
                     const auto protocols = req->getHeader("sec-websocket-protocol");
                     const auto ws_key = req->getHeader("sec-websocket-key");
@@ -125,11 +128,14 @@ void TextWSServer::wire() {
                         res->writeStatus("401")->end("Unauthorized");
                         return;
                     }
+                    log(utils::LogLevel::WARN, "Extracted token: " + std::string(token));
                     auto auth_result = auth_->verify_token(std::string(token));
                     if (!auth_result.has_value()) {
                         res->writeStatus("401")->end("Unauthorized");
                         return;
                     }
+                    log(utils::LogLevel::WARN, "Token verified successfully. User ID: " + std::string(auth_result->id) +
+                        ", Role: " + std::string(auth_result->role));
 
                     const auto& claims = auth_result.value();
                     PerSocketData psd{};
@@ -142,6 +148,8 @@ void TextWSServer::wire() {
                                                          ctx);
 
                     active_connections_.fetch_add(1, std::memory_order_relaxed);
+                    log(utils::LogLevel::WARN, "WebSocket upgrade successful. Assigned connection ID: " + psd.conn_id.value +
+                        ". Active connections: " + std::to_string(active_connections_.load(std::memory_order_relaxed)));
                 },
 
             .open =

@@ -10,8 +10,11 @@ message VoiceTokenIssued {
   // LiveKit access token (JWT)
   string token = 2;
 
+  // LiveKit server URL (without protocol)
+  string livekit_url = 3;
+
   // Expiration in seconds (informational)
-  uint64 expires_in = 3;
+  uint64 expires_in = 4;
 }
 
 

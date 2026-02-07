@@ -1,23 +1,19 @@
-# LiveKit LAN debug configuration (Ubuntu, host networking)
-# Voice-first, single node, deterministic ICE behavior
-
 port: 7880
 
+redis:
+  address: 127.0.0.1:6379
+
 rtc:
-  # Explicit UDP range for clear debugging
   port_range_start: 50000
   port_range_end: 50100
 
-  # TCP fallback (WebRTC-over-TCP)
   tcp_port: 7881
   allow_tcp_fallback: true
 
-  # LAN behavior
   enable_loopback_candidate: false
   use_external_ip: false
-  node_ip: 192.168.0.15
+  node_ip: 192.168.0.226
 
-  # Audio stability (moderate, not excessive)
   packet_buffer_size_audio: 100
 
 keys:
