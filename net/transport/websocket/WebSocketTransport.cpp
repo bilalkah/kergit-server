@@ -27,6 +27,14 @@ TextWSServer::TextWSServer(core::NetworkStackConfig cfg, connection::ConnectionR
         return;
     }
     auth_.emplace(std::move(verifier.value()));
+
+    auto verifier_jwtcpp = infra::security::token::SupabaseJWTVerifierJwtCpp::create();
+    if (!verifier_jwtcpp.has_value()) {
+        log(utils::LogLevel::ERROR, "Failed to initialize SupabaseJWTVerifierJwtCpp. Error: ",
+            static_cast<int>(verifier_jwtcpp.error()));
+    } else {
+        auth_jwt_cpp_.emplace(std::move(verifier_jwtcpp.value()));
+    }
 }
 
 TextWSServer::~TextWSServer() {}
@@ -120,16 +128,50 @@ void TextWSServer::wire() {
                     log(utils::LogLevel::WARN, "Connection limit check passed. Active connections: " +
                         std::to_string(active_connections_.load(std::memory_order_relaxed)));
 
-                    const auto protocols = req->getHeader("sec-websocket-protocol");
                     const auto ws_key = req->getHeader("sec-websocket-key");
-                    const auto token = extract_token(protocols);
-
-                    if (token.empty()) {
+                    const auto auth_header = std::string(req->getHeader("authorization"));
+                    if (auth_header.empty()) {
                         res->writeStatus("401")->end("Unauthorized");
                         return;
                     }
-                    log(utils::LogLevel::WARN, "Extracted token: " + std::string(token));
-                    auto auth_result = auth_->verify_token(std::string(token));
+                    const auto token = extract_supabase_token(auth_header);
+                    if (!token.has_value()) {
+                        res->writeStatus("401")->end("Unauthorized");
+                        return;
+                    }
+                    log(utils::LogLevel::INFO, "WS auth via Authorization header");
+
+                    const auto openssl_start = std::chrono::steady_clock::now();
+                    auto auth_result = auth_->verify_token(token.value());
+                    const auto openssl_end = std::chrono::steady_clock::now();
+                    const auto openssl_us =
+                        std::chrono::duration_cast<std::chrono::microseconds>(openssl_end - openssl_start)
+                            .count();
+
+                    std::optional<infra::security::token::JwtVerifyResult> jwtcpp_result;
+                    std::optional<long long> jwtcpp_us;
+                    if (auth_jwt_cpp_.has_value()) {
+                        const auto jwtcpp_start = std::chrono::steady_clock::now();
+                        jwtcpp_result = auth_jwt_cpp_->verify_token(token.value());
+                        const auto jwtcpp_end = std::chrono::steady_clock::now();
+                        jwtcpp_us = std::chrono::duration_cast<std::chrono::microseconds>(jwtcpp_end - jwtcpp_start)
+                                        .count();
+                    }
+
+                    if (jwtcpp_us.has_value()) {
+                        log(utils::LogLevel::INFO, "JWT verify timing (us): openssl=", openssl_us,
+                            " jwt_cpp=", jwtcpp_us.value());
+                    } else {
+                        log(utils::LogLevel::INFO, "JWT verify timing (us): openssl=", openssl_us,
+                            " jwt_cpp=unavailable");
+                    }
+
+                    if (jwtcpp_result.has_value() &&
+                        jwtcpp_result->has_value() != auth_result.has_value()) {
+                        log(utils::LogLevel::WARN, "JWT verifier mismatch: openssl_ok=",
+                            auth_result.has_value(), " jwtcpp_ok=", jwtcpp_result->has_value());
+                    }
+
                     if (!auth_result.has_value()) {
                         res->writeStatus("401")->end("Unauthorized");
                         return;
@@ -143,7 +185,7 @@ void TextWSServer::wire() {
                     psd.user_id = UserId{claims.id};
                     psd.role = claims.role;
                     psd.exp = claims.exp;
-                    res->template upgrade<PerSocketData>(std::move(psd), ws_key, "supabase",
+                    res->template upgrade<PerSocketData>(std::move(psd), ws_key, "",
                                                          req->getHeader("sec-websocket-extensions"),
                                                          ctx);
 

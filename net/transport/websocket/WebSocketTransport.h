@@ -3,6 +3,7 @@
 
 #include "core/ServerConfig.h"
 #include "infra/security/token/SupabaseJwtVerifier.h"
+#include "infra/security/token/SupabaseJwtVerifierJwtCpp.h"
 #include "net/connection/ConnectionRegistery.h"
 #include "net/outbound/OutgoingQueue.h"
 #include "net/outbound/OutgoingWorker.h"
@@ -102,6 +103,7 @@ class TextWSServer : public ITransportServer,
     outbound::OutgoingWorker out_worker_;
     Hooks hooks_{};
     std::optional<infra::security::token::SupabaseJWTVerifier> auth_{};
+    std::optional<infra::security::token::SupabaseJWTVerifierJwtCpp> auth_jwt_cpp_{};
     ConnIdGenerator conn_id_gen_{};
 
     /**
