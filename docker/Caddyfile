@@ -21,13 +21,17 @@
   }
 
   # Backend WebSocket server
+  map {http.request.header.Authorization} {ws_auth_header} {
+    default {http.request.header.Authorization}
+    "" "supabase {http.request.cookie.ws_auth}"
+  }
   handle_path /ws* {
     reverse_proxy 127.0.0.1:9001 {
       header_up Host {host}
       header_up X-Forwarded-For {remote}
       header_up X-Forwarded-Proto {scheme}
       header_up Origin {http.request.header.Origin}
-      header_up Sec-WebSocket-Protocol {http.request.header.Sec-WebSocket-Protocol}
+      header_up Authorization {ws_auth_header}
     }
   }
 

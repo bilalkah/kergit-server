@@ -49,6 +49,7 @@ cc_library(
     copts = ["-std=gnu++23"],
     visibility = ["//visibility:public"],
     deps = [
+        ":env_loader",
         ":loggable",
         "@fmt",
     ],

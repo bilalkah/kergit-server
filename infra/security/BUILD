@@ -5,11 +5,13 @@ cc_library(
     srcs = [
         "token/JwtJsonUtils.cpp",
         "token/SupabaseJwtVerifier.cpp",
+        "token/SupabaseJwtVerifierJwtCpp.cpp",
     ],
     hdrs = [
         "token/ITokenVerifier.h",
         "token/JwtJsonUtils.h",
         "token/SupabaseJwtVerifier.h",
+        "token/SupabaseJwtVerifierJwtCpp.h",
     ],
     copts = ["-std=gnu++23"],
     linkopts = ["-lcrypto"],  # OpenSSL crypto library
@@ -17,6 +19,7 @@ cc_library(
     deps = [
         "//utils:env_loader",
         "//utils:loggable",
+        "@jwt-cpp//:jwt-cpp",
         "@nlohmann_json",
     ],
 )

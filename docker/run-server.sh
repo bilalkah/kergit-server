@@ -35,5 +35,8 @@ docker compose -f "$COMPOSE_FILE" up -d caddy
 echo "▶ Starting socket server..."
 docker compose -f "$COMPOSE_FILE" up -d ubuntu-dev
 
+echo "▶ Starting admin client..."
+"$REPO_ROOT/clients/admin/docker/docker-run-nuxt.sh" --detached
+
 exec docker exec -it "$DEV_CONTAINER" bash -lc \
   "cd /home/sercom/workspace && bazel run --config=$BAZEL_CONFIG //server:fake_discord"

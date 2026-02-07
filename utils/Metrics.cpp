@@ -1,7 +1,10 @@
 #include "utils/Metrics.h"
 
+#include "utils/EnvLoader.h"
 #include "utils/Logger.h"
 
+#include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <fmt/format.h>
 #include <mutex>
@@ -19,6 +22,13 @@ std::size_t ring_size = 0;
 std::shared_mutex ring_mu;
 std::jthread timeseries_thread;
 std::atomic<bool> timeseries_started{false};
+
+bool metrics_log_enabled() {
+    auto value = utils::EnvLoader::get_env("METRICS_LOG", "1");
+    std::transform(value.begin(), value.end(), value.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return !(value == "0" || value == "false" || value == "off" || value == "no");
+}
 }  // namespace
 
 Counters& counters() {
@@ -27,6 +37,9 @@ Counters& counters() {
 }
 
 void maybe_log() {
+    if (!metrics_log_enabled()) {
+        return;
+    }
     const auto now = std::chrono::steady_clock::now().time_since_epoch();
     const auto now_ns =
         static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(now).count());

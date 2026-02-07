@@ -26,6 +26,21 @@ std::string_view extract_token(std::string_view protocols) {
     return trim_ws(protocols.substr(comma + 1));
 }
 
+std::optional<std::string> extract_supabase_token(const std::string& header) {
+    static constexpr std::string_view prefix = "supabase ";
+    if (header.size() < prefix.size()) {
+        return std::nullopt;
+    }
+    if (header.rfind(prefix, 0) != 0) {
+        return std::nullopt;
+    }
+    auto token = header.substr(prefix.size());
+    if (token.empty()) {
+        return std::nullopt;
+    }
+    return token;
+}
+
 std::expected<std::string, std::string> make_app_pong_response(
     const sercom::protocol::Envelope& env) {
     if (env.type() != sercom::protocol::Envelope::PING) {
