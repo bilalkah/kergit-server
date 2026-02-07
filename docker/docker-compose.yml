@@ -44,37 +44,50 @@ services:
     network_mode: host
     command: bash -lc "sleep infinity"
 
-  livekit:
+  livekit-node1:
     image: livekit/livekit-server:latest
-    container_name: livekit
+    container_name: livekit-node1
     command: --config /config/livekit.yaml
     network_mode: host
     volumes:
-      - ../livekit/livekit-lan-debug-voice-first.yaml:/config/livekit.yaml:ro
+      - ../livekit/lan_node1.yaml:/config/livekit.yaml:ro
     restart: unless-stopped
+    depends_on:
+      - redis
+
+  livekit-node2:
+    image: livekit/livekit-server:latest
+    container_name: livekit-node2
+    command: --config /config/livekit.yaml
+    network_mode: host
+    volumes:
+      - ../livekit/lan_node2.yaml:/config/livekit.yaml:ro
+    restart: unless-stopped
+    depends_on:
+      - redis
+    profiles: ["multi"]
 
   caddy:
     image: caddy:2
     container_name: livekit-caddy
-    depends_on:
-      - livekit
     network_mode: host
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ../certs:/certs:ro
     restart: unless-stopped
+    depends_on:
+      - livekit-node1
 
-  
   redis:
     image: redis:7-alpine
-    container_name: sercom-redis
+    container_name: livekit-redis
     ports:
       - "6379:6379"
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redis-data:/data
+    restart: unless-stopped
 
-      
 volumes:
   ccache:
   redis-data:

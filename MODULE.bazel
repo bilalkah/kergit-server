@@ -39,7 +39,7 @@ hiredis_ext = use_extension("//third_party/hiredis:extension.bzl", "hiredis")
 use_repo(hiredis_ext, "hiredis")
 
 # Bazel rules dependencies.
-bazel_dep(name = "rules_python", version = "1.6.0")
+bazel_dep(name = "rules_python", version = "1.7.0")
 bazel_dep(name = "rules_cc", version = "0.2.14")
 bazel_dep(name = "rules_shell", version = "0.6.1")
 bazel_dep(name = "platforms", version = "1.0.0")

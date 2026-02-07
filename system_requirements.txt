@@ -1,2 +1,0 @@
-libpqxx-dev 
-libpq-dev
