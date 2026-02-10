@@ -96,19 +96,6 @@ void Dispatcher::register_all() {
         std::make_unique<RenameChannelCommand>();
     map_proto_[sercom::protocol::Envelope_Type_CHANNEL_REMOVE] =
         std::make_unique<RemoveChannelCommand>();
-    // register_cmd("join_channel", std::make_unique<JoinChannelCommand>());
-    // register_cmd("send_message", std::make_unique<SendMessageCommand>());
-    // register_cmd("create_channel", std::make_unique<CreateChannelCommand>());
-    // register_cmd("delete_channel", std::make_unique<DeleteChannelCommand>());
-    // register_cmd("rename_channel", std::make_unique<RenameChannelCommand>());
-    // register_cmd("delete_hub", std::make_unique<DeleteHubCommand>());
-    // register_cmd("create_hub", std::make_unique<CreateHubCommand>());
-    // register_cmd("rename_hub", std::make_unique<RenameHubCommand>());
-    // register_cmd("generate_hub_invite", std::make_unique<GetHubInviteCommand>());
-    // register_cmd("join_hub_by_code", std::make_unique<JoinHubByInviteCommand>());
-    // register_cmd("leave_hub", std::make_unique<LeaveHubCommand>());
-    // register_cmd("update_member_role", std::make_unique<UpdateMemberRoleCommand>());
-    // register_cmd("update_profile", std::make_unique<UpdateProfileCommand>());
 }
 
 }  // namespace app

@@ -2,9 +2,10 @@
 #define APP_SERVICES_HUB_HUBNOTIFIER_H
 
 #include "app/services/PublicIdService.h"
+#include "domains/Channel.h"
 #include "domains/ids/Ids.h"
+#include "domains/Hub.h"
 
-#include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
 
@@ -15,20 +16,25 @@ class HubNotifier {
     HubNotifier(PublicIdService& ids);
 
     // hub-level events
-    nlohmann::json hubRenamed(const HubId& hubId, const std::string& newName);
-    nlohmann::json hubDeleted(const HubId& hubId);
+    std::string hubRenamed(const HubId& hubId, const std::string& newName);
+    std::string hubDeleted(const HubId& hubId);
 
     // membership events
-    nlohmann::json memberJoined(const HubId& hubId, const UserId& userId);
-    nlohmann::json memberLeft(const HubId& hubId, const UserId& userId);
+    std::string memberJoined(const HubId& hubId,
+                             const UserId& userId,
+                             Role role,
+                             const std::string& display_name,
+                             const std::string& avatar_seed,
+                             const std::string& username,
+                             bool is_online);
+    std::string memberLeft(const HubId& hubId, const UserId& userId);
     std::string memberOnline(const HubId& hubId, const UserId& userId);
     std::string memberOffline(const HubId& hubId, const UserId& userId);
 
     // channel events
-    nlohmann::json channelCreated(const HubId& hubId, const ChannelId& channelId);
-    nlohmann::json channelRenamed(const HubId& hubId, const ChannelId& channelId,
-                                  const std::string& name);
-    nlohmann::json channelDeleted(const HubId& hubId, const ChannelId& channelId);
+    std::string channelCreated(const HubId& hubId, const Channel& channel);
+    std::string channelRenamed(const HubId& hubId, const Channel& channel);
+    std::string channelDeleted(const HubId& hubId, const ChannelId& channelId);
 
    private:
     PublicIdService& ids_;

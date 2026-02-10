@@ -7,7 +7,6 @@
 #include "domains/Hub.h"
 #include "proto/command/channel.pb.h"
 #include "proto/envelope.pb.h"
-#include "proto/event/channel.pb.h"
 #include "proto/event/error.pb.h"
 
 #include <optional>
@@ -81,17 +80,7 @@ std::vector<net::outbound::OutgoingMessage> RemoveChannelCommand::execute(Comman
 
     ctx.subscription_manager.removeAllForTopic(Topic::ChannelTopic(hub_id, channel.id));
 
-    sercom::protocol::event::ChannelRemoved removed_evt;
-    removed_evt.set_hub_id(ctx.ids.to_public(hub_id).value);
-    removed_evt.set_channel_id(ctx.ids.to_public(channel.id).value);
-
-    sercom::protocol::Envelope out_env;
-    out_env.set_version(1);
-    out_env.set_type(sercom::protocol::Envelope::CHANNEL_REMOVED);
-    removed_evt.SerializeToString(out_env.mutable_payload());
-
-    std::string bytes;
-    out_env.SerializeToString(&bytes);
+    std::string bytes = ctx.hub_notifier.channelDeleted(hub_id, channel.id);
 
     utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(
         1, std::memory_order_relaxed);
