@@ -1,7 +1,7 @@
 #ifndef APP_SERVICES_AUTHSERVICE_H
 #define APP_SERVICES_AUTHSERVICE_H
 
-#include "infra/security/token/SupabaseJwtVerifier.h"
+#include "infra/security/token/SupabaseVerifier.h"
 #include "utils/Loggable.h"
 
 #include <expected>
@@ -24,7 +24,7 @@ class AuthService : utils::Loggable {
     AuthResult authenticate(const std::string_view token);
 
    private:
-    infra::security::token::SupabaseJWTVerifier token_verifier_;
+    infra::security::token::SupabaseVerifier token_verifier_;
 };
 
 }  // namespace app::services

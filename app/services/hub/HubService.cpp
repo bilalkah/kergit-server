@@ -159,10 +159,10 @@ std::optional<std::pair<HubId, HubSnapshotChannel>> HubService::tryGetSnapshotCh
 
 HubSnapshot HubService::getOrBuildSnapshot(const HubId& hubId) {
     if (auto cached = tryGetSnapshot(hubId)) {
-        utils::log_line(utils::LogLevel::INFO, "hub_snapshot hit hub_id=" + hubId.value);
+        // utils::log_line(utils::LogLevel::INFO, "hub_snapshot hit hub_id=" + hubId.value);
         return *cached;
     }
-    utils::log_line(utils::LogLevel::INFO, "hub_snapshot miss hub_id=" + hubId.value + " build=true");
+    // utils::log_line(utils::LogLevel::INFO, "hub_snapshot miss hub_id=" + hubId.value + " build=true");
     return buildSnapshot(hubId);
 }
 

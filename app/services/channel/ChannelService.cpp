@@ -14,16 +14,16 @@ std::optional<Channel> ChannelService::getChannel(const ChannelId& channelId) {
     if (hub_service_) {
         if (auto hit = hub_service_->tryGetSnapshotChannel(channelId)) {
             const auto& [hub_id, ch] = *hit;
-            utils::log_line(utils::LogLevel::INFO,
-                            "channel_snapshot hit channel_id=" + channelId.value +
-                                " hub_id=" + hub_id.value);
+            // utils::log_line(utils::LogLevel::INFO,
+            //                 "channel_snapshot hit channel_id=" + channelId.value +
+            //                     " hub_id=" + hub_id.value);
             Channel channel{ch.name, ch.id, hub_id, ch.type};
             cache_->put(channel);
             return channel;
         }
 
-        utils::log_line(utils::LogLevel::INFO,
-                        "channel_snapshot miss channel_id=" + channelId.value + " build=true");
+        // utils::log_line(utils::LogLevel::INFO,
+        //                 "channel_snapshot miss channel_id=" + channelId.value + " build=true");
 
         // No snapshot yet; use cached hub_id if available to build the snapshot.
         auto cachedChannel = cache_->get(channelId);
@@ -53,8 +53,8 @@ std::optional<Channel> ChannelService::getChannel(const ChannelId& channelId) {
         return std::nullopt;
     }
 
-    utils::log_line(utils::LogLevel::INFO,
-                    "channel_snapshot fallback channel_id=" + channelId.value + " source=db");
+    // utils::log_line(utils::LogLevel::INFO,
+    //                 "channel_snapshot fallback channel_id=" + channelId.value + " source=db");
     auto cachedChannel = cache_->get(channelId);
     if (cachedChannel) {
         return cachedChannel.value();
@@ -70,8 +70,8 @@ std::optional<Channel> ChannelService::getChannel(const ChannelId& channelId) {
 std::vector<Channel> ChannelService::getHubChannels(const HubId& hubId) {
     if (hub_service_) {
         if (auto cached = hub_service_->tryGetSnapshot(hubId)) {
-            utils::log_line(utils::LogLevel::INFO,
-                            "channel_snapshot hit hub_id=" + hubId.value);
+            // utils::log_line(utils::LogLevel::INFO,
+            //                 "channel_snapshot hit hub_id=" + hubId.value);
             std::vector<Channel> chans;
             chans.reserve(cached->channels.size());
             for (const auto& ch : cached->channels) {
@@ -79,8 +79,8 @@ std::vector<Channel> ChannelService::getHubChannels(const HubId& hubId) {
             }
             return chans;
         }
-        utils::log_line(utils::LogLevel::INFO,
-                        "channel_snapshot miss hub_id=" + hubId.value + " build=true");
+        // utils::log_line(utils::LogLevel::INFO,
+        //                 "channel_snapshot miss hub_id=" + hubId.value + " build=true");
         const auto snapshot = hub_service_->getOrBuildSnapshot(hubId);
         std::vector<Channel> chans;
         chans.reserve(snapshot.channels.size());
@@ -90,8 +90,8 @@ std::vector<Channel> ChannelService::getHubChannels(const HubId& hubId) {
         return chans;
     }
 
-    utils::log_line(utils::LogLevel::INFO,
-                    "channel_snapshot fallback hub_id=" + hubId.value + " source=db");
+    // utils::log_line(utils::LogLevel::INFO,
+    //                 "channel_snapshot fallback hub_id=" + hubId.value + " source=db");
     // No HubService wired; fall back to DB read for hub channels.
     return repo_.getHubChannels(hubId);
 }

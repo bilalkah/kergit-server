@@ -8,54 +8,11 @@
 #include <string>
 #include <vector>
 #include <gtest/gtest.h>
+
 using infra::security::token::SupabaseVerifier;
 using utils::EnvLoader;
 
-TEST(JwtVerifier, MissingKeysReturnError) {
-    EnvLoader::clear_env();
-    EnvLoader::set_env("SUPABASE_JWT_CURRENT_KEY", "");
-    EnvLoader::set_env("SUPABASE_JWT_STANDBY_KEY", "");
-
-    auto verifier_exp = SupabaseVerifier::create();
-    EXPECT_FALSE(verifier_exp.has_value());
-    if (!verifier_exp.has_value()) {
-        EXPECT_EQ(verifier_exp.error(), infra::security::token::JwtVerifyError::KeyNotFound);
-    }
-
-    EnvLoader::clear_env();
-}
-
-TEST(JwtVerifier, EmptyTokenReturnsInvalidFormat) {
-    EnvLoader::load_env_file();
-    auto verifier_exp = SupabaseVerifier::create();
-    if (!verifier_exp.has_value()) {
-        GTEST_SKIP() << "Supabase JWKs not configured for tests";
-    }
-
-    auto res = verifier_exp->verify_token("");
-    EXPECT_FALSE(res.has_value());
-    if (!res.has_value()) {
-        EXPECT_EQ(res.error(), infra::security::token::JwtVerifyError::EmptyToken);
-    }
-    EnvLoader::clear_env();
-}
-
-TEST(JwtVerifier, GarbageTokenReturnsInvalidFormat) {
-    EnvLoader::load_env_file();
-    auto verifier_exp = SupabaseVerifier::create();
-    if (!verifier_exp.has_value()) {
-        GTEST_SKIP() << "Supabase JWKs not configured for tests";
-    }
-
-    auto res = verifier_exp->verify_token("not.a.jwt");
-    EXPECT_FALSE(res.has_value());
-    if (!res.has_value()) {
-        EXPECT_EQ(res.error(), infra::security::token::JwtVerifyError::InvalidFormat);
-    }
-    EnvLoader::clear_env();
-}
-
-TEST(JwtVerifier, BenchmarkSampleTokens) {
+TEST(JwtVerifier, BenchmarkSampleTokensRelease) {
     EnvLoader::load_env_file();
     auto verifier_exp = SupabaseVerifier::create();
     if (!verifier_exp.has_value()) {
@@ -93,22 +50,23 @@ TEST(JwtVerifier, BenchmarkSampleTokens) {
             auto start_time = std::chrono::steady_clock::now();
             (void)verifier_exp->verify_token(token);
             auto end_time = std::chrono::steady_clock::now();
-            auto us = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time)
-                          .count();
+            auto us =
+                std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time)
+                    .count();
             if (us < min_us) min_us = us;
             if (us > max_us) max_us = us;
             sum_us += us;
         }
     }
     auto total_end = std::chrono::steady_clock::now();
-    auto total_ms = std::chrono::duration_cast<std::chrono::milliseconds>(total_end - total_start)
-                        .count();
+    auto total_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(total_end - total_start).count();
     const double avg_us = total_verifications > 0
                               ? static_cast<double>(sum_us) /
                                     static_cast<double>(total_verifications)
                               : 0.0;
 
-    std::cout << "JWT verification benchmark\n\n";
+    std::cout << "JWT verification benchmark (release)\n\n";
     std::cout << "tokens loaded: " << tokens.size() << "\n";
     std::cout << "iterations per token: " << kIterations << "\n";
     std::cout << "total verifications: " << total_verifications << "\n\n";

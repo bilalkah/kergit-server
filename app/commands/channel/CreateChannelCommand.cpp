@@ -8,7 +8,6 @@
 #include "domains/Hub.h"
 #include "proto/command/channel.pb.h"
 #include "proto/envelope.pb.h"
-#include "proto/event/channel.pb.h"
 #include "proto/event/error.pb.h"
 
 #include <algorithm>
@@ -116,20 +115,8 @@ std::vector<net::outbound::OutgoingMessage> CreateChannelCommand::execute(Comman
                                    "Unable to create channel"));
     }
 
-    sercom::protocol::event::ChannelCreated created_evt;
-    created_evt.set_hub_id(ctx.ids.to_public(hub_id).value);
-    auto* out_channel = created_evt.mutable_channel();
-    out_channel->set_id(ctx.ids.to_public(created).value);
-    out_channel->set_name(name);
-    out_channel->set_type(converters::to_proto_channel_type(channel_type));
-
-    sercom::protocol::Envelope out_env;
-    out_env.set_version(1);
-    out_env.set_type(sercom::protocol::Envelope::CHANNEL_CREATED);
-    created_evt.SerializeToString(out_env.mutable_payload());
-
-    std::string bytes;
-    out_env.SerializeToString(&bytes);
+    Channel created_channel{name, created, hub_id, channel_type};
+    std::string bytes = ctx.hub_notifier.channelCreated(hub_id, created_channel);
 
     utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(
         1, std::memory_order_relaxed);

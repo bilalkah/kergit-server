@@ -90,12 +90,12 @@ class DatabaseExecutor {
                 mux.run(std::forward<Fn>(fn), &timing);
                 const auto end_at = timing.txn_finished ? timing.txn_end_at
                                                         : std::chrono::steady_clock::now();
-                finalize("ok", nullptr, end_at);
+                // finalize("ok", nullptr, end_at);
             } else {
                 auto result = mux.run(std::forward<Fn>(fn), &timing);
                 const auto end_at = timing.txn_finished ? timing.txn_end_at
                                                         : std::chrono::steady_clock::now();
-                finalize("ok", nullptr, end_at);
+                // finalize("ok", nullptr, end_at);
                 return result;
             }
         } catch (const std::exception& ex) {

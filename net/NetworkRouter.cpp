@@ -40,7 +40,7 @@ void NetworkRouter::stop_all() {
         if (!res) {
             log(utils::LogLevel::ERROR, "Failed to stop NetworkStack " + id.value);
         } else {
-            log(utils::LogLevel::INFO, "Stopped NetworkStack " + id.value);
+            log(utils::LogLevel::WARN, "Stopped NetworkStack " + id.value);
         }
     }
 
@@ -54,7 +54,7 @@ void NetworkRouter::start_all() {
         if (!res) {
             log(utils::LogLevel::ERROR, "Failed to start NetworkStack " + id.value);
         } else {
-            log(utils::LogLevel::INFO, "Started NetworkStack " + id.value);
+            log(utils::LogLevel::WARN, "Started NetworkStack " + id.value);
         }
     }
 }

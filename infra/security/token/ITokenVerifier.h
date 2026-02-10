@@ -57,9 +57,12 @@ enum class JwtVerifyError {
     UnsupportedAlgorithm,
     InvalidSignature,
     TokenExpired,
+    TokenNotYetValid,
     MissingClaims,
     KeyNotFound,
     JwkParseError,
+    IssuerMismatch,
+    AudienceMismatch,
 };
 
 using JwtVerifyResult = std::expected<UserClaims, JwtVerifyError>;

@@ -2,8 +2,7 @@
 #define NET_TRANSPORT_WEBSOCKET_WebSocketTransport_H
 
 #include "core/ServerConfig.h"
-#include "infra/security/token/SupabaseJwtVerifier.h"
-#include "infra/security/token/SupabaseJwtVerifierJwtCpp.h"
+#include "infra/security/token/SupabaseVerifier.h"
 #include "net/connection/ConnectionRegistery.h"
 #include "net/outbound/OutgoingQueue.h"
 #include "net/outbound/OutgoingWorker.h"
@@ -102,8 +101,7 @@ class TextWSServer : public ITransportServer,
     runtime::HeartbeatService heartbeat_service_;
     outbound::OutgoingWorker out_worker_;
     Hooks hooks_{};
-    std::optional<infra::security::token::SupabaseJWTVerifier> auth_{};
-    std::optional<infra::security::token::SupabaseJWTVerifierJwtCpp> auth_jwt_cpp_{};
+    std::optional<infra::security::token::SupabaseVerifier> auth_{};
     ConnIdGenerator conn_id_gen_{};
 
     /**
@@ -116,7 +114,7 @@ class TextWSServer : public ITransportServer,
     /**
      * Number of active connections
      */
-    std::atomic<uint8_t> active_connections_{0};
+    std::atomic<uint64_t> active_connections_{0};
     std::unique_ptr<outbound::OutboundFlushEngine> flush_engine_;
 };
 

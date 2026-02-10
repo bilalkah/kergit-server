@@ -4,14 +4,13 @@ cc_library(
     name = "supabase_jwt_verifier",
     srcs = [
         "token/JwtJsonUtils.cpp",
-        "token/SupabaseJwtVerifier.cpp",
-        "token/SupabaseJwtVerifierJwtCpp.cpp",
+        "token/SupabaseVerifier.cpp",
     ],
     hdrs = [
         "token/ITokenVerifier.h",
         "token/JwtJsonUtils.h",
-        "token/SupabaseJwtVerifier.h",
-        "token/SupabaseJwtVerifierJwtCpp.h",
+        "token/SupabaseVerifier.h",
+        "token/JwtTypes.h",
     ],
     copts = ["-std=gnu++23"],
     linkopts = ["-lcrypto"],  # OpenSSL crypto library

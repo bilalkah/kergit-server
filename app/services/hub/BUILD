@@ -54,10 +54,14 @@ cc_library(
     copts = ["-std=gnu++23"],
     visibility = ["//app:__subpackages__"],
     deps = [
+        "//app/converters:proto_converters",
         "//app/services:public_id_service",
+        "//domains:channel_domain",
+        "//domains:hub_domain",
         "//domains/ids:domain_ids",
         "//proto:envelope_cc_proto",
+        "//proto/event:channel_cc_proto",
+        "//proto/event:hub_cc_proto",
         "//proto/event:presence_cc_proto",
-        "@nlohmann_json",
     ],
 )

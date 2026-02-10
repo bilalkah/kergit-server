@@ -66,3 +66,9 @@ test:testing --config=gcc13_cpp23
 test:testing --test_output=all
 test:testing --verbose_failures
 test:testing --nocache_test_results
+
+# === benchmark tests (release/opt) ===
+test:benchmark --config=opt
+test:benchmark --config=gcc13_cpp23
+test:benchmark --test_output=all
+test:benchmark --nocache_test_results

@@ -1,14 +1,12 @@
 #include "app/commands/channel/RenameChannelCommand.h"
 
 #include "app/commands/utils.h"
-#include "app/converters/ProtoConverters.h"
 #include "app/dispatcher/CommandContext.h"
 #include "app/managers/subscription/Topic.h"
 #include "domains/Channel.h"
 #include "domains/Hub.h"
 #include "proto/command/channel.pb.h"
 #include "proto/envelope.pb.h"
-#include "proto/event/channel.pb.h"
 #include "proto/event/error.pb.h"
 
 #include <algorithm>
@@ -144,20 +142,9 @@ std::vector<net::outbound::OutgoingMessage> RenameChannelCommand::execute(
                                    "Unable to rename channel at this time"));
     }
 
-    sercom::protocol::event::ChannelRenamed renamed_evt;
-    renamed_evt.set_hub_id(ctx.ids.to_public(hub_id).value);
-    auto* out_channel = renamed_evt.mutable_channel();
-    out_channel->set_id(ctx.ids.to_public(channel.id).value);
-    out_channel->set_name(*requested_name);
-    out_channel->set_type(converters::to_proto_channel_type(channel.type));
-
-    sercom::protocol::Envelope out_env;
-    out_env.set_version(1);
-    out_env.set_type(sercom::protocol::Envelope::CHANNEL_RENAMED);
-    renamed_evt.SerializeToString(out_env.mutable_payload());
-
-    std::string bytes;
-    out_env.SerializeToString(&bytes);
+    Channel renamed_channel = channel;
+    renamed_channel.name = *requested_name;
+    std::string bytes = ctx.hub_notifier.channelRenamed(hub_id, renamed_channel);
 
     utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(
         1, std::memory_order_relaxed);

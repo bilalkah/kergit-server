@@ -36,7 +36,7 @@ bool NetworkStack::start() {
 
     if (started_.exchange(true)) return true;  // already started
 
-    log(utils::LogLevel::WARN, "Starting server thread for " + id_.value + " ...");
+    log(utils::LogLevel::WARN, "Starting server thread for stack_id " + id_.value + " ...");
     server_thread_ = std::jthread(&NetworkStack::run_server, this);
 
     // Wait for server to start
@@ -53,11 +53,11 @@ bool NetworkStack::start() {
 }
 
 bool NetworkStack::stop() {
-    log(utils::LogLevel::WARN, "Stop NetworkStack is requested for " + id_.value);
+    log(utils::LogLevel::WARN, "Stop NetworkStack is requested for stack_id " + id_.value);
 
     // Guarantee we only stop once
     if (stopped_.load()) {
-        log(utils::LogLevel::INFO, "NetworkStack is already stopped.");
+        log(utils::LogLevel::WARN, "NetworkStack is already stopped for stack_id " + id_.value);
         return true;
     }
 
@@ -71,22 +71,22 @@ bool NetworkStack::stop() {
     auto start_time = std::chrono::system_clock::now();
     while (!stopped_.load(std::memory_order_acquire)) {
         if (std::chrono::system_clock::now() - start_time > timeout) {
-            log(utils::LogLevel::ERROR, "Timeout waiting for server thread to stop.");
+            log(utils::LogLevel::ERROR, "Timeout waiting for server thread to stop for stack_id " + id_.value);
             break;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     if (server_thread_.joinable()) {
-        log(utils::LogLevel::INFO, "Joining server thread...");
+        log(utils::LogLevel::WARN, "Joining server thread for stack_id " + id_.value + "...");
         server_thread_.join();
     }
     started_.store(false, std::memory_order_release);
-    log(utils::LogLevel::INFO, "Stop NetworkStack is completed.");
+    log(utils::LogLevel::WARN, "Stop NetworkStack is completed for stack_id " + id_.value);
     return stopped_.load(std::memory_order_acquire);
 }
 
 void NetworkStack::run_server() {
-    log(utils::LogLevel::WARN, "Starting run_server");
+    log(utils::LogLevel::WARN, "Starting run_server for stack_id " + id_.value + "...");
 
     wire_components();
 
@@ -98,7 +98,7 @@ void NetworkStack::run_server() {
     started_.store(true);
     transport_layer_->start();  // Program will block here until stop is called
 
-    log(utils::LogLevel::WARN, "Exiting run_server");
+    log(utils::LogLevel::WARN, "Exiting run_server for stack_id " + id_.value);
     started_.store(false);
     stopped_.store(true);
 }

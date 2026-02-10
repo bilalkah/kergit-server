@@ -1,4 +1,5 @@
 #include "net/transport/websocket/WebSocketTransport.h"
+
 #include "net/outbound/OutboundFlushEngine.h"
 #include "net/transport/websocket/WsAppFactory.h"
 #include "net/transport/websocket/utils.h"
@@ -20,21 +21,12 @@ TextWSServer::TextWSServer(core::NetworkStackConfig cfg, connection::ConnectionR
       app_(AppFactory::create(cfg_)),
       heartbeat_service_(*app_, conns_),
       out_worker_(*app_, conns_, outgoing_queue) {
-    auto verifier = infra::security::token::SupabaseJWTVerifier::create();
+    auto verifier = infra::security::token::SupabaseVerifier::create();
     if (!verifier.has_value()) {
-        log(utils::LogLevel::ERROR, "Failed to initialize SupabaseJWTVerifier. Error: ",
-            static_cast<int>(verifier.error()));
-        return;
+        throw std::runtime_error("Failed to initialize SupabaseVerifier. Error code: " +
+                                 std::to_string(static_cast<int>(verifier.error())));
     }
     auth_.emplace(std::move(verifier.value()));
-
-    auto verifier_jwtcpp = infra::security::token::SupabaseJWTVerifierJwtCpp::create();
-    if (!verifier_jwtcpp.has_value()) {
-        log(utils::LogLevel::ERROR, "Failed to initialize SupabaseJWTVerifierJwtCpp. Error: ",
-            static_cast<int>(verifier_jwtcpp.error()));
-    } else {
-        auth_jwt_cpp_.emplace(std::move(verifier_jwtcpp.value()));
-    }
 }
 
 TextWSServer::~TextWSServer() {}
@@ -70,12 +62,11 @@ void TextWSServer::stop() {
 
     if (auto* loop = loop_.load(std::memory_order_acquire)) {
         loop->defer([this]() {
-            log(utils::LogLevel::INFO, "Defer close uWS app loop from stop()");
+            log(utils::LogLevel::WARN, "Defer close uWS app loop from stop()");
             app_->uws().close();
         });
     } else if (app_) {
-        // Loop was not captured; attempt a direct close on the app.
-        log(utils::LogLevel::INFO, "Closing uWS app directly from stop()");
+        log(utils::LogLevel::WARN, "Closing uWS app directly from stop()");
         app_->uws().close();
     }
 }
@@ -107,78 +98,46 @@ void TextWSServer::wire() {
             .sendPingsAutomatically = false,
             .upgrade =
                 [this](auto* res, auto* req, auto* ctx) {
-                    log(utils::LogLevel::WARN, "Incoming WebSocket upgrade request");
                     std::string origin = std::string(req->getHeader("origin"));
                     if (!origins_.is_allowed(origin)) {
-                        res->writeStatus("403 Forbidden")->end("Origin not allowed");
+                        res->writeStatus("403")->end("Origin not allowed");
+                        log(utils::LogLevel::ERROR, "Origin not allowed: " + origin);
                         return;
                     }
-                    log(utils::LogLevel::WARN, "origins_.is_allowed passed for origin: " + std::string(origin));
                     if (!auth_.has_value()) {
                         res->writeStatus("500")->end("Server misconfiguration");
+                        log(utils::LogLevel::ERROR, "Server misconfiguration");
                         return;
                     }
-                    log(utils::LogLevel::WARN, "Auth verifier is initialized");
-
                     if (active_connections_.load(std::memory_order_relaxed) >=
                         limits_.max_connections) {
                         res->writeStatus("503")->end("Max connections reached");
+                        log(utils::LogLevel::ERROR,
+                            "Max connections reached. Active connections: " +
+                                std::to_string(
+                                    active_connections_.load(std::memory_order_relaxed)));
                         return;
                     }
-                    log(utils::LogLevel::WARN, "Connection limit check passed. Active connections: " +
-                        std::to_string(active_connections_.load(std::memory_order_relaxed)));
-
                     const auto ws_key = req->getHeader("sec-websocket-key");
                     const auto auth_header = std::string(req->getHeader("authorization"));
                     if (auth_header.empty()) {
                         res->writeStatus("401")->end("Unauthorized");
+                        log(utils::LogLevel::ERROR, "Missing authorization header");
                         return;
                     }
                     const auto token = extract_supabase_token(auth_header);
                     if (!token.has_value()) {
                         res->writeStatus("401")->end("Unauthorized");
+                        log(utils::LogLevel::ERROR, "Invalid authorization header format");
                         return;
                     }
-                    log(utils::LogLevel::INFO, "WS auth via Authorization header");
-
-                    const auto openssl_start = std::chrono::steady_clock::now();
                     auto auth_result = auth_->verify_token(token.value());
-                    const auto openssl_end = std::chrono::steady_clock::now();
-                    const auto openssl_us =
-                        std::chrono::duration_cast<std::chrono::microseconds>(openssl_end - openssl_start)
-                            .count();
-
-                    std::optional<infra::security::token::JwtVerifyResult> jwtcpp_result;
-                    std::optional<long long> jwtcpp_us;
-                    if (auth_jwt_cpp_.has_value()) {
-                        const auto jwtcpp_start = std::chrono::steady_clock::now();
-                        jwtcpp_result = auth_jwt_cpp_->verify_token(token.value());
-                        const auto jwtcpp_end = std::chrono::steady_clock::now();
-                        jwtcpp_us = std::chrono::duration_cast<std::chrono::microseconds>(jwtcpp_end - jwtcpp_start)
-                                        .count();
-                    }
-
-                    if (jwtcpp_us.has_value()) {
-                        log(utils::LogLevel::INFO, "JWT verify timing (us): openssl=", openssl_us,
-                            " jwt_cpp=", jwtcpp_us.value());
-                    } else {
-                        log(utils::LogLevel::INFO, "JWT verify timing (us): openssl=", openssl_us,
-                            " jwt_cpp=unavailable");
-                    }
-
-                    if (jwtcpp_result.has_value() &&
-                        jwtcpp_result->has_value() != auth_result.has_value()) {
-                        log(utils::LogLevel::WARN, "JWT verifier mismatch: openssl_ok=",
-                            auth_result.has_value(), " jwtcpp_ok=", jwtcpp_result->has_value());
-                    }
-
                     if (!auth_result.has_value()) {
                         res->writeStatus("401")->end("Unauthorized");
+                        log(utils::LogLevel::ERROR,
+                            "Token verification failed: " + std::to_string(static_cast<int>(auth_result.error())));
                         return;
                     }
-                    log(utils::LogLevel::WARN, "Token verified successfully. User ID: " + std::string(auth_result->id) +
-                        ", Role: " + std::string(auth_result->role));
-
                     const auto& claims = auth_result.value();
                     PerSocketData psd{};
                     psd.conn_id = conn_id_gen_.allocate();
@@ -190,19 +149,12 @@ void TextWSServer::wire() {
                                                          ctx);
 
                     active_connections_.fetch_add(1, std::memory_order_relaxed);
-                    log(utils::LogLevel::WARN, "WebSocket upgrade successful. Assigned connection ID: " + psd.conn_id.value +
-                        ". Active connections: " + std::to_string(active_connections_.load(std::memory_order_relaxed)));
                 },
 
             .open =
                 [this](UwsSocket* ws) {
                     const auto* psd = ws->getUserData();
                     if (!psd) return;
-
-                    if (psd->exp < 0) {
-                        ws->end(4403, "Invalid token expiration");
-                        return;
-                    }
 
                     connection::ConnectionContext ctx(psd->conn_id, transport::WsHandle{ws},
                                                       TransportKind::TextWebSocket);
@@ -225,11 +177,13 @@ void TextWSServer::wire() {
                     sercom::protocol::Envelope env;
                     if (!env.ParseFromArray(data.data(), data.size())) {
                         ws->end(1002, "Invalid envelope");
+                        log(utils::LogLevel::ERROR, "Invalid envelope");
                         return;
                     }
 
                     if (env.version() != 1) {
                         ws->end(1002, "Protocol version mismatch");
+                        log(utils::LogLevel::ERROR, "Protocol version mismatch");
                         return;
                     }
 
@@ -291,9 +245,8 @@ void TextWSServer::wire() {
     heartbeat_service_.start();
     out_worker_.start();
 
-    flush_engine_ =
-        std::make_unique<outbound::OutboundFlushEngine>(conns_, *this,
-                                                        std::chrono::milliseconds{1});
+    flush_engine_ = std::make_unique<outbound::OutboundFlushEngine>(conns_, *this,
+                                                                    std::chrono::milliseconds{1});
     flush_engine_->start();
 }
 
