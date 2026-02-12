@@ -2,9 +2,13 @@
 #include "utils/Metrics.h"
 
 #include <algorithm>
+#include <cassert>
 #include <unordered_set>
 
 namespace net::outbound {
+// OutgoingWorker is the single owner of per-connection outbox execution.
+// All outbound actions (SendPayload, UpdateAuthState, DropConnection)
+// are executed here on the event loop thread.
 OutgoingWorker::OutgoingWorker(transport::ILoop& loop, connection::ConnectionRegistery& conns,
                                transport::IOutboundTransport& transport, OutgoingQueue& out_q,
                                OutgoingWorkerConfig cfg)
@@ -69,8 +73,10 @@ void OutgoingWorker::flush_connection_outbox(connection::ConnectionContext& ctx)
             return;
         }
 
+        const std::size_t outbox_size_before = ctx.outbox.q.size();
         auto& msg = ctx.outbox.q.front();
         bool should_continue = false;
+        bool popped_one = false;
         std::visit(
             [&](auto& action) {
                 using T = std::decay_t<decltype(action)>;
@@ -83,11 +89,19 @@ void OutgoingWorker::flush_connection_outbox(connection::ConnectionContext& ctx)
                             1, std::memory_order_relaxed);
                         return;
                     }
+                    assert(ctx.handle.valid() &&
+                           "OutgoingWorker invariant: handle must be valid before send");
+                    if (!ctx.handle.valid()) {
+                        utils::metrics::counters().outbound_flush_send_fail_total.fetch_add(
+                            1, std::memory_order_relaxed);
+                        return;
+                    }
                     const auto& bytes = *action.payload.data;
                     const bool ok = transport_.send(ctx.handle, bytes, action.payload.is_binary);
                     if (ok) {
                         ctx.outbox.slow_hits = 0;
                         ctx.outbox.q.pop_front();
+                        popped_one = true;
                         utils::metrics::counters().outbound_flush_total.fetch_add(
                             1, std::memory_order_relaxed);
                         should_continue = true;
@@ -101,18 +115,34 @@ void OutgoingWorker::flush_connection_outbox(connection::ConnectionContext& ctx)
                     ctx.auth.expires_at = action.expires_at;
                     ctx.outbox.slow_hits = 0;
                     ctx.outbox.q.pop_front();
+                    popped_one = true;
+                    utils::metrics::counters().outbound_update_auth_state_total.fetch_add(
+                        1, std::memory_order_relaxed);
                     should_continue = true;
                     return;
                 } else if constexpr (std::is_same_v<T, DropConnection>) {
                     ctx.handle.end(action.code, action.reason);
                     ctx.outbox.q.clear();
                     ctx.outbox.slow_hits = 0;
+                    assert(ctx.outbox.q.empty() &&
+                           "OutgoingWorker invariant: DropConnection must clear outbox");
+                    utils::metrics::counters().outbound_drop_connection_total.fetch_add(
+                        1, std::memory_order_relaxed);
                     return;
                 }
             },
             msg.action);
 
         if (!should_continue) {
+            return;
+        }
+
+        assert(popped_one &&
+               "OutgoingWorker invariant: continued flush iteration must pop exactly one item");
+        assert(ctx.outbox.q.size() + 1 == outbox_size_before &&
+               "OutgoingWorker invariant: continued flush iteration must pop exactly one item");
+        if (!popped_one || ctx.outbox.q.size() + 1 != outbox_size_before) {
+            // Runtime guard for release builds to prevent accidental spin on invariant breaks.
             return;
         }
     }

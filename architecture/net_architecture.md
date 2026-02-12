@@ -95,12 +95,6 @@ classDiagram
         +AuthState auth
     }
 
-    class OutboundReady {
-        +WsHandle handle
-        +OutgoingMessage msg
-        +bool drop_pending
-    }
-
     class ConnectionError {
         +string message
     }
@@ -115,7 +109,6 @@ classDiagram
         +get() vector~ConnectionResult~
         +get_view(ConnId&) optional~ConnectionView~
         +get_ids() vector~ConnId~
-        +take_one_outbound(ConnId&) optional~OutboundReady~
         +mutate(ConnId&, function) expected~void, ConnectionError~
         +size() size_t
     }
@@ -210,9 +203,9 @@ classDiagram
     }
 
     class Hooks {
-        +function on_open
-        +function on_message
-        +function on_close
+        +function~ConnId, UserId~ on_open
+        +function~ConnId, Envelope~ on_message
+        +function~ConnId, int, string_view~ on_close
     }
 
     class ITransportServer {
@@ -341,13 +334,17 @@ classDiagram
     class OutgoingWorker {
         -ILoop& loop_
         -ConnectionRegistery& conns_
+        -IOutboundTransport& transport_
         -OutgoingQueue& out_q_
         -OutgoingWorkerConfig cfg_
         -atomic~bool~ running_
         -us_timer_t* timer_
+        -bool tick_deadline_enabled_
+        -time_point tick_deadline_
         +start() void
         +stop() void
         -on_timer(us_timer_t* timer)$ void
+        -flush_connection_outbox(ConnectionContext&) void
         -tick() void
     }
 
@@ -357,6 +354,7 @@ classDiagram
     
     OutgoingWorker --> ILoop : uses
     OutgoingWorker --> ConnectionRegistery : reads connections
+    OutgoingWorker --> IOutboundTransport : sends via transport
     OutgoingWorker --> OutgoingQueue : drains messages
     OutgoingWorker *-- OutgoingWorkerConfig
 
