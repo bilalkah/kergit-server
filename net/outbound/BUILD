@@ -65,6 +65,7 @@ cc_library(
         ":outgoing_queue",
         "//net/connection:connection_registery",
         "//net/outbound:i_outbound_sink",
+        "//net/transport:outbound_transport_iface",
         "//net/transport:i_loop",
         "//utils:loggable",
         "//utils:metrics",

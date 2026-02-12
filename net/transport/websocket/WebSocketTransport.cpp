@@ -20,7 +20,7 @@ TextWSServer::TextWSServer(core::NetworkStackConfig cfg, connection::ConnectionR
       conns_(conns),
       app_(AppFactory::create(cfg_)),
       heartbeat_service_(*app_, conns_),
-      out_worker_(*app_, conns_, outgoing_queue) {
+      out_worker_(*app_, conns_, *this, outgoing_queue) {
     auto verifier = infra::security::token::SupabaseVerifier::create();
     if (!verifier.has_value()) {
         throw std::runtime_error("Failed to initialize SupabaseVerifier. Error code: " +
