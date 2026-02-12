@@ -1,6 +1,5 @@
 #include "net/transport/websocket/WebSocketTransport.h"
 
-#include "net/outbound/OutboundFlushEngine.h"
 #include "net/transport/websocket/WsAppFactory.h"
 #include "net/transport/websocket/utils.h"
 #include "utils/Metrics.h"
@@ -54,11 +53,6 @@ void TextWSServer::stop() {
 
     heartbeat_service_.stop();
     out_worker_.stop();
-
-    if (flush_engine_) {
-        flush_engine_->stop();
-        flush_engine_.reset();
-    }
 
     if (auto* loop = loop_.load(std::memory_order_acquire)) {
         loop->defer([this]() {
@@ -244,10 +238,6 @@ void TextWSServer::wire() {
 
     heartbeat_service_.start();
     out_worker_.start();
-
-    flush_engine_ = std::make_unique<outbound::OutboundFlushEngine>(conns_, *this,
-                                                                    std::chrono::milliseconds{1});
-    flush_engine_->start();
 }
 
 }  // namespace net::transport::websocket

@@ -73,7 +73,6 @@ cc_library(
         "//core:server_config",
         "//infra/security:supabase_jwt_verifier",
         "//net/connection:connection_registery",
-        "//net/outbound:outbound_flush_engine",
         "//net/outbound:outgoing_worker",
         "//net/runtime:heartbeat_service",
         "//net/transport:outbound_transport_iface",

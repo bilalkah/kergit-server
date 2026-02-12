@@ -26,10 +26,6 @@ namespace app::queue {
 class IEventSink;
 }
 
-namespace net::outbound {
-class OutboundFlushEngine;
-}
-
 namespace net::transport::websocket {
 
 struct WsLimits {
@@ -115,7 +111,6 @@ class TextWSServer : public ITransportServer,
      * Number of active connections
      */
     std::atomic<uint64_t> active_connections_{0};
-    std::unique_ptr<outbound::OutboundFlushEngine> flush_engine_;
 };
 
 }  // namespace net::transport::websocket

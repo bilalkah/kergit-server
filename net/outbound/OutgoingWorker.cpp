@@ -69,37 +69,50 @@ void OutgoingWorker::flush_connection_outbox(connection::ConnectionContext& ctx)
             return;
         }
 
-        auto* payload = std::get_if<SendPayload>(&ctx.outbox.q.front().action);
-        if (!payload) {
-            // Non-send actions continue to be handled by OutboundFlushEngine.
-            return;
-        }
-        if (!payload->payload.data) {
-            return;
-        }
+        auto& msg = ctx.outbox.q.front();
+        bool should_continue = false;
+        std::visit(
+            [&](auto& action) {
+                using T = std::decay_t<decltype(action)>;
+                if constexpr (std::is_same_v<T, SendPayload>) {
+                    if (!action.payload.data) {
+                        return;
+                    }
+                    if (transport_.is_backpressured(ctx.handle)) {
+                        utils::metrics::counters().outbound_backpressured_total.fetch_add(
+                            1, std::memory_order_relaxed);
+                        return;
+                    }
+                    const auto& bytes = *action.payload.data;
+                    const bool ok = transport_.send(ctx.handle, bytes, action.payload.is_binary);
+                    if (ok) {
+                        ctx.outbox.slow_hits = 0;
+                        ctx.outbox.q.pop_front();
+                        utils::metrics::counters().outbound_flush_total.fetch_add(
+                            1, std::memory_order_relaxed);
+                        should_continue = true;
+                        return;
+                    }
+                    utils::metrics::counters().outbound_flush_send_fail_total.fetch_add(
+                        1, std::memory_order_relaxed);
+                    return;
+                } else if constexpr (std::is_same_v<T, UpdateAuthState>) {
+                    ctx.auth.is_authenticated = action.is_authenticated;
+                    ctx.auth.expires_at = action.expires_at;
+                    ctx.outbox.slow_hits = 0;
+                    ctx.outbox.q.pop_front();
+                    should_continue = true;
+                    return;
+                } else if constexpr (std::is_same_v<T, DropConnection>) {
+                    ctx.handle.end(action.code, action.reason);
+                    ctx.outbox.q.clear();
+                    ctx.outbox.slow_hits = 0;
+                    return;
+                }
+            },
+            msg.action);
 
-        if (transport_.is_backpressured(ctx.handle)) {
-            utils::metrics::counters().outbound_backpressured_total.fetch_add(
-                1, std::memory_order_relaxed);
-            return;
-        }
-
-        const auto& bytes = *payload->payload.data;
-        const bool ok = transport_.send(ctx.handle, bytes, payload->payload.is_binary);
-        if (ok) {
-            ctx.outbox.slow_hits = 0;
-            ctx.outbox.q.pop_front();
-            utils::metrics::counters().outbound_flush_total.fetch_add(1, std::memory_order_relaxed);
-        } else {
-            utils::metrics::counters().outbound_flush_send_fail_total.fetch_add(
-                1, std::memory_order_relaxed);
-            ctx.outbox.slow_hits += 1;
-            if (ctx.outbox.slow_hits >= 4) {
-                ctx.outbox.drop_pending = true;
-                ctx.outbox.slow_hits = 0;
-                ctx.outbox.q.clear();
-            }
-            // Keep message queued (unless dropped by slow-consumer policy) for retry.
+        if (!should_continue) {
             return;
         }
     }
