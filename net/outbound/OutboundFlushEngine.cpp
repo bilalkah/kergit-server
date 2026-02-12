@@ -56,10 +56,58 @@ void OutboundFlushEngine::on_timer(us_timer_t* timer) {
 }
 
 void OutboundFlushEngine::on_tick() {
+    (void)transport_;
     const auto conn_ids = registry_.get_ids();
     for (const auto& conn_id : conn_ids) {
-        auto ready = registry_.take_one_outbound(conn_id);
-        if (!ready.has_value()) {
+        bool handled_action = false;
+        bool drop_for_slow_consumer = false;
+        bool close_connection = false;
+        int close_code = 0;
+        std::string close_reason;
+        transport::WsHandle handle{};
+
+        auto result = registry_.mutate(conn_id, [&](auto& ctx) {
+            handle = ctx.handle;
+            if (ctx.outbox.drop_pending) {
+                ctx.outbox.drop_pending = false;
+                ctx.outbox.slow_hits = 0;
+                ctx.outbox.q.clear();
+                handled_action = true;
+                drop_for_slow_consumer = true;
+                return;
+            }
+
+            if (ctx.outbox.q.empty()) {
+                return;
+            }
+
+            auto& msg = ctx.outbox.q.front();
+            std::visit(
+                [&](const auto& action) {
+                    using T = std::decay_t<decltype(action)>;
+                    if constexpr (std::is_same_v<T, SendPayload>) {
+                        // SendPayload flush is owned by OutgoingWorker.
+                        return;
+                    } else if constexpr (std::is_same_v<T, UpdateAuthState>) {
+                        ctx.auth.is_authenticated = action.is_authenticated;
+                        ctx.auth.expires_at = action.expires_at;
+                        ctx.outbox.slow_hits = 0;
+                        ctx.outbox.q.pop_front();
+                        handled_action = true;
+                    } else if constexpr (std::is_same_v<T, DropConnection>) {
+                        close_code = action.code;
+                        close_reason = action.reason;
+                        ctx.outbox.q.pop_front();
+                        ctx.outbox.q.clear();
+                        ctx.outbox.slow_hits = 0;
+                        handled_action = true;
+                        close_connection = true;
+                    }
+                },
+                msg.action);
+        });
+
+        if (!result.has_value() || !handled_action) {
             utils::metrics::counters().outbound_flush_empty_total.fetch_add(
                 1, std::memory_order_relaxed);
             continue;
@@ -68,77 +116,15 @@ void OutboundFlushEngine::on_tick() {
         utils::metrics::counters().outbound_flush_total.fetch_add(1,
                                                                   std::memory_order_relaxed);
 
-        if (ready->drop_pending) {
-            if (ready->handle.valid()) {
-                ready->handle.end(1013, "slow consumer");
-            }
+        if (drop_for_slow_consumer && handle.valid()) {
+            handle.end(1013, "slow consumer");
             utils::metrics::counters().slow_connection_dropped_total.fetch_add(
                 1, std::memory_order_relaxed);
-            continue;
         }
 
-        auto& msg = ready->msg;
-        auto handle = ready->handle;
-        if (transport_.is_backpressured(handle)) {
-            utils::metrics::counters().outbound_backpressured_total.fetch_add(
-                1, std::memory_order_relaxed);
-            registry_.mutate(conn_id, [&](auto& ctx) {
-                ctx.outbox.q.push_front(std::move(msg));
-            });
-            continue;
+        if (close_connection && handle.valid()) {
+            handle.end(close_code, close_reason);
         }
-        std::visit(
-            [&](const auto& action) {
-                using T = std::decay_t<decltype(action)>;
-                if constexpr (std::is_same_v<T, SendPayload>) {
-                    if (!handle.valid()) {
-                        utils::metrics::counters().outbound_flush_send_fail_total.fetch_add(
-                            1, std::memory_order_relaxed);
-                        return;
-                    }
-                    const auto& bytes = *action.payload.data;
-                    const bool ok = transport_.send(handle, bytes, action.payload.is_binary);
-                    if (ok) {
-                        registry_.mutate(conn_id,
-                                         [&](auto& ctx) { ctx.outbox.slow_hits = 0; });
-                    } else {
-                        utils::metrics::counters().outbound_flush_send_fail_total.fetch_add(
-                            1, std::memory_order_relaxed);
-                        bool drop_now = false;
-                        registry_.mutate(conn_id, [&](auto& ctx) {
-                            ctx.outbox.slow_hits += 1;
-                            if (ctx.outbox.slow_hits >= 4) {
-                                ctx.outbox.drop_pending = false;
-                                ctx.outbox.slow_hits = 0;
-                                ctx.outbox.q.clear();
-                                drop_now = true;
-                            } else {
-                                ctx.outbox.q.push_front(std::move(msg));
-                            }
-                        });
-                        if (drop_now && handle.valid()) {
-                            handle.end(1013, "slow consumer");
-                            utils::metrics::counters().slow_connection_dropped_total.fetch_add(
-                                1, std::memory_order_relaxed);
-                        }
-                    }
-                } else if constexpr (std::is_same_v<T, UpdateAuthState>) {
-                    registry_.mutate(conn_id, [&](auto& ctx) {
-                        ctx.auth.is_authenticated = action.is_authenticated;
-                        ctx.auth.expires_at = action.expires_at;
-                        ctx.outbox.slow_hits = 0;
-                    });
-                } else if constexpr (std::is_same_v<T, DropConnection>) {
-                    if (handle.valid()) {
-                        handle.end(action.code, action.reason);
-                    }
-                    registry_.mutate(conn_id, [&](auto& ctx) {
-                        ctx.outbox.q.clear();
-                        ctx.outbox.slow_hits = 0;
-                    });
-                }
-            },
-            msg.action);
     }
 }
 

@@ -88,12 +88,20 @@ void OutgoingWorker::flush_connection_outbox(connection::ConnectionContext& ctx)
         const bool ok = transport_.send(ctx.handle, bytes, payload->payload.is_binary);
         if (ok) {
             ctx.outbox.slow_hits = 0;
+            ctx.outbox.q.pop_front();
+            utils::metrics::counters().outbound_flush_total.fetch_add(1, std::memory_order_relaxed);
         } else {
             utils::metrics::counters().outbound_flush_send_fail_total.fetch_add(
                 1, std::memory_order_relaxed);
+            ctx.outbox.slow_hits += 1;
+            if (ctx.outbox.slow_hits >= 4) {
+                ctx.outbox.drop_pending = true;
+                ctx.outbox.slow_hits = 0;
+                ctx.outbox.q.clear();
+            }
+            // Keep message queued (unless dropped by slow-consumer policy) for retry.
+            return;
         }
-        ctx.outbox.q.pop_front();
-        utils::metrics::counters().outbound_flush_total.fetch_add(1, std::memory_order_relaxed);
     }
 }
 
