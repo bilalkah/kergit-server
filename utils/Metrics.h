@@ -46,6 +46,8 @@ struct Counters {
     std::atomic<uint64_t> outbound_flush_total{0};
     std::atomic<uint64_t> outbound_flush_empty_total{0};
     std::atomic<uint64_t> outbound_flush_send_fail_total{0};
+    std::atomic<uint64_t> outbound_update_auth_state_total{0};
+    std::atomic<uint64_t> outbound_drop_connection_total{0};
     std::atomic<uint64_t> outbound_backpressured_total{0};
     std::atomic<uint64_t> active_connections{0};
     std::atomic<uint64_t> active_users{0};
@@ -84,6 +86,8 @@ struct SnapshotCounters {
     uint64_t outbound_flush_total{0};
     uint64_t outbound_flush_empty_total{0};
     uint64_t outbound_flush_send_fail_total{0};
+    uint64_t outbound_update_auth_state_total{0};
+    uint64_t outbound_drop_connection_total{0};
     uint64_t outbound_backpressured_total{0};
     uint64_t dropped_in{0};
     uint64_t dropped_in_low{0};
