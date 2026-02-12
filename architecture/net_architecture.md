@@ -285,7 +285,6 @@ classDiagram
         -atomic~bool~ stopped_
         -atomic~bool~ stop_requested_
         -atomic~uint64_t~ active_connections_
-        -unique_ptr~OutboundFlushEngine~ flush_engine_
         +start() void
         +stop() void
         +is_started() bool
@@ -352,18 +351,6 @@ classDiagram
         -tick() void
     }
 
-    class OutboundFlushEngine {
-        -ConnectionRegistery& registry_
-        -IOutboundTransport& transport_
-        -milliseconds tick_
-        -us_timer_t* timer_
-        -uWS::Loop* loop_
-        +start() void
-        +stop() void
-        -on_timer(us_timer_t* timer)$ void
-        -on_tick() void
-    }
-
     HeartbeatService --> ILoop : uses
     HeartbeatService --> ConnectionRegistery : manages heartbeats
     HeartbeatService *-- HeartbeatConfig
@@ -372,9 +359,6 @@ classDiagram
     OutgoingWorker --> ConnectionRegistery : reads connections
     OutgoingWorker --> OutgoingQueue : drains messages
     OutgoingWorker *-- OutgoingWorkerConfig
-    
-    OutboundFlushEngine --> ConnectionRegistery : flushes outboxes
-    OutboundFlushEngine --> IOutboundTransport : sends data
 
     %% ============================================
     %% EXTERNAL DEPENDENCIES
@@ -407,7 +391,6 @@ flowchart TB
             TWS1[TextWSServer]
             HS1[HeartbeatService]
             OW1[OutgoingWorker]
-            OFE1[OutboundFlushEngine]
         end
         
         subgraph Connection1["Connection Management"]
@@ -449,9 +432,7 @@ flowchart TB
     
     OW1 -->|drain| OQ1
     OW1 -->|push to outbox| CR1
-    
-    OFE1 -->|take_one_outbound| CR1
-    OFE1 -->|send| TWS1
+    OW1 -->|flush outbox + send| TWS1
 ```
 
 ## Message Flow Sequence
@@ -465,7 +446,6 @@ sequenceDiagram
     participant App as App Layer
     participant OutgoingQueue
     participant OutgoingWorker
-    participant OutboundFlushEngine
 
     %% Connection Setup
     Client->>TextWSServer: WebSocket Connect (with JWT)
@@ -485,11 +465,8 @@ sequenceDiagram
     loop Every 5ms (OutgoingWorker)
         OutgoingWorker->>OutgoingQueue: try_pop(msg)
         OutgoingWorker->>ConnectionRegistery: mutate(conn_id) -> push to outbox
-    end
-
-    loop Every tick (OutboundFlushEngine)
-        OutboundFlushEngine->>ConnectionRegistery: take_one_outbound(conn_id)
-        OutboundFlushEngine->>TextWSServer: send(handle, payload)
+        OutgoingWorker->>ConnectionRegistery: mutate(conn_id) -> flush outbox
+        OutgoingWorker->>TextWSServer: send(handle, payload)
         TextWSServer->>Client: WebSocket Send
     end
 
@@ -519,8 +496,7 @@ sequenceDiagram
 | `TextWSServer` | `net::transport::websocket` | WebSocket server using uWebSockets |
 | `HeartbeatService` | `net::runtime` | Periodic ping/pong, detects stale connections |
 | `OutgoingQueue` | `net::outbound` | Priority queue for outbound messages |
-| `OutgoingWorker` | `net::outbound` | Drains queue and pushes to per-connection outboxes |
-| `OutboundFlushEngine` | `net::outbound` | Flushes per-connection outboxes through transport |
+| `OutgoingWorker` | `net::outbound` | Drains queue, fills per-connection outboxes, and flushes outbound actions |
 | `WsHandle` | `net::transport` | Wrapper for uWS WebSocket pointer with send/close/ping |
 
 ## Key Fields to Consider for Updates
