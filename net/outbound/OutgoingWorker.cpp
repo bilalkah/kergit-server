@@ -2,11 +2,13 @@
 #include "utils/Metrics.h"
 
 #include <algorithm>
+#include <unordered_set>
 
 namespace net::outbound {
 OutgoingWorker::OutgoingWorker(transport::ILoop& loop, connection::ConnectionRegistery& conns,
-                               OutgoingQueue& out_q, OutgoingWorkerConfig cfg)
-    : loop_(loop), conns_(conns), out_q_(out_q), cfg_(std::move(cfg)) {}
+                               transport::IOutboundTransport& transport, OutgoingQueue& out_q,
+                               OutgoingWorkerConfig cfg)
+    : loop_(loop), conns_(conns), transport_(transport), out_q_(out_q), cfg_(std::move(cfg)) {}
 
 OutgoingWorker::~OutgoingWorker() { stop(); }
 
@@ -61,6 +63,40 @@ void OutgoingWorker::on_timer(us_timer_t* timer) {
     }
 }
 
+void OutgoingWorker::flush_connection_outbox(connection::ConnectionContext& ctx) {
+    while (!ctx.outbox.q.empty()) {
+        if (tick_deadline_enabled_ && std::chrono::steady_clock::now() >= tick_deadline_) {
+            return;
+        }
+
+        auto* payload = std::get_if<SendPayload>(&ctx.outbox.q.front().action);
+        if (!payload) {
+            // Non-send actions continue to be handled by OutboundFlushEngine.
+            return;
+        }
+        if (!payload->payload.data) {
+            return;
+        }
+
+        if (transport_.is_backpressured(ctx.handle)) {
+            utils::metrics::counters().outbound_backpressured_total.fetch_add(
+                1, std::memory_order_relaxed);
+            return;
+        }
+
+        const auto& bytes = *payload->payload.data;
+        const bool ok = transport_.send(ctx.handle, bytes, payload->payload.is_binary);
+        if (ok) {
+            ctx.outbox.slow_hits = 0;
+        } else {
+            utils::metrics::counters().outbound_flush_send_fail_total.fetch_add(
+                1, std::memory_order_relaxed);
+        }
+        ctx.outbox.q.pop_front();
+        utils::metrics::counters().outbound_flush_total.fetch_add(1, std::memory_order_relaxed);
+    }
+}
+
 /**
  * Outgoing worker tick: process outgoing message queue
  * - send messages to connections as per the message type
@@ -68,7 +104,11 @@ void OutgoingWorker::on_timer(us_timer_t* timer) {
  */
 void OutgoingWorker::tick() {
     const auto start = std::chrono::steady_clock::now();
+    tick_deadline_enabled_ = cfg_.time_budget.count() > 0;
+    tick_deadline_ = start + cfg_.time_budget;
     std::size_t processed = 0;
+    std::unordered_set<ConnId> touched_connections;
+    touched_connections.reserve(cfg_.max_per_tick);
 
     auto enqueue_to_connection = [&](const GlobalConnId& global_id,
                                      const OutgoingMessage& msg) {
@@ -120,7 +160,9 @@ void OutgoingWorker::tick() {
                 1, std::memory_order_relaxed);
             utils::metrics::counters().dropped_outbound_total.fetch_add(
                 1, std::memory_order_relaxed);
+            return;
         }
+        touched_connections.insert(global_id.conn_id);
     };
 
     auto distribute_message = [&](const OutgoingMessage& msg) {
@@ -137,11 +179,8 @@ void OutgoingWorker::tick() {
     };
 
     while (processed < cfg_.max_per_tick) {
-        if (cfg_.time_budget.count() > 0) {
-            const auto now = std::chrono::steady_clock::now();
-            if (now - start >= cfg_.time_budget) {
-                break;
-            }
+        if (tick_deadline_enabled_ && std::chrono::steady_clock::now() >= tick_deadline_) {
+            break;
         }
 
         OutgoingMessage msg;
@@ -151,6 +190,15 @@ void OutgoingWorker::tick() {
 
         distribute_message(msg);
         ++processed;
+    }
+
+    for (const auto& conn_id : touched_connections) {
+        if (tick_deadline_enabled_ && std::chrono::steady_clock::now() >= tick_deadline_) {
+            break;
+        }
+        conns_.mutate(conn_id, [&](connection::ConnectionContext& ctx) {
+            flush_connection_outbox(ctx);
+        });
     }
 
     utils::metrics::observe_outbound_msgs_per_tick(processed);

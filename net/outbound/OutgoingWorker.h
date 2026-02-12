@@ -4,6 +4,7 @@
 #include "net/connection/ConnectionRegistery.h"
 #include "net/outbound/OutgoingQueue.h"
 #include "net/transport/ILoop.h"
+#include "net/transport/IOutboundTransport.h"
 #include "utils/Loggable.h"
 
 #include <atomic>
@@ -22,7 +23,8 @@ struct OutgoingWorkerConfig {
 class OutgoingWorker : public utils::Loggable {
    public:
     OutgoingWorker(transport::ILoop& loop, connection::ConnectionRegistery& conns,
-                   OutgoingQueue& out_q, OutgoingWorkerConfig cfg = {});
+                   transport::IOutboundTransport& transport, OutgoingQueue& out_q,
+                   OutgoingWorkerConfig cfg = {});
     ~OutgoingWorker();
 
     void start();
@@ -30,6 +32,7 @@ class OutgoingWorker : public utils::Loggable {
 
    private:
     static void on_timer(us_timer_t* timer);
+    void flush_connection_outbox(connection::ConnectionContext& ctx);
     void tick();
 
     /**
@@ -37,6 +40,7 @@ class OutgoingWorker : public utils::Loggable {
      */
     transport::ILoop& loop_;
     connection::ConnectionRegistery& conns_;
+    transport::IOutboundTransport& transport_;
     OutgoingQueue& out_q_;
 
     /**
@@ -49,6 +53,8 @@ class OutgoingWorker : public utils::Loggable {
      */
     std::atomic<bool> running_{false};
     ::us_timer_t* timer_{nullptr};
+    bool tick_deadline_enabled_{false};
+    std::chrono::steady_clock::time_point tick_deadline_{};
 };
 
 };  // namespace net::outbound
