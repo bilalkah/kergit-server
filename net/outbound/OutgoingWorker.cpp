@@ -1,4 +1,5 @@
 #include "net/outbound/OutgoingWorker.h"
+
 #include "utils/Metrics.h"
 
 #include <algorithm>
@@ -111,7 +112,7 @@ void OutgoingWorker::flush_connection_outbox(connection::ConnectionContext& ctx)
                         1, std::memory_order_relaxed);
                     return;
                 } else if constexpr (std::is_same_v<T, UpdateAuthState>) {
-                    ctx.auth.is_authenticated = action.is_authenticated;
+                    ctx.auth.status = action.status;
                     ctx.auth.expires_at = action.expires_at;
                     ctx.outbox.slow_hits = 0;
                     ctx.outbox.q.pop_front();
@@ -161,8 +162,7 @@ void OutgoingWorker::tick() {
     std::unordered_set<ConnId> touched_connections;
     touched_connections.reserve(cfg_.max_per_tick);
 
-    auto enqueue_to_connection = [&](const GlobalConnId& global_id,
-                                     const OutgoingMessage& msg) {
+    auto enqueue_to_connection = [&](const GlobalConnId& global_id, const OutgoingMessage& msg) {
         OutgoingMessage per_conn;
         per_conn.priority = msg.priority;
         per_conn.target = Target::one(global_id);
@@ -183,10 +183,9 @@ void OutgoingWorker::tick() {
                 return;
             }
 
-            auto rit = std::find_if(ob.q.rbegin(), ob.q.rend(),
-                                    [](const OutgoingMessage& m) {
-                                        return m.priority == OutboundPriority::Low;
-                                    });
+            auto rit = std::find_if(ob.q.rbegin(), ob.q.rend(), [](const OutgoingMessage& m) {
+                return m.priority == OutboundPriority::Low;
+            });
             if (rit != ob.q.rend()) {
                 ob.q.erase(std::next(rit).base());
                 utils::metrics::counters().per_conn_queue_dropped_low_total.fetch_add(
@@ -207,10 +206,9 @@ void OutgoingWorker::tick() {
         });
 
         if (!result.has_value()) {
-            utils::metrics::counters().registry_miss_total.fetch_add(
-                1, std::memory_order_relaxed);
-            utils::metrics::counters().dropped_outbound_total.fetch_add(
-                1, std::memory_order_relaxed);
+            utils::metrics::counters().registry_miss_total.fetch_add(1, std::memory_order_relaxed);
+            utils::metrics::counters().dropped_outbound_total.fetch_add(1,
+                                                                        std::memory_order_relaxed);
             return;
         }
         touched_connections.insert(global_id.conn_id);
@@ -219,8 +217,7 @@ void OutgoingWorker::tick() {
     auto distribute_message = [&](const OutgoingMessage& msg) {
         utils::metrics::counters().registry_copy_eliminated_total.fetch_add(
             1, std::memory_order_relaxed);
-        if (msg.target.conns.size() > 1 &&
-            std::holds_alternative<SendPayload>(msg.action)) {
+        if (msg.target.conns.size() > 1 && std::holds_alternative<SendPayload>(msg.action)) {
             utils::metrics::counters().fanout_payload_shared_total.fetch_add(
                 1, std::memory_order_relaxed);
         }
@@ -247,9 +244,8 @@ void OutgoingWorker::tick() {
         if (tick_deadline_enabled_ && std::chrono::steady_clock::now() >= tick_deadline_) {
             break;
         }
-        conns_.mutate(conn_id, [&](connection::ConnectionContext& ctx) {
-            flush_connection_outbox(ctx);
-        });
+        conns_.mutate(conn_id,
+                      [&](connection::ConnectionContext& ctx) { flush_connection_outbox(ctx); });
     }
 
     utils::metrics::observe_outbound_msgs_per_tick(processed);

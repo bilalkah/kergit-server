@@ -54,6 +54,11 @@ class HeartbeatService {
     ::us_timer_t* timer_{nullptr};
 
     /**
+     * Grace period for new connections to complete authentication
+     */
+    static constexpr auto auth_grace_period = std::chrono::seconds{10};
+
+    /**
      * Helper to make connection status message
      */
     inline std::string make_conn_status_msg(bool alive, int rtt_ms) const {

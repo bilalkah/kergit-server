@@ -32,7 +32,7 @@ struct HeartbeatState {
  * State associated with authentication.
  */
 struct AuthState {
-    bool is_authenticated{false};
+    outbound::AuthStatus status{outbound::AuthStatus::UNAUTHED};
     std::chrono::system_clock::time_point expires_at{};
 };
 

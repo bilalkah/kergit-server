@@ -4,6 +4,7 @@
 #include <fstream>
 #include <iostream>
 #include <sstream>
+#include <vector>
 
 namespace utils {
 
@@ -80,6 +81,45 @@ std::string EnvLoader::get_env(const std::string& key, const std::string& defaul
     }
 
     return default_value;
+}
+
+std::vector<std::string> EnvLoader::get_env_list(const std::string& key,
+                                                 const std::vector<std::string>& default_values) {
+    auto trim = [](std::string& value) {
+        value.erase(0, value.find_first_not_of(" \t\n\r"));
+        value.erase(value.find_last_not_of(" \t\n\r") + 1);
+    };
+
+    std::string raw = get_env(key, "");
+    if (raw.empty()) {
+        return default_values;
+    }
+
+    trim(raw);
+    if (raw.size() >= 2 && raw.front() == '[' && raw.back() == ']') {
+        raw = raw.substr(1, raw.size() - 2);
+        trim(raw);
+    }
+
+    std::vector<std::string> values;
+    std::stringstream ss(raw);
+    std::string item;
+    while (std::getline(ss, item, ',')) {
+        trim(item);
+        if (item.size() >= 2 && ((item.front() == '"' && item.back() == '"') ||
+                                 (item.front() == '\'' && item.back() == '\''))) {
+            item = item.substr(1, item.size() - 2);
+        }
+        trim(item);
+        if (!item.empty()) {
+            values.push_back(item);
+        }
+    }
+
+    if (values.empty()) {
+        return default_values;
+    }
+    return values;
 }
 
 void EnvLoader::set_env(const std::string& key, const std::string& value) {

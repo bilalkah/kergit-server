@@ -3,6 +3,7 @@
 #include "app/commands/utils.h"
 #include "app/dispatcher/CommandContext.h"
 #include "app/managers/subscription/Topic.h"
+#include "app/proto_builders/EnvelopeBuilders.h"
 #include "domains/Hub.h"
 #include "proto/command/hub.pb.h"
 #include "proto/envelope.pb.h"
@@ -46,67 +47,63 @@ std::vector<net::outbound::OutgoingMessage> RenameHubCommand::execute(CommandCon
 
     auto user_exp = ctx.session_manager.sessionOfConnection(event->conn_id);
     if (!user_exp.has_value()) {
-        return single_outgoing(make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_UNAUTHORIZED,
-                                   "Authenticate first"));
+        return single_outgoing(make_command_error(
+            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_UNAUTHORIZED,
+            "Authenticate first"));
     }
     const UserId user_id = user_exp.value();
 
     std::string requested_name = sanitize(cmd.name());
     if (requested_name.empty()) {
-        return single_outgoing(make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
-                                   "Hub name is required"));
+        return single_outgoing(make_command_error(
+            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
+            "Hub name is required"));
     }
 
     auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd.hub_id()});
     if (!hub_id_opt.has_value()) {
-        return single_outgoing(make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_NOT_FOUND,
-                                   "Hub not found"));
+        return single_outgoing(make_command_error(
+            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_NOT_FOUND,
+            "Hub not found"));
     }
     const HubId hub_id = hub_id_opt.value();
 
     if (!ctx.hub_service.isHubMember(hub_id, user_id)) {
-        return single_outgoing(make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_FORBIDDEN,
-                                   "Join the hub before renaming it"));
+        return single_outgoing(make_command_error(
+            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_FORBIDDEN,
+            "Join the hub before renaming it"));
     }
 
     auto role = ctx.hub_service.getMembershipRole(hub_id, user_id);
     if (!role || (*role != Role::OWNER && *role != Role::ADMIN)) {
-        return single_outgoing(make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_FORBIDDEN,
-                                   "Only admins or owners can rename hubs"));
+        return single_outgoing(make_command_error(
+            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_FORBIDDEN,
+            "Only admins or owners can rename hubs"));
     }
 
     try {
         if (!ctx.hub_service.renameHub(hub_id, requested_name)) {
-            return single_outgoing(make_command_error(event->conn_id, env.type(),
-                                       sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
-                                       "Unable to rename hub at this time"));
-        }
-    } catch (const std::exception& ex) {
-        return single_outgoing(make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
-                                   ex.what()));
-    } catch (...) {
-        return single_outgoing(make_command_error(event->conn_id, env.type(),
+            return single_outgoing(
+                make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
                                    "Unable to rename hub at this time"));
+        }
+    } catch (const std::exception& ex) {
+        return single_outgoing(make_command_error(
+            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
+            ex.what()));
+    } catch (...) {
+        return single_outgoing(make_command_error(
+            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
+            "Unable to rename hub at this time"));
     }
 
     sercom::protocol::event::HubRenamed renamed;
     renamed.set_hub_id(ctx.ids.to_public(hub_id).value);
     renamed.set_name(requested_name);
 
-    sercom::protocol::Envelope out_env;
-    out_env.set_version(1);
-    out_env.set_type(sercom::protocol::Envelope::HUB_RENAMED);
-    renamed.SerializeToString(out_env.mutable_payload());
-
-    std::string bytes;
-    out_env.SerializeToString(&bytes);
+    std::string bytes =
+        proto_builders::serialize_envelope(sercom::protocol::Envelope::HUB_RENAMED, renamed);
 
     std::vector<GlobalConnId> conns;
     utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(
@@ -127,7 +124,8 @@ std::vector<net::outbound::OutgoingMessage> RenameHubCommand::execute(CommandCon
         .target = net::outbound::Target::many(std::move(conns)),
         .action =
             net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
-                                  net::outbound::SendPayload{.payload = net::outbound::Payload{std::move(bytes), true}}}});
+                                  net::outbound::SendPayload{
+                                      .payload = net::outbound::Payload{std::move(bytes), true}}}});
 }
 
 }  // namespace app

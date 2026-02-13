@@ -77,6 +77,7 @@ cc_library(
         "//net/runtime:heartbeat_service",
         "//net/transport:outbound_transport_iface",
         "//net/transport:i_transport",
+        "//proto/command:session_cc_proto",
         "//utils:metrics",
         "@uwebsockets",
     ],

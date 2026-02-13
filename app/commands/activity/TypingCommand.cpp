@@ -3,12 +3,13 @@
 #include "app/commands/utils.h"
 #include "app/dispatcher/CommandContext.h"
 #include "app/managers/subscription/Topic.h"
+#include "app/proto_builders/EnvelopeBuilders.h"
+#include "app/proto_builders/PresenceBuilders.h"
 #include "proto/command/activity.pb.h"
 #include "proto/envelope.pb.h"
 #include "proto/event/error.pb.h"
 #include "proto/event/presence.pb.h"
 
-#include <string_view>
 #include <vector>
 
 namespace app {
@@ -39,56 +40,45 @@ std::vector<net::outbound::OutgoingMessage> TypingCommand::execute(CommandContex
 
     auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd.hub_id()});
     if (!hub_id_opt.has_value()) {
-        return single_outgoing(make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_NOT_FOUND,
-                                   "Hub not found"));
+        return single_outgoing(make_command_error(
+            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_NOT_FOUND,
+            "Hub not found"));
     }
 
     auto channel_id_opt = ctx.ids.to_internal(PublicChannelId{cmd.channel_id()});
     if (!channel_id_opt.has_value()) {
-        return single_outgoing(make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_NOT_FOUND,
-                                   "Channel not found"));
+        return single_outgoing(make_command_error(
+            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_NOT_FOUND,
+            "Channel not found"));
     }
 
     if (!ctx.hub_service.isHubMember(*hub_id_opt, user_id)) {
-        return single_outgoing(make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_FORBIDDEN,
-                                   "Join the hub before typing"));
+        return single_outgoing(make_command_error(
+            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_FORBIDDEN,
+            "Join the hub before typing"));
     }
 
     auto session = ctx.session_manager.getSession(user_id);
     if (!session || !session->current_text_channel || !session->current_hub ||
-        session->current_text_channel != *channel_id_opt ||
-        session->current_hub != *hub_id_opt) {
+        session->current_text_channel != *channel_id_opt || session->current_hub != *hub_id_opt) {
         return {};
     }
 
     sercom::protocol::event::PresenceEvent presence;
     if (cmd.state() == sercom::protocol::command::Typing::STATE_STARTED) {
-        auto* payload = presence.mutable_typing_started();
-        payload->set_hub_id(ctx.ids.to_public(*hub_id_opt).value);
-        payload->set_user_id(ctx.ids.to_public(user_id).value);
-        payload->set_channel_id(ctx.ids.to_public(*channel_id_opt).value);
+        presence = proto_builders::presence::make_typing_started(
+            ctx.ids.to_public(*hub_id_opt).value, ctx.ids.to_public(user_id).value,
+            ctx.ids.to_public(*channel_id_opt).value);
     } else if (cmd.state() == sercom::protocol::command::Typing::STATE_STOPPED) {
-        auto* payload = presence.mutable_typing_stopped();
-        payload->set_hub_id(ctx.ids.to_public(*hub_id_opt).value);
-        payload->set_user_id(ctx.ids.to_public(user_id).value);
-        payload->set_channel_id(ctx.ids.to_public(*channel_id_opt).value);
+        presence = proto_builders::presence::make_typing_stopped(
+            ctx.ids.to_public(*hub_id_opt).value, ctx.ids.to_public(user_id).value,
+            ctx.ids.to_public(*channel_id_opt).value);
     } else {
         return {};
     }
 
-    std::string presence_payload;
-    presence.SerializeToString(&presence_payload);
-
-    sercom::protocol::Envelope out_env;
-    out_env.set_version(1);
-    out_env.set_type(sercom::protocol::Envelope::PRESENCE);
-    out_env.set_payload(std::move(presence_payload));
-
-    std::string bytes;
-    out_env.SerializeToString(&bytes);
+    std::string bytes =
+        proto_builders::serialize_envelope(sercom::protocol::Envelope::PRESENCE, presence);
 
     std::vector<GlobalConnId> conns;
     utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(
@@ -111,7 +101,8 @@ std::vector<net::outbound::OutgoingMessage> TypingCommand::execute(CommandContex
         .target = net::outbound::Target::many(std::move(conns)),
         .action =
             net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
-                                  net::outbound::SendPayload{.payload = net::outbound::Payload{std::move(bytes), true}}}});
+                                  net::outbound::SendPayload{
+                                      .payload = net::outbound::Payload{std::move(bytes), true}}}});
 }
 
 }  // namespace app

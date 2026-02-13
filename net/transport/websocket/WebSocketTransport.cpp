@@ -2,11 +2,27 @@
 
 #include "net/transport/websocket/WsAppFactory.h"
 #include "net/transport/websocket/utils.h"
+#include "proto/command/session.pb.h"
 #include "utils/Metrics.h"
 
 #include <cctype>
 #include <chrono>
 #include <string_view>
+
+namespace {
+sercom::protocol::Envelope make_authenticate_envelope(std::string_view token) {
+    sercom::protocol::command::Authenticate auth_cmd;
+    auth_cmd.set_type(sercom::protocol::command::AuthType_AUTH);
+    auth_cmd.set_provider(sercom::protocol::command::AuthProvider_SUPABASE);
+    auth_cmd.set_token(token);
+
+    sercom::protocol::Envelope env;
+    env.set_version(1);
+    env.set_type(sercom::protocol::Envelope::AUTH);
+    auth_cmd.SerializeToString(env.mutable_payload());
+    return env;
+}
+}  // namespace
 
 namespace net::transport::websocket {
 
@@ -125,19 +141,11 @@ void TextWSServer::wire() {
                         log(utils::LogLevel::ERROR, "Invalid authorization header format");
                         return;
                     }
-                    auto auth_result = auth_->verify_token(token.value());
-                    if (!auth_result.has_value()) {
-                        res->writeStatus("401")->end("Unauthorized");
-                        log(utils::LogLevel::ERROR,
-                            "Token verification failed: " + std::to_string(static_cast<int>(auth_result.error())));
-                        return;
-                    }
-                    const auto& claims = auth_result.value();
+
                     PerSocketData psd{};
                     psd.conn_id = conn_id_gen_.allocate();
-                    psd.user_id = UserId{claims.id};
-                    psd.role = claims.role;
-                    psd.exp = claims.exp;
+                    pending_auth_.insert_or_assign(psd.conn_id, token.value());
+
                     res->template upgrade<PerSocketData>(std::move(psd), ws_key, "",
                                                          req->getHeader("sec-websocket-extensions"),
                                                          ctx);
@@ -152,13 +160,19 @@ void TextWSServer::wire() {
 
                     connection::ConnectionContext ctx(psd->conn_id, transport::WsHandle{ws},
                                                       TransportKind::TextWebSocket);
-                    ctx.auth.is_authenticated = true;
-                    ctx.auth.expires_at =
-                        std::chrono::system_clock::time_point{std::chrono::seconds{psd->exp}};
-
+                    ctx.auth.status = outbound::AuthStatus::AUTHONFLY;
                     conns_.attach(psd->conn_id, std::move(ctx));
                     heartbeat_service_.on_open(psd->conn_id);
-                    hooks_.on_open(psd->conn_id, psd->user_id);
+                    // Note: on_open not called here - bootstrap is triggered after auth
+                    // via AuthenticateCommand pushing ConnectionEvent
+
+                    auto pending = pending_auth_.find(psd->conn_id);
+                    if (pending != pending_auth_.end()) {
+                        hooks_.on_message(psd->conn_id,
+                                          make_authenticate_envelope(pending->second));
+                        pending_auth_.erase(pending);
+                    }
+
                     utils::metrics::counters().active_connections.fetch_add(
                         1, std::memory_order_relaxed);
                 },
@@ -227,6 +241,7 @@ void TextWSServer::wire() {
                     if (!psd) return;
 
                     auto conn_id = psd->conn_id;
+                    pending_auth_.erase(conn_id);
                     conns_.detach(conn_id);
 
                     hooks_.on_close(conn_id, code, std::string(reason));

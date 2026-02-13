@@ -16,9 +16,15 @@ enum class OutboundPriority : uint8_t {
     Low = 1,
 };
 
+enum class AuthStatus : uint8_t {
+    UNAUTHED = 0,
+    AUTHONFLY = 1,
+    AUTHED = 2,
+};
+
 struct Payload {
     std::shared_ptr<const std::string> data;  // serialized bytes (shared)
-    bool is_binary{true};  // default for protobuf
+    bool is_binary{true};                     // default for protobuf
 
     Payload() = default;
     explicit Payload(std::string bytes, bool binary = true)
@@ -40,7 +46,7 @@ struct SendPayload {
 };
 
 struct UpdateAuthState {
-    bool is_authenticated{false};
+    AuthStatus status{AuthStatus::UNAUTHED};
     std::chrono::system_clock::time_point expires_at{};
 };
 

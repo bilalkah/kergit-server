@@ -55,6 +55,7 @@ cc_library(
     visibility = ["//app:__subpackages__"],
     deps = [
         "//app/converters:proto_converters",
+        "//app/proto_builders",
         "//app/services:public_id_service",
         "//domains:channel_domain",
         "//domains:hub_domain",

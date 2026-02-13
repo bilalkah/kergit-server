@@ -12,6 +12,7 @@ cc_library(
         "//app/converters:proto_converters",
         "//app/dispatcher:command_context",
         "//app/managers/subscription:topic",
+        "//app/proto_builders",
         "//domains:channel_domain",
         "//domains:hub_domain",
         "//proto:envelope_cc_proto",
@@ -32,8 +33,10 @@ cc_library(
     deps = [
         "//app/commands:i_command",
         "//app/dispatcher:command_context",
+        "//app/proto_builders",
         "//proto:envelope_cc_proto",
         "//proto/command:session_cc_proto",
         "//proto/event:error_cc_proto",
+        "//proto/event:session_cc_proto",
     ],
 )

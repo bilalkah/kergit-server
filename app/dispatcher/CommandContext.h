@@ -1,6 +1,9 @@
 #ifndef APP_DISPATCHER_COMMANDCONTEXT_H
 #define APP_DISPATCHER_COMMANDCONTEXT_H
 
+// include queue headers
+#include "app/queue/IEventSink.h"
+
 // include services headers
 #include "app/services/PublicIdService.h"
 #include "app/services/auth/AuthService.h"
@@ -31,6 +34,9 @@ struct CommandContext {
 
     SubscriptionManager& subscription_manager;
     SessionManager& session_manager;
+
+    // Event sink for pushing follow-up commands
+    queue::IEventSink& event_sink;
 };
 
 }  // namespace app
