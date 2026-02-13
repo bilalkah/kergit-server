@@ -107,6 +107,11 @@ std::vector<net::outbound::OutgoingMessage> SendMessageCommand::execute(CommandC
 
     auto saved_exp = ctx.channel_service.sendMessage(*channel_id_opt, user_id, cmd.content());
     if (!saved_exp.has_value()) {
+        if (saved_exp.error() == services::ChannelService::MessageError::QueueFull) {
+            return single_outgoing(make_command_error(
+                event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_RATE_LIMITED,
+                "Server is busy, try again"));
+        }
         return single_outgoing(make_command_error(
             event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
             "Failed to send message"));

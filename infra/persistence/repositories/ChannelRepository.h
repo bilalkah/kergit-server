@@ -18,6 +18,7 @@ class ChannelRepository {
     bool deleteChannel(const ChannelId& channelId, const HubId& hubId);
     Message sendMessage(const ChannelId& channelId, const UserId& senderUuid,
                         const std::string& content);
+    bool insertMessage(const Message& msg);
     std::vector<Message> fetchMessages(const ChannelId& channelId, int limit);
     std::vector<Message> fetchMessagesAfter(const ChannelId& channelId, const MessageId& afterId,
                                             int limit);

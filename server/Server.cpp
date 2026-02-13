@@ -9,9 +9,10 @@ Server::Server(const core::ServerConfig& config)
 
 void Server::init_stacks() {
     if (!config_.socket_ports.empty()) {
-        for (auto port : config_.socket_ports) {
+        for (size_t i = 0; i < config_.socket_ports.size(); ++i) {
             auto cfg = config_.network;
-            cfg.port = port;
+            cfg.port = config_.socket_ports[i];
+            cfg.port_index = i;
             auto net_stack = std::make_unique<net::NetworkStack>(cfg);
             net_stack->attach_event_sink(app_stack_.event_sink());
             network_router_.register_stack(std::move(net_stack));

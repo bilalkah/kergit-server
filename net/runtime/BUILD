@@ -9,6 +9,7 @@ cc_library(
     deps = [
         "//net/connection:connection_registery",
         "//net/transport:i_loop",
+        "//utils:metrics",
         "@fmt",
         "@uwebsockets",
     ],

@@ -1,15 +1,22 @@
 #include "net/connection/ConnectionRegistery.h"
 
+#include "utils/Metrics.h"
+
 namespace net::connection {
 
 void ConnectionRegistery::attach(const ConnId& conn_id, ConnectionContext context) {
     std::unique_lock lock(mutex_);
+    utils::metrics::inc_port_connections(context.port_index);
     connections_.emplace(conn_id, std::move(context));
 }
 
 void ConnectionRegistery::detach(const ConnId& conn_id) {
     std::unique_lock lock(mutex_);
-    connections_.erase(conn_id);
+    auto it = connections_.find(conn_id);
+    if (it != connections_.end()) {
+        utils::metrics::dec_port_connections(it->second.port_index);
+        connections_.erase(it);
+    }
 }
 
 ConnectionResult ConnectionRegistery::get(const ConnId& conn_id) const {
@@ -56,10 +63,8 @@ std::optional<ConnectionView> ConnectionRegistery::get_view(const ConnId& conn_i
         return std::nullopt;
     }
     const auto& ctx = it->second;
-    return ConnectionView{.conn_id = ctx.conn_id,
-                          .handle = ctx.handle,
-                          .kind = ctx.kind,
-                          .auth = ctx.auth};
+    return ConnectionView{
+        .conn_id = ctx.conn_id, .handle = ctx.handle, .kind = ctx.kind, .auth = ctx.auth};
 }
 
 std::vector<ConnId> ConnectionRegistery::get_ids() const {

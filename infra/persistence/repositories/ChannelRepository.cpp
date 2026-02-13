@@ -44,6 +44,16 @@ Message ChannelRepository::sendMessage(const ChannelId& channelId, const UserId&
     });
 }
 
+bool ChannelRepository::insertMessage(const Message& msg) {
+    return db_.write("ChannelRepository.insertMessage", [&](pqxx::work& txn) {
+        auto res = txn.exec(
+            "INSERT INTO public.messages (id, channel_id, sender_id, content) "
+            "VALUES ($1::uuid, $2::uuid, $3::uuid, $4)",
+            pqxx::params{msg.id.value, msg.ch_id.value, msg.sender_id.value, msg.text});
+        return res.affected_rows() > 0;
+    });
+}
+
 std::vector<Message> ChannelRepository::fetchMessages(const ChannelId& channelId, int limit) {
     return db_.read("ChannelRepository.fetchMessages", [&](pqxx::work& txn) {
         auto res = txn.exec(
@@ -174,8 +184,7 @@ std::vector<Channel> ChannelRepository::getHubChannels(const HubId& hubId) {
 }
 
 std::optional<Channel> ChannelRepository::getChannel(const ChannelId& channelId) {
-    return db_.read("ChannelRepository.getChannel",
-                    [&](pqxx::work& txn) -> std::optional<Channel> {
+    return db_.read("ChannelRepository.getChannel", [&](pqxx::work& txn) -> std::optional<Channel> {
         auto res = txn.exec(
             "SELECT id::text, hub_id::text, name, type "
             "FROM public.channels WHERE id = $1::uuid LIMIT 1",

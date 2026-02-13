@@ -2,6 +2,8 @@
 
 #include "utils/EnvLoader.h"
 
+#include <chrono>
+
 namespace app {
 
 AppStack::AppStack(const core::ServerConfig& config) : config_(config) {
@@ -10,7 +12,12 @@ AppStack::AppStack(const core::ServerConfig& config) : config_(config) {
 
 void AppStack::start() { worker_pool_->start(); }
 
-void AppStack::stop() { worker_pool_->stop(); }
+void AppStack::stop() {
+    if (channel_service_) {
+        channel_service_->stopAsyncWriter();
+    }
+    worker_pool_->stop();
+}
 
 void AppStack::pause() { worker_pool_->pause(); }
 
@@ -51,6 +58,11 @@ void AppStack::init_services() {
         user_service_ = std::make_unique<services::UserService>(persistence_gateway_->users());
         channel_service_ =
             std::make_unique<services::ChannelService>(persistence_gateway_->channels());
+        if (config_.app_stack.db_write_queue_capacity > 0) {
+            channel_service_->startAsyncWriter(
+                config_.app_stack.db_write_queue_capacity, config_.app_stack.db_write_max_retries,
+                std::chrono::milliseconds(config_.app_stack.db_write_retry_ms));
+        }
         hub_service_ = std::make_unique<services::HubService>(persistence_gateway_->hubs(),
                                                               persistence_gateway_->channels());
         channel_service_->setHubService(*hub_service_);

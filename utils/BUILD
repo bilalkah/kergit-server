@@ -51,6 +51,15 @@ cc_library(
     deps = [
         ":env_loader",
         ":loggable",
+        "//proto:envelope_cc_proto",
         "@fmt",
     ],
+)
+
+cc_library(
+    name = "uuid",
+    srcs = ["Uuid.cpp"],
+    hdrs = ["Uuid.h"],
+    copts = ["-std=gnu++23"],
+    visibility = ["//visibility:public"],
 )

@@ -12,5 +12,6 @@ cc_library(
         "//net/outbound:outbound_msg",
         "//net/transport:handle",
         "//net/transport/websocket:uws_types",
+        "//utils:metrics",
     ],
 )

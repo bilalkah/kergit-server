@@ -1,5 +1,7 @@
 #include "net/runtime/HeartbeatService.h"
 
+#include "utils/Metrics.h"
+
 namespace net::runtime {
 
 HeartbeatService::HeartbeatService(net::transport::ILoop& loop,
@@ -70,6 +72,9 @@ std::expected<std::string, connection::ConnectionError> HeartbeatService::on_pon
         c.heartbeat.last_pong_at = now;
         c.heartbeat.rtt_ms =
             std::chrono::duration_cast<std::chrono::milliseconds>(now - c.heartbeat.last_ping_at);
+
+        // Track client RTT in metrics
+        utils::metrics::observe_client_rtt(static_cast<uint64_t>(c.heartbeat.rtt_ms.count()));
     });
 
     auto conn = conns_.get(conn_id);
