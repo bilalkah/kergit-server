@@ -377,6 +377,10 @@ flowchart TB
 | `SOCKET_PATTERN` | `/*` | NetworkStack |
 | `OUTBOUND_QUEUE_CAPACITY` | `50000` | OutgoingQueue |
 | `EVENT_QUEUE_CAPACITY` | `30000` | EventQueue |
+| `DB_WRITE_QUEUE_CAPACITY` | `10000` | AsyncMessageWriter |
+| `DB_WRITE_MAX_RETRIES` | `3` | AsyncMessageWriter |
+| `DB_WRITE_RETRY_MS` | `25` | AsyncMessageWriter |
+| `WORKER_THREADS` | `3` | WorkerPool |
 | `DB_ENGINE` | `postgresql` | PersistenceGateway |
 | `DB_HOST` | `localhost` | PersistenceGateway |
 | `DB_PORT` | `5432` | PersistenceGateway |

@@ -44,6 +44,7 @@ struct NetworkStackConfig {
     std::string ws_path{"/*"};
     utils::TlsConfig tls{};
     std::string net_stack_name{"default_netstack"};
+    std::size_t port_index{0};  // Index in socket_ports array, for metrics tracking
 
     size_t socket_threads{2};
     std::size_t outbound_queue_capacity{50000};
@@ -55,6 +56,9 @@ struct AppStackConfig {
     std::string log_level{"info"};
     size_t worker_threads{3};
     std::size_t event_queue_capacity{30000};
+    std::size_t db_write_queue_capacity{10000};
+    std::size_t db_write_max_retries{3};
+    std::size_t db_write_retry_ms{25};
 };
 
 struct LiveKitConfig {
@@ -108,9 +112,21 @@ class ServerConfigFiller {
         cfg.database.write_pool_size =
             static_cast<std::size_t>(std::stoul(utils::EnvLoader::get_env(
                 "DB_WRITE_POOL_SIZE", std::to_string(cfg.database.pool_size))));
+        cfg.app_stack.worker_threads =
+            static_cast<std::size_t>(std::stoul(utils::EnvLoader::get_env(
+                "WORKER_THREADS", std::to_string(cfg.app_stack.worker_threads))));
         cfg.app_stack.event_queue_capacity =
             static_cast<std::size_t>(std::stoul(utils::EnvLoader::get_env(
                 "EVENT_QUEUE_CAPACITY", std::to_string(cfg.app_stack.event_queue_capacity))));
+        cfg.app_stack.db_write_queue_capacity =
+            static_cast<std::size_t>(std::stoul(utils::EnvLoader::get_env(
+                "DB_WRITE_QUEUE_CAPACITY", std::to_string(cfg.app_stack.db_write_queue_capacity))));
+        cfg.app_stack.db_write_max_retries =
+            static_cast<std::size_t>(std::stoul(utils::EnvLoader::get_env(
+                "DB_WRITE_MAX_RETRIES", std::to_string(cfg.app_stack.db_write_max_retries))));
+        cfg.app_stack.db_write_retry_ms =
+            static_cast<std::size_t>(std::stoul(utils::EnvLoader::get_env(
+                "DB_WRITE_RETRY_MS", std::to_string(cfg.app_stack.db_write_retry_ms))));
         cfg.control.host = utils::EnvLoader::get_env("CONTROL_HOST", cfg.control.host);
         cfg.control.port =
             std::stoi(utils::EnvLoader::get_env("CONTROL_PORT", std::to_string(cfg.control.port)));

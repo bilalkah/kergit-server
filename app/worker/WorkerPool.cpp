@@ -32,6 +32,9 @@ void WorkerPool::start() {
     running_ = true;
     paused_ = false;
 
+    // Set total workers for metrics
+    utils::metrics::set_total_workers(config_.worker_threads);
+
     workers_.reserve(config_.worker_threads);
     for (std::size_t i = 0; i < config_.worker_threads; ++i) {
         workers_.emplace_back([this, i] { worker_loop(i); });
@@ -81,6 +84,10 @@ void WorkerPool::worker_loop(std::size_t worker_index) {
         if (!running_) break;
         static thread_local uint32_t empty_polls = 0;
         app::queue::Event event;
+
+        // Update queue depth metric periodically
+        utils::metrics::set_queue_depth(in_queue_.size());
+
         if (!in_queue_.try_pop(event)) {
             constexpr uint32_t kYieldSpins = 16;
             constexpr auto kSleepDuration = std::chrono::microseconds(100);
@@ -95,16 +102,35 @@ void WorkerPool::worker_loop(std::size_t worker_index) {
         empty_polls = 0;
         // For worker
 
+        // Mark worker as active
+        utils::metrics::inc_active_workers();
+
+        const auto start_time = std::chrono::steady_clock::now();
+
         std::vector<net::outbound::OutgoingMessage> intents = std::visit(
             [&](auto&& event) -> std::vector<net::outbound::OutgoingMessage> {
                 return handle_event(event);
             },
             event);
 
+        const auto end_time = std::chrono::steady_clock::now();
+        const auto duration_us =
+            std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
+
+        // Record execution time for MessageEvents (commands)
+        if (std::holds_alternative<queue::MessageEvent>(event)) {
+            const auto& msg_evt = std::get<queue::MessageEvent>(event);
+            utils::metrics::observe_command_exec_time(
+                static_cast<uint32_t>(msg_evt.payload.env.type()),
+                static_cast<uint64_t>(duration_us));
+        }
+
+        // Mark worker as idle
+        utils::metrics::dec_active_workers();
+
         for (const auto& intent : intents) {
             (void)out_queue_.push(std::move(intent));
-            utils::metrics::counters().outbound_msgs_total.fetch_add(1,
-                                                                     std::memory_order_relaxed);
+            utils::metrics::counters().outbound_msgs_total.fetch_add(1, std::memory_order_relaxed);
         }
 
         utils::metrics::maybe_log();
@@ -157,16 +183,15 @@ std::vector<net::outbound::OutgoingMessage> WorkerPool::handle_event(queue::Mess
     utils::metrics::counters().payload_parse_total.fetch_add(1, std::memory_order_relaxed);
     auto parsed = proto_validator_.parse_and_validate(env);
     if (!parsed.has_value()) {
-        utils::metrics::counters().payload_parse_fail_total.fetch_add(1,
-                                                                      std::memory_order_relaxed);
+        utils::metrics::counters().payload_parse_fail_total.fetch_add(1, std::memory_order_relaxed);
         // Drop connection on invalid envelope
         result.emplace_back(net::outbound::OutgoingMessage{
             .target = net::outbound::Target::one(msg_evt.conn_id),
-            .action =
-                net::outbound::Action{std::in_place_type<net::outbound::DropConnection>,
-                                      static_cast<int>(sercom::protocol::event::CommandErrorCode::
-                                                           CommandErrorCode_INVALID_FORMAT),
-                                      "Invalid envelope: " + parsed.error()}});
+            .action = net::outbound::Action{
+                std::in_place_type<net::outbound::DropConnection>,
+                static_cast<int>(
+                    sercom::protocol::event::CommandErrorCode::CommandErrorCode_INVALID_FORMAT),
+                "Invalid envelope: " + parsed.error()}});
         return result;
     }
     msg_evt.payload.parsed = std::move(parsed.value());

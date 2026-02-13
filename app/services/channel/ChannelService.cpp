@@ -1,12 +1,16 @@
 #include "app/services/channel/ChannelService.h"
 
+#include "app/services/channel/AsyncMessageWriter.h"
 #include "app/services/hub/HubService.h"
 #include "utils/Logger.h"
+#include "utils/Uuid.h"
 
 namespace app::services {
 
 ChannelService::ChannelService(ChannelRepository& repo)
     : repo_(repo), cache_(std::make_unique<ChannelCache>()) {}
+
+ChannelService::~ChannelService() = default;
 
 void ChannelService::setHubService(HubService& hub_service) { hub_service_ = &hub_service; }
 
@@ -154,9 +158,35 @@ ChannelService::fetchMessagesBefore(const ChannelId& channelId, const MessageId&
 std::expected<Message, ChannelService::MessageError> ChannelService::sendMessage(
     const ChannelId& channelId, const UserId& senderId, const std::string& content) {
     try {
+        if (async_writer_) {
+            Message msg;
+            msg.id = MessageId{utils::generate_uuid_v4()};
+            msg.ch_id = channelId;
+            msg.sender_id = senderId;
+            msg.text = content;
+            msg.sent_at = std::chrono::system_clock::now();
+
+            if (!async_writer_->enqueue(msg)) {
+                return std::unexpected(MessageError::QueueFull);
+            }
+            return msg;
+        }
         return repo_.sendMessage(channelId, senderId, content);
     } catch (...) {
         return std::unexpected(MessageError::RepoFailure);
     }
+}
+
+void ChannelService::startAsyncWriter(std::size_t capacity, std::size_t max_retries,
+                                      std::chrono::milliseconds retry_delay) {
+    if (async_writer_) return;
+    async_writer_ = std::make_unique<AsyncMessageWriter>(repo_, capacity, max_retries, retry_delay);
+    async_writer_->start();
+}
+
+void ChannelService::stopAsyncWriter() {
+    if (!async_writer_) return;
+    async_writer_->stop();
+    async_writer_.reset();
 }
 }  // namespace app::services

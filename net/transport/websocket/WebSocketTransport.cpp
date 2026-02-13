@@ -159,7 +159,8 @@ void TextWSServer::wire() {
                     if (!psd) return;
 
                     connection::ConnectionContext ctx(psd->conn_id, transport::WsHandle{ws},
-                                                      TransportKind::TextWebSocket);
+                                                      TransportKind::TextWebSocket,
+                                                      cfg_.port_index);
                     ctx.auth.status = outbound::AuthStatus::AUTHONFLY;
                     conns_.attach(psd->conn_id, std::move(ctx));
                     heartbeat_service_.on_open(psd->conn_id);

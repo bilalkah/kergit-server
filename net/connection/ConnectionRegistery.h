@@ -42,8 +42,8 @@ struct AuthState {
 struct ConnectionContext {
     ConnectionContext() = default;
     explicit ConnectionContext(const ConnId conn, const transport::WsHandle h,
-                               const TransportKind k)
-        : conn_id(conn), handle(h), kind(k) {}
+                               const TransportKind k, std::size_t port_idx = 0)
+        : conn_id(conn), handle(h), kind(k), port_index(port_idx) {}
 
     // Connection identifier
     ConnId conn_id{""};
@@ -53,6 +53,9 @@ struct ConnectionContext {
 
     // Transport type
     TransportKind kind{TransportKind::TextWebSocket};
+
+    // Port index for metrics tracking
+    std::size_t port_index{0};
 
     // Heartbeat state
     HeartbeatState heartbeat{};
