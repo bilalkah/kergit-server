@@ -9,6 +9,7 @@ cc_library(
         "//app/commands:i_command",
         "//app/dispatcher:command_context",
         "//app/managers/subscription:topic",
+        "//app/proto_builders",
         "//domains:message_domain",
         "//proto:envelope_cc_proto",
         "//proto/command:message_cc_proto",
@@ -26,6 +27,7 @@ cc_library(
     deps = [
         "//app/commands:i_command",
         "//app/dispatcher:command_context",
+        "//app/proto_builders",
         "//domains:message_domain",
         "//proto:envelope_cc_proto",
         "//proto/command:message_cc_proto",
@@ -43,6 +45,7 @@ cc_library(
     deps = [
         "//app/commands:i_command",
         "//app/dispatcher:command_context",
+        "//app/proto_builders",
         "//domains:message_domain",
         "//proto:envelope_cc_proto",
         "//proto/command:message_cc_proto",

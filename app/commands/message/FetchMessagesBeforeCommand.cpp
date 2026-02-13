@@ -2,6 +2,7 @@
 
 #include "app/commands/utils.h"
 #include "app/dispatcher/CommandContext.h"
+#include "app/proto_builders/EnvelopeBuilders.h"
 #include "domains/Message.h"
 #include "proto/command/message.pb.h"
 #include "proto/domain/message.pb.h"
@@ -58,53 +59,53 @@ std::vector<net::outbound::OutgoingMessage> FetchMessagesBeforeCommand::execute(
 
     auto user_exp = ctx.session_manager.sessionOfConnection(event->conn_id);
     if (!user_exp.has_value()) {
-        return single_outgoing(make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_UNAUTHORIZED,
-                                   "Authenticate first"));
+        return single_outgoing(make_command_error(
+            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_UNAUTHORIZED,
+            "Authenticate first"));
     }
     const UserId user_id = user_exp.value();
 
     auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd.hub_id()});
     if (!hub_id_opt.has_value()) {
-        return single_outgoing(make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_NOT_FOUND,
-                                   "Hub not found"));
+        return single_outgoing(make_command_error(
+            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_NOT_FOUND,
+            "Hub not found"));
     }
 
     auto channel_id_opt = ctx.ids.to_internal(PublicChannelId{cmd.channel_id()});
     if (!channel_id_opt.has_value()) {
-        return single_outgoing(make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_NOT_FOUND,
-                                   "Channel not found"));
+        return single_outgoing(make_command_error(
+            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_NOT_FOUND,
+            "Channel not found"));
     }
 
     auto channel_opt = ctx.channel_service.getChannel(*channel_id_opt);
     if (!channel_opt.has_value() || channel_opt->hub_id != *hub_id_opt) {
-        return single_outgoing(make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_NOT_FOUND,
-                                   "Channel not found"));
+        return single_outgoing(make_command_error(
+            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_NOT_FOUND,
+            "Channel not found"));
     }
 
     if (!ctx.hub_service.isHubMember(*hub_id_opt, user_id)) {
-        return single_outgoing(make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_FORBIDDEN,
-                                   "Join the hub before fetching messages"));
+        return single_outgoing(make_command_error(
+            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_FORBIDDEN,
+            "Join the hub before fetching messages"));
     }
 
     auto before_internal = ctx.ids.to_internal(PublicMessageId{cmd.before_message_id()});
     if (!before_internal.has_value()) {
-        return single_outgoing(make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_NOT_FOUND,
-                                   "Message not found"));
+        return single_outgoing(make_command_error(
+            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_NOT_FOUND,
+            "Message not found"));
     }
 
     const int limit = clamp_limit(cmd.limit());
     auto messages_exp =
         ctx.channel_service.fetchMessagesBefore(*channel_id_opt, *before_internal, limit);
     if (!messages_exp.has_value()) {
-        return single_outgoing(make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
-                                   "Failed to fetch messages"));
+        return single_outgoing(make_command_error(
+            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
+            "Failed to fetch messages"));
     }
     std::vector<Message> messages = std::move(messages_exp.value());
     std::reverse(messages.begin(), messages.end());
@@ -118,19 +119,15 @@ std::vector<net::outbound::OutgoingMessage> FetchMessagesBeforeCommand::execute(
         *batch.add_messages() = to_proto_message(ctx, msg);
     }
 
-    sercom::protocol::Envelope out_env;
-    out_env.set_version(1);
-    out_env.set_type(sercom::protocol::Envelope::MESSAGE_BATCH);
-    batch.SerializeToString(out_env.mutable_payload());
-
-    std::string bytes;
-    out_env.SerializeToString(&bytes);
+    std::string bytes =
+        proto_builders::serialize_envelope(sercom::protocol::Envelope::MESSAGE_BATCH, batch);
 
     return single_outgoing(net::outbound::OutgoingMessage{
         .target = net::outbound::Target::one(event->conn_id),
         .action =
             net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
-                                  net::outbound::SendPayload{.payload = net::outbound::Payload{std::move(bytes), true}}}});
+                                  net::outbound::SendPayload{
+                                      .payload = net::outbound::Payload{std::move(bytes), true}}}});
 }
 
 }  // namespace app

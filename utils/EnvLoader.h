@@ -5,6 +5,7 @@
 
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace utils {
 
@@ -12,6 +13,8 @@ class EnvLoader : public Loggable {
    public:
     static bool load_env_file(const std::string& file_path = ".env");
     static std::string get_env(const std::string& key, const std::string& default_value = "");
+    static std::vector<std::string> get_env_list(
+        const std::string& key, const std::vector<std::string>& default_values = {});
     static void set_env(const std::string& key, const std::string& value);
     static void clear_env();
 

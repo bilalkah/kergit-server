@@ -21,6 +21,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 
 namespace app::queue {
 class IEventSink;
@@ -98,6 +99,7 @@ class TextWSServer : public ITransportServer,
     outbound::OutgoingWorker out_worker_;
     Hooks hooks_{};
     std::optional<infra::security::token::SupabaseVerifier> auth_{};
+    std::unordered_map<ConnId, std::string> pending_auth_{};
     ConnIdGenerator conn_id_gen_{};
 
     /**

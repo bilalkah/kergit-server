@@ -3,6 +3,8 @@
 #include "app/commands/utils.h"
 #include "app/converters/ProtoConverters.h"
 #include "app/managers/subscription/Topic.h"
+#include "app/proto_builders/EnvelopeBuilders.h"
+#include "app/proto_builders/PresenceBuilders.h"
 #include "domains/Channel.h"
 #include "domains/Hub.h"
 #include "proto/envelope.pb.h"
@@ -24,7 +26,6 @@ std::vector<net::outbound::OutgoingMessage> BootstrapCommand::execute(CommandCon
     std::vector<net::outbound::OutgoingMessage> out;
     const auto* event = std::get_if<queue::ConnectionEvent>(&evt);
     if (!event) {
-        std::cout << "BootstrapCommand: invalid event type" << std::endl;
         return out;
     }
 
@@ -32,36 +33,25 @@ std::vector<net::outbound::OutgoingMessage> BootstrapCommand::execute(CommandCon
     if (user_id.value.empty()) {
         return single_outgoing(net::outbound::OutgoingMessage{
             .target = net::outbound::Target::one(event->conn_id),
-            .action =
-                net::outbound::Action{std::in_place_type<net::outbound::DropConnection>,
-                                      static_cast<int>(sercom::protocol::event::CommandErrorCode::
-                                                           CommandErrorCode_UNAUTHORIZED),
-                                      "missing_user_id"}});
+            .action = net::outbound::Action{
+                std::in_place_type<net::outbound::DropConnection>,
+                static_cast<int>(
+                    sercom::protocol::event::CommandErrorCode::CommandErrorCode_UNAUTHORIZED),
+                "missing_user_id"}});
     }
 
     auto db_user = ctx.user_service.getUser(user_id);
     if (!db_user) {
         return single_outgoing(net::outbound::OutgoingMessage{
             .target = net::outbound::Target::one(event->conn_id),
-            .action =
-                net::outbound::Action{std::in_place_type<net::outbound::DropConnection>,
-                                      static_cast<int>(sercom::protocol::event::CommandErrorCode::
-                                                           CommandErrorCode_UNAUTHORIZED),
-                                      "User not found"}});
+            .action = net::outbound::Action{
+                std::in_place_type<net::outbound::DropConnection>,
+                static_cast<int>(
+                    sercom::protocol::event::CommandErrorCode::CommandErrorCode_UNAUTHORIZED),
+                "User not found"}});
     }
 
-    // Atomically try to create session - prevents race condition where two connections
-    // for the same user could both pass hasSession check before either creates the session
-    if (!ctx.session_manager.tryCreateSession(event->conn_id, user_id)) {
-        return single_outgoing(net::outbound::OutgoingMessage{
-            .target = net::outbound::Target::one(event->conn_id),
-            .action =
-                net::outbound::Action{std::in_place_type<net::outbound::DropConnection>,
-                                      static_cast<int>(sercom::protocol::event::CommandErrorCode::
-                                                           CommandErrorCode_INVALID_SESSION),
-                                      "duplicate_session"}});
-    }
-
+    // Session already created by AuthenticateCommand - just subscribe to hubs
     const auto hubs = ctx.hub_service.getUserHubs(user_id);
     for (const auto& hub : hubs) {
         ctx.subscription_manager.subscribeConnection(event->conn_id, Topic::HubTopic(hub.id));
@@ -134,22 +124,10 @@ std::vector<net::outbound::OutgoingMessage> BootstrapCommand::execute(CommandCon
             }
 
             if (!targets.empty()) {
-                sercom::protocol::event::PresenceEvent pe;
-                auto* pc = pe.mutable_presence_changed();
-                pc->set_hub_id(public_hub_id.value);
-                pc->set_user_id(public_user_id.value);
-                pc->set_is_online(true);
-
-                std::string pe_payload;
-                pe.SerializeToString(&pe_payload);
-
-                sercom::protocol::Envelope penv;
-                penv.set_version(1);
-                penv.set_type(sercom::protocol::Envelope::PRESENCE);
-                penv.set_payload(std::move(pe_payload));
-
-                std::string bytes;
-                penv.SerializeToString(&bytes);
+                auto pe = proto_builders::presence::make_presence_changed(
+                    public_hub_id.value, public_user_id.value, true);
+                std::string bytes =
+                    proto_builders::serialize_envelope(sercom::protocol::Envelope::PRESENCE, pe);
 
                 out.emplace_back();
                 auto& msg = out.back();
@@ -162,23 +140,14 @@ std::vector<net::outbound::OutgoingMessage> BootstrapCommand::execute(CommandCon
     }
 
     // --- send bootstrap ---
-    std::string bootstrap_payload;
-    bootstrap.SerializeToString(&bootstrap_payload);
-
-    sercom::protocol::Envelope env;
-    env.set_version(1);
-    env.set_type(sercom::protocol::Envelope::SESSION_BOOTSTRAP);
-    env.set_payload(std::move(bootstrap_payload));
-
-    std::string out_bytes;
-    env.SerializeToString(&out_bytes);
+    std::string out_bytes = proto_builders::serialize_envelope(
+        sercom::protocol::Envelope::SESSION_BOOTSTRAP, bootstrap);
 
     out.emplace_back();
     auto& msg = out.back();
     msg.target = net::outbound::Target::one(event->conn_id);
-    msg.action.emplace<net::outbound::SendPayload>(net::outbound::SendPayload{
-        .payload =
-            net::outbound::Payload{std::move(out_bytes), true}});
+    msg.action.emplace<net::outbound::SendPayload>(
+        net::outbound::SendPayload{.payload = net::outbound::Payload{std::move(out_bytes), true}});
 
     return out;
 }

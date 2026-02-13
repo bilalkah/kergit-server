@@ -7,6 +7,14 @@ import "proto/domain/hub.proto";
 import "proto/event/activity.proto";
 
 
+// Sent when authentication succeeds.
+// Client should wait for this before showing the main UI.
+// -----------------------------------
+message AuthOk {
+    // Future-proofing: can add user info, permissions, etc.
+}
+// -----------------------------------
+
 // Sent as part of the Connection Bootstrap.
 // -----------------------------------
 message SessionBootstrap {

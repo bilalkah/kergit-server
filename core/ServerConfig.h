@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace core {
 
@@ -56,6 +57,11 @@ struct AppStackConfig {
     std::size_t event_queue_capacity{30000};
 };
 
+struct LiveKitConfig {
+    std::vector<uint16_t> ports{};
+    std::vector<uint16_t> prometheus_ports{};
+};
+
 struct ControlPlaneConfig {
     std::string host{"127.0.0.1"};
     uint16_t port{8081};
@@ -66,17 +72,28 @@ struct ServerConfig {
     DataBaseConfig database{};
     AppStackConfig app_stack{};
     ControlPlaneConfig control{};
+    std::vector<uint16_t> socket_ports{};
+    LiveKitConfig livekit{};
 };
 
 class ServerConfigFiller {
    public:
     static void fill_from_env(ServerConfig& cfg) {
         cfg.network.host = utils::EnvLoader::get_env("LISTEN_HOST", cfg.network.host);
-        cfg.network.port = std::stoi(utils::EnvLoader::get_env("SOCKET_PORT", "9001"));
+        auto socket_ports = utils::EnvLoader::get_env_list("SOCKET_PORT");
+        if (!socket_ports.empty()) {
+            cfg.socket_ports.clear();
+            cfg.socket_ports.reserve(socket_ports.size());
+            for (const auto& port_str : socket_ports) {
+                cfg.socket_ports.push_back(static_cast<uint16_t>(std::stoi(port_str)));
+            }
+        } else {
+            cfg.network.port = std::stoi(utils::EnvLoader::get_env("SOCKET_PORT", "9001"));
+        }
         cfg.network.ws_path = utils::EnvLoader::get_env("SOCKET_PATTERN", cfg.network.ws_path);
-        cfg.network.outbound_queue_capacity = static_cast<std::size_t>(std::stoul(
-            utils::EnvLoader::get_env("OUTBOUND_QUEUE_CAPACITY",
-                                      std::to_string(cfg.network.outbound_queue_capacity))));
+        cfg.network.outbound_queue_capacity =
+            static_cast<std::size_t>(std::stoul(utils::EnvLoader::get_env(
+                "OUTBOUND_QUEUE_CAPACITY", std::to_string(cfg.network.outbound_queue_capacity))));
         cfg.database.engine = utils::EnvLoader::get_env("DB_ENGINE", "postgresql");
         cfg.database.user = utils::EnvLoader::get_env("DB_USER", "postgres");
         cfg.database.password = utils::EnvLoader::get_env("DB_PASSWORD", "password");
@@ -86,18 +103,31 @@ class ServerConfigFiller {
         cfg.database.ssl = utils::EnvLoader::get_env("DB_SSL", "false") == "true";
         cfg.database.pool_size =
             static_cast<std::size_t>(std::stoul(utils::EnvLoader::get_env("DB_POOL_SIZE", "3")));
-        cfg.database.read_pool_size = static_cast<std::size_t>(std::stoul(
-            utils::EnvLoader::get_env("DB_READ_POOL_SIZE",
-                                      std::to_string(cfg.database.pool_size))));
-        cfg.database.write_pool_size = static_cast<std::size_t>(std::stoul(
-            utils::EnvLoader::get_env("DB_WRITE_POOL_SIZE",
-                                      std::to_string(cfg.database.pool_size))));
-        cfg.app_stack.event_queue_capacity = static_cast<std::size_t>(std::stoul(
-            utils::EnvLoader::get_env("EVENT_QUEUE_CAPACITY",
-                                      std::to_string(cfg.app_stack.event_queue_capacity))));
+        cfg.database.read_pool_size = static_cast<std::size_t>(std::stoul(utils::EnvLoader::get_env(
+            "DB_READ_POOL_SIZE", std::to_string(cfg.database.pool_size))));
+        cfg.database.write_pool_size =
+            static_cast<std::size_t>(std::stoul(utils::EnvLoader::get_env(
+                "DB_WRITE_POOL_SIZE", std::to_string(cfg.database.pool_size))));
+        cfg.app_stack.event_queue_capacity =
+            static_cast<std::size_t>(std::stoul(utils::EnvLoader::get_env(
+                "EVENT_QUEUE_CAPACITY", std::to_string(cfg.app_stack.event_queue_capacity))));
         cfg.control.host = utils::EnvLoader::get_env("CONTROL_HOST", cfg.control.host);
-        cfg.control.port = std::stoi(utils::EnvLoader::get_env(
-            "CONTROL_PORT", std::to_string(cfg.control.port)));
+        cfg.control.port =
+            std::stoi(utils::EnvLoader::get_env("CONTROL_PORT", std::to_string(cfg.control.port)));
+
+        auto livekit_ports = utils::EnvLoader::get_env_list("LIVEKIT_PORT");
+        cfg.livekit.ports.clear();
+        cfg.livekit.ports.reserve(livekit_ports.size());
+        for (const auto& port_str : livekit_ports) {
+            cfg.livekit.ports.push_back(static_cast<uint16_t>(std::stoi(port_str)));
+        }
+
+        auto livekit_prom_ports = utils::EnvLoader::get_env_list("LIVEKIT_PROMETHEUS_PORT");
+        cfg.livekit.prometheus_ports.clear();
+        cfg.livekit.prometheus_ports.reserve(livekit_prom_ports.size());
+        for (const auto& port_str : livekit_prom_ports) {
+            cfg.livekit.prometheus_ports.push_back(static_cast<uint16_t>(std::stoi(port_str)));
+        }
     }
 };
 

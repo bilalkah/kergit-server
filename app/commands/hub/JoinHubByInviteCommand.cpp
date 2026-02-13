@@ -4,6 +4,7 @@
 #include "app/converters/ProtoConverters.h"
 #include "app/dispatcher/CommandContext.h"
 #include "app/managers/subscription/Topic.h"
+#include "app/proto_builders/EnvelopeBuilders.h"
 #include "domains/Hub.h"
 #include "proto/command/hub.pb.h"
 #include "proto/domain/channel.pb.h"
@@ -66,32 +67,32 @@ std::vector<net::outbound::OutgoingMessage> JoinHubByInviteCommand::execute(
 
     auto user_exp = ctx.session_manager.sessionOfConnection(event->conn_id);
     if (!user_exp.has_value()) {
-        return single_outgoing(make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_UNAUTHORIZED,
-                                   "Authenticate first"));
+        return single_outgoing(make_command_error(
+            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_UNAUTHORIZED,
+            "Authenticate first"));
     }
     const UserId user_id = user_exp.value();
 
     uint64_t join_code = 0;
     if (!parse_join_code(cmd.join_code(), join_code)) {
-        return single_outgoing(make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
-                                   "Join code is invalid"));
+        return single_outgoing(make_command_error(
+            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
+            "Join code is invalid"));
     }
 
     auto hub_id_opt = ctx.ids.to_internal(PublicHubId{join_code});
     if (!hub_id_opt.has_value()) {
-        return single_outgoing(make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_NOT_FOUND,
-                                   "Hub not found"));
+        return single_outgoing(make_command_error(
+            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_NOT_FOUND,
+            "Hub not found"));
     }
     const HubId hub_id = hub_id_opt.value();
 
     const auto snapshot = ctx.hub_service.getOrBuildSnapshot(hub_id);
     if (snapshot.name.empty()) {
-        return single_outgoing(make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_NOT_FOUND,
-                                   "Hub not found"));
+        return single_outgoing(make_command_error(
+            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_NOT_FOUND,
+            "Hub not found"));
     }
 
     const bool already_member = ctx.hub_service.isHubMember(hub_id, user_id);
@@ -99,13 +100,13 @@ std::vector<net::outbound::OutgoingMessage> JoinHubByInviteCommand::execute(
         try {
             ctx.hub_service.addMember(hub_id, user_id, Role::USER);
         } catch (const std::exception& ex) {
-            return single_outgoing(make_command_error(event->conn_id, env.type(),
-                                       sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
-                                       ex.what()));
+            return single_outgoing(make_command_error(
+                event->conn_id, env.type(),
+                sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR, ex.what()));
         } catch (...) {
-            return single_outgoing(make_command_error(event->conn_id, env.type(),
-                                       sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
-                                       "Failed to join hub"));
+            return single_outgoing(make_command_error(
+                event->conn_id, env.type(),
+                sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR, "Failed to join hub"));
         }
     }
 
@@ -127,20 +128,15 @@ std::vector<net::outbound::OutgoingMessage> JoinHubByInviteCommand::execute(
             member->set_avatar_seed(user->avatar_seed);
         }
 
-        sercom::protocol::Envelope already_env;
-        already_env.set_version(1);
-        already_env.set_type(sercom::protocol::Envelope::HUB_ALREADY_MEMBER);
-        already.SerializeToString(already_env.mutable_payload());
-
-        std::string already_bytes;
-        already_env.SerializeToString(&already_bytes);
+        std::string already_bytes = proto_builders::serialize_envelope(
+            sercom::protocol::Envelope::HUB_ALREADY_MEMBER, already);
 
         return single_outgoing(net::outbound::OutgoingMessage{
             .target = net::outbound::Target::one(event->conn_id),
-            .action =
-                net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
-                                      net::outbound::SendPayload{
-                                          .payload = net::outbound::Payload{std::move(already_bytes), true}}}});
+            .action = net::outbound::Action{
+                std::in_place_type<net::outbound::SendPayload>,
+                net::outbound::SendPayload{
+                    .payload = net::outbound::Payload{std::move(already_bytes), true}}}});
     }
 
     sercom::protocol::event::SessionBootstrap bootstrap;
@@ -176,13 +172,8 @@ std::vector<net::outbound::OutgoingMessage> JoinHubByInviteCommand::execute(
         m->set_avatar_seed(member.avatar_seed);
     }
 
-    sercom::protocol::Envelope joined_env;
-    joined_env.set_version(1);
-    joined_env.set_type(sercom::protocol::Envelope::SESSION_BOOTSTRAP);
-    bootstrap.SerializeToString(joined_env.mutable_payload());
-
-    std::string joined_bytes;
-    joined_env.SerializeToString(&joined_bytes);
+    std::string joined_bytes = proto_builders::serialize_envelope(
+        sercom::protocol::Envelope::SESSION_BOOTSTRAP, bootstrap);
 
     std::vector<net::outbound::OutgoingMessage> out;
     out.emplace_back();
@@ -214,19 +205,14 @@ std::vector<net::outbound::OutgoingMessage> JoinHubByInviteCommand::execute(
                     member->set_avatar_seed(user->avatar_seed);
                 }
 
-                sercom::protocol::Envelope env_out;
-                env_out.set_version(1);
-                env_out.set_type(sercom::protocol::Envelope::HUB_MEMBER_JOINED);
-                member_joined.SerializeToString(env_out.mutable_payload());
-
-                std::string bytes;
-                env_out.SerializeToString(&bytes);
+                std::string bytes = proto_builders::serialize_envelope(
+                    sercom::protocol::Envelope::HUB_MEMBER_JOINED, member_joined);
 
                 out.emplace_back();
                 auto& member_msg = out.back();
                 member_msg.target = net::outbound::Target::many(std::move(conns));
-                member_msg.action.emplace<net::outbound::SendPayload>(
-                    net::outbound::SendPayload{.payload = net::outbound::Payload{std::move(bytes), true}});
+                member_msg.action.emplace<net::outbound::SendPayload>(net::outbound::SendPayload{
+                    .payload = net::outbound::Payload{std::move(bytes), true}});
             }
         }
     }

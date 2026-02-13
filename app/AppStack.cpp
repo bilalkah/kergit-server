@@ -66,7 +66,7 @@ void AppStack::init_services() {
         cmd_ctx_ = std::make_unique<CommandContext>(CommandContext{
             *public_id_service_, *auth_service_, *channel_service_, *hub_service_, *hub_notifier_,
             *hub_snapshot_builder_, *livekit_token_service_, *user_service_, *presence_manager_,
-            *subscription_manager_, *session_manager_});
+            *subscription_manager_, *session_manager_, *event_queue_});
 
     } catch (const std::exception& ex) {
         log(utils::LogLevel::ERROR, "init_services failed: ", ex.what());

@@ -1,24 +1,13 @@
 #include "app/services/hub/HubNotifier.h"
 
 #include "app/converters/ProtoConverters.h"
-#include "proto/envelope.pb.h"
+#include "app/proto_builders/EnvelopeBuilders.h"
+#include "app/proto_builders/PresenceBuilders.h"
 #include "proto/event/channel.pb.h"
 #include "proto/event/hub.pb.h"
 #include "proto/event/presence.pb.h"
 
 namespace app::services {
-namespace {
-template <typename T>
-std::string serializeEnvelope(sercom::protocol::Envelope::Type type, const T& message) {
-    sercom::protocol::Envelope env;
-    env.set_version(1);
-    env.set_type(type);
-    message.SerializeToString(env.mutable_payload());
-    std::string serialized;
-    env.SerializeToString(&serialized);
-    return serialized;
-}
-}  // namespace
 
 HubNotifier::HubNotifier(PublicIdService& ids) : ids_(ids) {}
 
@@ -26,21 +15,18 @@ std::string HubNotifier::hubRenamed(const HubId& hubId, const std::string& newNa
     sercom::protocol::event::HubRenamed renamed;
     renamed.set_hub_id(ids_.to_public(hubId).value);
     renamed.set_name(newName);
-    return serializeEnvelope(sercom::protocol::Envelope::HUB_RENAMED, renamed);
+    return proto_builders::serialize_envelope(sercom::protocol::Envelope::HUB_RENAMED, renamed);
 }
 
 std::string HubNotifier::hubDeleted(const HubId& hubId) {
     sercom::protocol::event::HubRemoved removed;
     removed.set_hub_id(ids_.to_public(hubId).value);
-    return serializeEnvelope(sercom::protocol::Envelope::HUB_REMOVED, removed);
+    return proto_builders::serialize_envelope(sercom::protocol::Envelope::HUB_REMOVED, removed);
 }
 
-std::string HubNotifier::memberJoined(const HubId& hubId,
-                                      const UserId& userId,
-                                      Role role,
+std::string HubNotifier::memberJoined(const HubId& hubId, const UserId& userId, Role role,
                                       const std::string& display_name,
-                                      const std::string& avatar_seed,
-                                      const std::string& username,
+                                      const std::string& avatar_seed, const std::string& username,
                                       bool is_online) {
     sercom::protocol::event::HubMemberJoined joined;
     auto* member = joined.mutable_member();
@@ -56,32 +42,27 @@ std::string HubNotifier::memberJoined(const HubId& hubId,
     user->set_username(username);
     user->set_avatar_seed(avatar_seed);
 
-    return serializeEnvelope(sercom::protocol::Envelope::HUB_MEMBER_JOINED, joined);
+    return proto_builders::serialize_envelope(sercom::protocol::Envelope::HUB_MEMBER_JOINED,
+                                              joined);
 }
 
 std::string HubNotifier::memberLeft(const HubId& hubId, const UserId& userId) {
     sercom::protocol::event::HubMemberLeft left;
     left.set_hub_id(ids_.to_public(hubId).value);
     left.set_user_id(ids_.to_public(userId).value);
-    return serializeEnvelope(sercom::protocol::Envelope::HUB_MEMBER_LEFT, left);
+    return proto_builders::serialize_envelope(sercom::protocol::Envelope::HUB_MEMBER_LEFT, left);
 }
 
 std::string HubNotifier::memberOnline(const HubId& hubId, const UserId& userId) {
-    sercom::protocol::event::PresenceEvent pe;
-    auto* pc = pe.mutable_presence_changed();
-    pc->set_hub_id(ids_.to_public(hubId).value);
-    pc->set_user_id(ids_.to_public(userId).value);
-    pc->set_is_online(true);
-    return serializeEnvelope(sercom::protocol::Envelope::PRESENCE, pe);
+    auto pe = proto_builders::presence::make_presence_changed(ids_.to_public(hubId).value,
+                                                              ids_.to_public(userId).value, true);
+    return proto_builders::serialize_envelope(sercom::protocol::Envelope::PRESENCE, pe);
 }
 
 std::string HubNotifier::memberOffline(const HubId& hubId, const UserId& userId) {
-    sercom::protocol::event::PresenceEvent pe;
-    auto* pc = pe.mutable_presence_changed();
-    pc->set_hub_id(ids_.to_public(hubId).value);
-    pc->set_user_id(ids_.to_public(userId).value);
-    pc->set_is_online(false);
-    return serializeEnvelope(sercom::protocol::Envelope::PRESENCE, pe);
+    auto pe = proto_builders::presence::make_presence_changed(ids_.to_public(hubId).value,
+                                                              ids_.to_public(userId).value, false);
+    return proto_builders::serialize_envelope(sercom::protocol::Envelope::PRESENCE, pe);
 }
 
 std::string HubNotifier::channelCreated(const HubId& hubId, const Channel& channel) {
@@ -91,7 +72,7 @@ std::string HubNotifier::channelCreated(const HubId& hubId, const Channel& chann
     out_channel->set_id(ids_.to_public(channel.id).value);
     out_channel->set_name(channel.name);
     out_channel->set_type(converters::to_proto_channel_type(channel.type));
-    return serializeEnvelope(sercom::protocol::Envelope::CHANNEL_CREATED, created);
+    return proto_builders::serialize_envelope(sercom::protocol::Envelope::CHANNEL_CREATED, created);
 }
 
 std::string HubNotifier::channelRenamed(const HubId& hubId, const Channel& channel) {
@@ -101,13 +82,13 @@ std::string HubNotifier::channelRenamed(const HubId& hubId, const Channel& chann
     out_channel->set_id(ids_.to_public(channel.id).value);
     out_channel->set_name(channel.name);
     out_channel->set_type(converters::to_proto_channel_type(channel.type));
-    return serializeEnvelope(sercom::protocol::Envelope::CHANNEL_RENAMED, renamed);
+    return proto_builders::serialize_envelope(sercom::protocol::Envelope::CHANNEL_RENAMED, renamed);
 }
 
 std::string HubNotifier::channelDeleted(const HubId& hubId, const ChannelId& channelId) {
     sercom::protocol::event::ChannelRemoved removed;
     removed.set_hub_id(ids_.to_public(hubId).value);
     removed.set_channel_id(ids_.to_public(channelId).value);
-    return serializeEnvelope(sercom::protocol::Envelope::CHANNEL_REMOVED, removed);
+    return proto_builders::serialize_envelope(sercom::protocol::Envelope::CHANNEL_REMOVED, removed);
 }
 }  // namespace app::services

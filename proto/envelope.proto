@@ -14,6 +14,7 @@ message Envelope {
 
         SESSION_BOOTSTRAP = 20;
         AUTH = 21;
+        AUTH_OK = 22;
 
         PRESENCE = 30;
         TYPING = 31;
