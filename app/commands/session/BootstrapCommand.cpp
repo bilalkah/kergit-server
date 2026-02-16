@@ -95,9 +95,20 @@ std::vector<net::outbound::OutgoingMessage> BootstrapCommand::execute(CommandCon
             m->set_hub_id(public_hub_id.value);
             m->set_user_id(ctx.ids.to_public(member.user_id).value);
             m->set_is_online(online_set.contains(member.user_id));
-            m->set_display_name(member.display_name.empty() ? "Member" : member.display_name);
             m->set_role(converters::to_proto_hub_role(member.role));
-            m->set_avatar_seed(member.avatar_seed);
+
+            // Fetch fresh user info from UserService (uses cache if available)
+            if (auto user = ctx.user_service.getUser(member.user_id)) {
+                const std::string member_display =
+                    !user->username.empty()
+                        ? user->username
+                        : (!user->full_name.empty() ? user->full_name : "Member");
+                m->set_display_name(member_display);
+                m->set_avatar_seed(user->avatar_seed);
+            } else {
+                m->set_display_name("Member");
+                m->set_avatar_seed("");
+            }
         }
 
         for (const auto& channel : snapshot.channels) {

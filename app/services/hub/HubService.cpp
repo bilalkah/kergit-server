@@ -42,14 +42,14 @@ std::vector<Hub> HubService::getUserHubs(const UserId& userId) {
 }
 
 std::vector<HubMemberSummary> HubService::getHubMembers(const HubId& hubId) {
-    auto snapshot = getOrBuildSnapshot(hubId);
-    std::vector<HubMemberSummary> members;
-    members.reserve(snapshot.members.size());
-    for (const auto& member : snapshot.members) {
-        members.push_back(
-            HubMemberSummary{member.user_id, member.display_name, member.avatar_seed});
+    // Fetch fresh user data from repository (not from cached snapshot)
+    const auto members = repo_.getHubMembersWithRoles(hubId);
+    std::vector<HubMemberSummary> result;
+    result.reserve(members.size());
+    for (const auto& member : members) {
+        result.push_back(HubMemberSummary{member.user_id, member.display_name, member.avatar_seed});
     }
-    return members;
+    return result;
 }
 
 bool HubService::isHubMember(const HubId& hubId, const UserId& userId) {
@@ -122,11 +122,11 @@ HubSnapshot HubService::buildSnapshot(const HubId& hubId) {
         snapshot.channels.push_back(HubSnapshotChannel{channel.id, channel.name, channel.type});
     }
 
-    const auto members = repo_.getHubMembersWithRoles(hubId);
+    // Only cache user_id + role; user display info is fetched via UserService
+    const auto members = repo_.getHubMemberRoles(hubId);
     snapshot.members.reserve(members.size());
     for (const auto& member : members) {
-        snapshot.members.push_back(
-            HubSnapshotMember{member.user_id, member.display_name, member.avatar_seed, member.role});
+        snapshot.members.push_back(HubSnapshotMember{member.user_id, member.role});
     }
 
     {
@@ -162,7 +162,8 @@ HubSnapshot HubService::getOrBuildSnapshot(const HubId& hubId) {
         // utils::log_line(utils::LogLevel::INFO, "hub_snapshot hit hub_id=" + hubId.value);
         return *cached;
     }
-    // utils::log_line(utils::LogLevel::INFO, "hub_snapshot miss hub_id=" + hubId.value + " build=true");
+    // utils::log_line(utils::LogLevel::INFO, "hub_snapshot miss hub_id=" + hubId.value + "
+    // build=true");
     return buildSnapshot(hubId);
 }
 
