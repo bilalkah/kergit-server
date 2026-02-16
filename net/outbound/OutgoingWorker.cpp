@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <deque>
 #include <unordered_set>
 
 namespace net::outbound {
@@ -244,8 +245,69 @@ void OutgoingWorker::tick() {
         if (tick_deadline_enabled_ && std::chrono::steady_clock::now() >= tick_deadline_) {
             break;
         }
-        conns_.mutate(conn_id,
-                      [&](connection::ConnectionContext& ctx) { flush_connection_outbox(ctx); });
+        // Check if there's a DropConnection action - must handle it outside the lock
+        // because handle.end() triggers .close callback which calls conns_.detach()
+        std::optional<DropConnection> pending_drop;
+        transport::WsHandle drop_handle;
+
+        conns_.mutate(conn_id, [&](connection::ConnectionContext& ctx) {
+            // Process all non-DropConnection actions inside the lock
+            while (!ctx.outbox.q.empty()) {
+                auto& msg = ctx.outbox.q.front();
+                bool processed = false;
+                bool found_drop = false;
+
+                std::visit(
+                    [&](auto& action) {
+                        using T = std::decay_t<decltype(action)>;
+                        if constexpr (std::is_same_v<T, SendPayload>) {
+                            if (!action.payload.data) {
+                                processed = true;
+                                return;
+                            }
+                            if (transport_.is_backpressured(ctx.handle)) {
+                                return;
+                            }
+                            if (!ctx.handle.valid()) {
+                                processed = true;
+                                return;
+                            }
+                            if (transport_.send(ctx.handle, *action.payload.data, action.payload.is_binary)) {
+                                utils::metrics::counters().outbound_flush_total.fetch_add(1, std::memory_order_relaxed);
+                                processed = true;
+                            }
+                        } else if constexpr (std::is_same_v<T, UpdateAuthState>) {
+                            ctx.auth.status = action.status;
+                            ctx.auth.expires_at = action.expires_at;
+                            utils::metrics::counters().outbound_update_auth_state_total.fetch_add(1, std::memory_order_relaxed);
+                            processed = true;
+                        } else if constexpr (std::is_same_v<T, DropConnection>) {
+                            // Don't call handle.end() here - defer it outside the lock
+                            pending_drop = action;
+                            drop_handle = ctx.handle;
+                            found_drop = true;
+                            processed = true;
+                        }
+                    },
+                    msg.action);
+
+                if (found_drop) {
+                    ctx.outbox.q.clear();
+                    break;
+                }
+                if (processed) {
+                    ctx.outbox.q.pop_front();
+                } else {
+                    break;  // Backpressured
+                }
+            }
+        });
+
+        // Handle DropConnection outside the lock to avoid deadlock
+        if (pending_drop.has_value() && drop_handle.valid()) {
+            drop_handle.end(pending_drop->code, pending_drop->reason);
+            utils::metrics::counters().outbound_drop_connection_total.fetch_add(1, std::memory_order_relaxed);
+        }
     }
 
     utils::metrics::observe_outbound_msgs_per_tick(processed);
