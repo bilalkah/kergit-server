@@ -145,6 +145,22 @@ std::vector<HubRepository::MemberWithRole> HubRepository::getHubMembersWithRoles
     });
 }
 
+std::vector<HubRepository::MemberRole> HubRepository::getHubMemberRoles(const HubId& hubId) {
+    return db_.read("HubRepository.getHubMemberRoles", [&](pqxx::work& txn) {
+        auto res = txn.exec(
+            "SELECT user_id::text, role FROM public.hub_members "
+            "WHERE hub_id = $1::uuid ORDER BY joined_at ASC",
+            pqxx::params{hubId.value});
+        std::vector<MemberRole> members;
+        members.reserve(res.size());
+        for (const auto& row : res) {
+            members.push_back(MemberRole{UserId{row[0].as<std::string>()},
+                                         role_from_string(row[1].as<std::string>(""))});
+        }
+        return members;
+    });
+}
+
 std::optional<Hub> HubRepository::getHubWithMembers(const HubId& hubId) {
     return db_.read("HubRepository.getHubWithMembers", [&](pqxx::work& txn) -> std::optional<Hub> {
         auto res = txn.exec(

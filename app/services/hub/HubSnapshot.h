@@ -18,8 +18,6 @@ struct HubSnapshotChannel {
 
 struct HubSnapshotMember {
     UserId user_id;
-    std::string display_name;
-    std::string avatar_seed;
     Role role{Role::USER};
 };
 

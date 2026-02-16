@@ -24,6 +24,12 @@ class HubRepository {
         Role role{Role::USER};
     };
 
+    // Lightweight member info for snapshot caching (no user details)
+    struct MemberRole {
+        UserId user_id;
+        Role role{Role::USER};
+    };
+
     explicit HubRepository(DatabaseExecutor& db) : db_(db) {}
 
     HubId createHub(const std::string& hubName, const UserId& ownerUuid);
@@ -35,6 +41,7 @@ class HubRepository {
     std::optional<Role> getMembershipRole(const HubId& hubId, const UserId& userUuid);
     std::vector<MemberSummary> getHubMembers(const HubId& hubId);
     std::vector<MemberWithRole> getHubMembersWithRoles(const HubId& hubId);
+    std::vector<MemberRole> getHubMemberRoles(const HubId& hubId);
     // Preferred for hot paths: single-round-trip hub + members (replaces getHub + getHubMembers).
     std::optional<Hub> getHubWithMembers(const HubId& hubId);
     // Preferred for hot paths: single query for member display + role (replaces getHubMembers +
