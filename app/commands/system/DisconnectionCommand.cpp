@@ -25,6 +25,19 @@ std::vector<net::outbound::OutgoingMessage> DisconnectionCommand::execute(Comman
     }
 
     const UserId user_id = session_exp.value();
+
+    // Capture voice channel info before removing the session
+    std::optional<HubId> voice_hub;
+    std::optional<ChannelId> voice_channel;
+    {
+        auto session_info = ctx.session_manager.getSession(user_id);
+        if (session_info.has_value() && session_info->current_voice_hub &&
+            session_info->current_voice_channel) {
+            voice_hub = session_info->current_voice_hub;
+            voice_channel = session_info->current_voice_channel;
+        }
+    }
+
     const auto hubid_list = [&]() {
         std::vector<HubId> hubid_list;
         const auto conn_subs =
@@ -41,6 +54,15 @@ std::vector<net::outbound::OutgoingMessage> DisconnectionCommand::execute(Comman
 
     ctx.session_manager.removeConnection(event->conn_id);
     ctx.subscription_manager.removeAllForConnection(event->conn_id);
+
+    // If user was in a voice channel, check if it's now empty and clear E2EE key
+    if (voice_hub && voice_channel) {
+        const auto remaining =
+            ctx.session_manager.voiceParticipantsInChannel(*voice_hub, *voice_channel);
+        if (remaining.empty()) {
+            ctx.livekit_token_service.clear_e2ee_key(*voice_channel);
+        }
+    }
 
     for (const auto& hub_id : hubid_list) {
         const auto online_members = ctx.presence_manager.onlineUsersInHub(hub_id);
@@ -59,11 +81,10 @@ std::vector<net::outbound::OutgoingMessage> DisconnectionCommand::execute(Comman
             out.push_back(net::outbound::OutgoingMessage{
                 .priority = net::outbound::OutboundPriority::Low,
                 .target = net::outbound::Target::many(std::move(recipients)),
-                .action =
-                    net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
-                                          net::outbound::SendPayload{
-                                              .payload = net::outbound::Payload{std::move(payload),
-                                                                                true}}}});
+                .action = net::outbound::Action{
+                    std::in_place_type<net::outbound::SendPayload>,
+                    net::outbound::SendPayload{
+                        .payload = net::outbound::Payload{std::move(payload), true}}}});
         }
     }
 

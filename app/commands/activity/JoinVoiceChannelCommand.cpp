@@ -159,13 +159,22 @@ std::vector<net::outbound::OutgoingMessage> JoinVoiceChannelCommand::execute(
     }
 
     if (cmd.state() == sercom::protocol::command::VoiceChannelMembership::STATE_REQUEST_JOIN) {
+        // Check if voice channel currently has participants
+        const auto participants =
+            ctx.session_manager.voiceParticipantsInChannel(*hub_id_opt, *channel_id_opt);
+        const bool is_channel_empty = participants.empty();
+
         services::livekit::LiveKitTokenService::TokenRequest token_req{
             user_id, *channel_id_opt, true, true, std::chrono::seconds{3600},
         };
 
         std::string token;
+        std::string e2ee_key;
         try {
             token = ctx.livekit_token_service.mint_token(token_req);
+            // Get or create E2EE key - generates new unique key if channel is empty
+            e2ee_key =
+                ctx.livekit_token_service.get_or_create_e2ee_key(*channel_id_opt, is_channel_empty);
         } catch (const std::exception& ex) {
             return single_outgoing(make_command_error(
                 event->conn_id, env.type(),
@@ -181,6 +190,7 @@ std::vector<net::outbound::OutgoingMessage> JoinVoiceChannelCommand::execute(
         issued.set_channel_id(ctx.ids.to_public(*channel_id_opt).value);
         issued.set_token(token);
         issued.set_expires_in(static_cast<uint64_t>(token_req.ttl.count()));
+        issued.set_e2ee_key(e2ee_key);
 
         std::string bytes = proto_builders::serialize_envelope(
             sercom::protocol::Envelope::VOICE_TOKEN_ISSUED, issued);
@@ -199,6 +209,14 @@ std::vector<net::outbound::OutgoingMessage> JoinVoiceChannelCommand::execute(
         if (prev_voice_hub && prev_voice_channel && *prev_voice_hub == *hub_id_opt &&
             *prev_voice_channel == *channel_id_opt) {
             ctx.session_manager.leaveVoiceChannel(user_id);
+
+            // Check if channel is now empty, if so clear the E2EE key
+            const auto remaining =
+                ctx.session_manager.voiceParticipantsInChannel(*hub_id_opt, *channel_id_opt);
+            if (remaining.empty()) {
+                ctx.livekit_token_service.clear_e2ee_key(*channel_id_opt);
+            }
+
             auto updates = publish_participants(*hub_id_opt, *channel_id_opt);
             out.insert(out.end(), updates.begin(), updates.end());
             auto presence_updates =
@@ -217,6 +235,14 @@ std::vector<net::outbound::OutgoingMessage> JoinVoiceChannelCommand::execute(
         if (prev_voice_hub && prev_voice_channel &&
             (*prev_voice_hub != *hub_id_opt || *prev_voice_channel != *channel_id_opt)) {
             ctx.session_manager.leaveVoiceChannel(user_id);
+
+            // Check if previous channel is now empty, if so clear the E2EE key
+            const auto remaining = ctx.session_manager.voiceParticipantsInChannel(
+                *prev_voice_hub, *prev_voice_channel);
+            if (remaining.empty()) {
+                ctx.livekit_token_service.clear_e2ee_key(*prev_voice_channel);
+            }
+
             auto updates = publish_participants(*prev_voice_hub, *prev_voice_channel);
             out.insert(out.end(), updates.begin(), updates.end());
             auto presence_updates =
