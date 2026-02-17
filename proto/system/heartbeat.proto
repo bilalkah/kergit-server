@@ -3,14 +3,9 @@ syntax = "proto3";
 package sercom.protocol.system;
 
 message Ping {
-  // Client timestamp (ms since epoch or monotonic mapped to ms)
-  uint64 client_ts_ms = 1;
+  // Intentionally empty heartbeat request.
 }
 
 message Pong {
-  // Echoed back so client can compute RTT
-  uint64 client_ts_ms = 1;
-
-  // Server timestamp for optional clock skew / diagnostics
-  uint64 server_ts_ms = 2;
+  // Intentionally empty heartbeat response.
 }

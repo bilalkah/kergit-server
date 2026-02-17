@@ -240,9 +240,8 @@ ProtoMessageValidator::parse_and_validate(const sercom::protocol::Envelope& env)
 
 std::expected<void, ValidationError> ProtoMessageValidator::validate_ping(
     const sercom::protocol::system::Ping& msg) {
-    if (msg.client_ts_ms() == 0) {
-        return std::unexpected("client_ts_ms is empty");
-    }
+    (void)msg;
+    // Ping is intentionally empty; envelope type itself is sufficient.
     return {};
 }
 

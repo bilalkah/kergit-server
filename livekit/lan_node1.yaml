@@ -12,7 +12,7 @@ rtc:
 
   enable_loopback_candidate: false
   use_external_ip: false
-  node_ip: 192.168.0.226
+  node_ip: 192.168.0.15
 
   packet_buffer_size_audio: 100
 

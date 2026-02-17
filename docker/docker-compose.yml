@@ -2,6 +2,8 @@ services:
   macos-dev:
     build: .
     container_name: sercom-dev-macos
+    group_add:
+      - "1000"
     volumes:
       - ./../:/home/sercom/workspace:cached
       - ccache:/home/sercom/.ccache
@@ -29,6 +31,8 @@ services:
   ubuntu-dev:
     build: .
     container_name: sercom-dev-ubuntu
+    group_add:
+      - "1000"
     volumes:
       - ../:/home/sercom/workspace:cached
       - ccache:/home/sercom/.ccache

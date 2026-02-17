@@ -53,10 +53,6 @@ std::expected<std::string, std::string> make_app_pong_response(
     }
 
     sercom::protocol::system::Pong pong;
-    pong.set_client_ts_ms(ping.client_ts_ms());
-    pong.set_server_ts_ms(std::chrono::duration_cast<std::chrono::milliseconds>(
-                              std::chrono::system_clock::now().time_since_epoch())
-                              .count());
 
     sercom::protocol::Envelope out;
     out.set_version(1);
