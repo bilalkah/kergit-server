@@ -33,11 +33,13 @@ cc_library(
 cc_library(
     name = "loggable",
     hdrs = [
+        "EventLogger.h",
         "Loggable.h",
         "Logger.h",
     ],
     visibility = ["//visibility:public"],
     deps = [
+        "//core/base:ts_queue",
         "@fmt",
     ],
 )

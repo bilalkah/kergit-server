@@ -1,5 +1,7 @@
 #include "server/Server.h"
 
+#include "utils/EnvLoader.h"
+#include "utils/EventLogger.h"
 #include "utils/Metrics.h"
 
 namespace server {
@@ -28,6 +30,10 @@ void Server::init_stacks() {
 }
 
 void Server::start() {
+    // Initialize event logger with path from LOG_DIR env var
+    auto log_dir = utils::EnvLoader::get_env("LOG_DIR", "logs");
+    utils::EventLogger::instance().init(log_dir);
+
     init_stacks();
     app_stack_.bootstrap();
     app_stack_.start();
@@ -41,6 +47,9 @@ void Server::stop() {
     app_stack_.stop();
     network_router_.stop_all();
     utils::metrics::stop_timeseries();
+
+    // Shutdown event logger
+    utils::EventLogger::instance().shutdown();
 }
 
 };  // namespace server

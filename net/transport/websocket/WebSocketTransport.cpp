@@ -3,6 +3,7 @@
 #include "net/transport/websocket/WsAppFactory.h"
 #include "net/transport/websocket/utils.h"
 #include "proto/command/session.pb.h"
+#include "utils/EventLogger.h"
 #include "utils/Metrics.h"
 
 #include <cctype>
@@ -146,10 +147,16 @@ void TextWSServer::wire() {
                     psd.conn_id = conn_id_gen_.allocate();
                     pending_auth_.insert_or_assign(psd.conn_id, token.value());
 
+                    // Capture conn_id before moving psd
+                    auto conn_id_str = psd.conn_id.value;
+
                     res->template upgrade<PerSocketData>(std::move(psd), ws_key, "",
                                                          req->getHeader("sec-websocket-extensions"),
                                                          ctx);
 
+                    utils::EventLogger::instance().log(
+                        utils::EventCategory::SESSION, "", "WS_UPGRADE", 0,
+                        "netstack:" + std::to_string(cfg_.port_index) + ",conn:" + conn_id_str);
                     active_connections_.fetch_add(1, std::memory_order_relaxed);
                 },
 
@@ -157,6 +164,10 @@ void TextWSServer::wire() {
                 [this](UwsSocket* ws) {
                     const auto* psd = ws->getUserData();
                     if (!psd) return;
+
+                    utils::EventLogger::instance().log(
+                        utils::EventCategory::SESSION, "", "WS_OPEN", 0,
+                        "netstack:" + std::to_string(cfg_.port_index) + ",conn:" + psd->conn_id.value);
 
                     connection::ConnectionContext ctx(psd->conn_id, transport::WsHandle{ws},
                                                       TransportKind::TextWebSocket,
@@ -242,6 +253,18 @@ void TextWSServer::wire() {
                     if (!psd) return;
 
                     auto conn_id = psd->conn_id;
+
+                    // Get user_id from connection context before detaching
+                    std::string user_id_str = "";
+                    auto conn = conns_.get(conn_id);
+                    if (conn.has_value() && conn->auth.user_id.has_value()) {
+                        user_id_str = conn->auth.user_id->value;
+                    }
+
+                    utils::EventLogger::instance().log(
+                        utils::EventCategory::SESSION, user_id_str, "WS_CLOSE", 0,
+                        "conn:" + conn_id.value + " code:" + std::to_string(code));
+
                     pending_auth_.erase(conn_id);
                     conns_.detach(conn_id);
 

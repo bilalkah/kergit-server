@@ -115,6 +115,7 @@ void OutgoingWorker::flush_connection_outbox(connection::ConnectionContext& ctx)
                 } else if constexpr (std::is_same_v<T, UpdateAuthState>) {
                     ctx.auth.status = action.status;
                     ctx.auth.expires_at = action.expires_at;
+                    ctx.auth.user_id = action.user_id;
                     ctx.outbox.slow_hits = 0;
                     ctx.outbox.q.pop_front();
                     popped_one = true;
@@ -272,14 +273,18 @@ void OutgoingWorker::tick() {
                                 processed = true;
                                 return;
                             }
-                            if (transport_.send(ctx.handle, *action.payload.data, action.payload.is_binary)) {
-                                utils::metrics::counters().outbound_flush_total.fetch_add(1, std::memory_order_relaxed);
+                            if (transport_.send(ctx.handle, *action.payload.data,
+                                                action.payload.is_binary)) {
+                                utils::metrics::counters().outbound_flush_total.fetch_add(
+                                    1, std::memory_order_relaxed);
                                 processed = true;
                             }
                         } else if constexpr (std::is_same_v<T, UpdateAuthState>) {
                             ctx.auth.status = action.status;
                             ctx.auth.expires_at = action.expires_at;
-                            utils::metrics::counters().outbound_update_auth_state_total.fetch_add(1, std::memory_order_relaxed);
+                            ctx.auth.user_id = action.user_id;
+                            utils::metrics::counters().outbound_update_auth_state_total.fetch_add(
+                                1, std::memory_order_relaxed);
                             processed = true;
                         } else if constexpr (std::is_same_v<T, DropConnection>) {
                             // Don't call handle.end() here - defer it outside the lock
@@ -306,7 +311,8 @@ void OutgoingWorker::tick() {
         // Handle DropConnection outside the lock to avoid deadlock
         if (pending_drop.has_value() && drop_handle.valid()) {
             drop_handle.end(pending_drop->code, pending_drop->reason);
-            utils::metrics::counters().outbound_drop_connection_total.fetch_add(1, std::memory_order_relaxed);
+            utils::metrics::counters().outbound_drop_connection_total.fetch_add(
+                1, std::memory_order_relaxed);
         }
     }
 

@@ -1,6 +1,7 @@
 #include "app/commands/system/DisconnectionCommand.h"
 
 #include "app/managers/subscription/Topic.h"
+#include "utils/EventLogger.h"
 
 #include <nlohmann/json.hpp>
 #include <variant>
@@ -15,7 +16,8 @@ std::vector<net::outbound::OutgoingMessage> DisconnectionCommand::execute(Comman
     std::vector<net::outbound::OutgoingMessage> out;
     const auto* event = std::get_if<queue::DisconnectionEvent>(&evt);
     if (!event) {
-        std::cout << "DisconnectionCommand: invalid event type" << std::endl;
+        utils::EventLogger::instance().log(utils::EventCategory::DEBUG, "", "DISCONNECT_INVALID", 0,
+                                           "DisconnectionCommand: invalid event type");
         return out;
     }
 
@@ -25,6 +27,9 @@ std::vector<net::outbound::OutgoingMessage> DisconnectionCommand::execute(Comman
     }
 
     const UserId user_id = session_exp.value();
+
+    // Log the disconnection event
+    utils::EventLogger::instance().session_disconnect(user_id.value, "connection_closed");
 
     // Capture voice channel info before removing the session
     std::optional<HubId> voice_hub;

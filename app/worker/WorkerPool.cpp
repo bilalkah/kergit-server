@@ -1,6 +1,7 @@
 #include "app/worker/WorkerPool.h"
 
 #include "proto/event/error.pb.h"
+#include "utils/EventLogger.h"
 #include "utils/Metrics.h"
 
 #include <cassert>
@@ -116,13 +117,50 @@ void WorkerPool::worker_loop(std::size_t worker_index) {
         const auto end_time = std::chrono::steady_clock::now();
         const auto duration_us =
             std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
+        const auto duration_ms = duration_us / 1000;
 
         // Record execution time for MessageEvents (commands)
         if (std::holds_alternative<queue::MessageEvent>(event)) {
             const auto& msg_evt = std::get<queue::MessageEvent>(event);
-            utils::metrics::observe_command_exec_time(
-                static_cast<uint32_t>(msg_evt.payload.env.type()),
-                static_cast<uint64_t>(duration_us));
+            const auto cmd_type = msg_evt.payload.env.type();
+
+            utils::metrics::observe_command_exec_time(static_cast<uint32_t>(cmd_type),
+                                                      static_cast<uint64_t>(duration_us));
+
+            // Log command execution to EventLogger
+            std::string cmd_name = sercom::protocol::Envelope_Type_Name(cmd_type);
+
+            // Skip logging AUTH commands (too frequent, not useful)
+            if (cmd_type == sercom::protocol::Envelope::AUTH) {
+                // Don't log AUTH commands
+            } else {
+                // Get internal user_id (UUID) for logging
+                std::string user_id_str;
+                auto session_exp = cmd_ctx_.session_manager.sessionOfConnection(msg_evt.conn_id);
+                if (session_exp.has_value()) {
+                    user_id_str = session_exp.value().value;
+                }
+
+                // Log to file only (CSV for analysis)
+                utils::EventLogger::instance().log(
+                    utils::EventCategory::COMMAND, user_id_str, cmd_name, duration_ms,
+                    duration_ms >= 100 ? "SLOW_COMMAND" : "", utils::LogDest::FILE);
+            }
+        } else if (std::holds_alternative<queue::ConnectionEvent>(event)) {
+            const auto& conn_evt = std::get<queue::ConnectionEvent>(event);
+            utils::EventLogger::instance().log(utils::EventCategory::SESSION,
+                                               conn_evt.user_id.value, "CONNECTION", duration_ms,
+                                               "", utils::LogDest::FILE);
+        } else if (std::holds_alternative<queue::DisconnectionEvent>(event)) {
+            const auto& disc_evt = std::get<queue::DisconnectionEvent>(event);
+            std::string user_id_str;
+            auto session_exp = cmd_ctx_.session_manager.sessionOfConnection(disc_evt.conn_id);
+            if (session_exp.has_value()) {
+                user_id_str = session_exp.value().value;
+            }
+            utils::EventLogger::instance().log(utils::EventCategory::SESSION, user_id_str,
+                                               "DISCONNECTION", duration_ms, "",
+                                               utils::LogDest::FILE);
         }
 
         // Mark worker as idle

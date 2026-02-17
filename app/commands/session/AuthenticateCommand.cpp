@@ -109,9 +109,11 @@ std::vector<net::outbound::OutgoingMessage> AuthenticateCommand::execute(Command
             .target = net::outbound::Target::one(event->conn_id),
             .action = net::outbound::Action{
                 std::in_place_type<net::outbound::UpdateAuthState>,
-                net::outbound::UpdateAuthState{.status = net::outbound::AuthStatus::AUTHED,
-                                               .expires_at = std::chrono::system_clock::time_point{
-                                                   std::chrono::seconds{claims.exp}}}}});
+                net::outbound::UpdateAuthState{
+                    .status = net::outbound::AuthStatus::AUTHED,
+                    .expires_at =
+                        std::chrono::system_clock::time_point{std::chrono::seconds{claims.exp}},
+                    .user_id = user_id}}});
         result.emplace_back(make_auth_ok(event->conn_id));
         return result;
     }
@@ -133,9 +135,11 @@ std::vector<net::outbound::OutgoingMessage> AuthenticateCommand::execute(Command
         .target = net::outbound::Target::one(event->conn_id),
         .action = net::outbound::Action{
             std::in_place_type<net::outbound::UpdateAuthState>,
-            net::outbound::UpdateAuthState{.status = net::outbound::AuthStatus::AUTHED,
-                                           .expires_at = std::chrono::system_clock::time_point{
-                                               std::chrono::seconds{claims.exp}}}}});
+            net::outbound::UpdateAuthState{
+                .status = net::outbound::AuthStatus::AUTHED,
+                .expires_at =
+                    std::chrono::system_clock::time_point{std::chrono::seconds{claims.exp}},
+                .user_id = user_id}}});
 
     // Send AUTH_OK to client - this signals auth success and client can show loading state
     result.emplace_back(make_auth_ok(event->conn_id));

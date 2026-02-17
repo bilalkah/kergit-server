@@ -1,7 +1,5 @@
 #include "app/services/livekit/LiveKitTokenService.h"
 
-#include "utils/Logger.h"
-
 #include <chrono>
 #include <jwt-cpp/jwt.h>
 #include <openssl/evp.h>
@@ -22,9 +20,6 @@ std::string LiveKitTokenService::mint_token(const TokenRequest& req) const {
 
     const auto now = clock::now();
     const auto exp = now + req.ttl;
-
-    utils::log_line(utils::LogLevel::INFO, fmt::format("LIVEKIT signing with key=[{}], secret=[{}]",
-                                                       api_key_, api_secret_));
 
     picojson::object video_claim;
     video_claim["room"] = picojson::value(req.room.value);
@@ -86,10 +81,6 @@ std::string LiveKitTokenService::get_or_create_e2ee_key(const ChannelId& channel
     std::string new_key = generate_unique_e2ee_key(channel);
     e2ee_keys_[channel] = new_key;
 
-    utils::log_line(utils::LogLevel::INFO,
-                    fmt::format("E2EE key created for channel [{}] (empty={})", channel.value,
-                                is_channel_empty));
-
     return new_key;
 }
 
@@ -97,10 +88,7 @@ void LiveKitTokenService::clear_e2ee_key(const ChannelId& channel) {
     std::lock_guard<std::mutex> lock(e2ee_mutex_);
 
     auto erased = e2ee_keys_.erase(channel);
-    if (erased > 0) {
-        utils::log_line(utils::LogLevel::INFO,
-                        fmt::format("E2EE key cleared for channel [{}]", channel.value));
-    }
+    (void)erased;
 }
 
 }  // namespace app::services::livekit

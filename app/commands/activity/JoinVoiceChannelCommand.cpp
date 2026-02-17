@@ -10,9 +10,11 @@
 #include "proto/envelope.pb.h"
 #include "proto/event/activity.pb.h"
 #include "proto/event/error.pb.h"
+#include "utils/EventLogger.h"
 
 #include <chrono>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace app {
@@ -33,7 +35,19 @@ std::vector<net::outbound::OutgoingMessage> JoinVoiceChannelCommand::execute(
 
     const auto& cmd = require_parsed<sercom::protocol::command::VoiceChannelMembership>(*event);
 
+    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd.hub_id()});
+    auto channel_id_opt = ctx.ids.to_internal(PublicChannelId{cmd.channel_id()});
     auto user_exp = ctx.session_manager.sessionOfConnection(event->conn_id);
+
+    utils::EventLogger::instance().log(
+        utils::EventCategory::VOICE, user_exp.has_value() ? user_exp->value : "",
+        "VOICE_MEMBERSHIP_REQUEST", 0,
+        "conn:" + event->conn_id.netstack_id.value + ":" + event->conn_id.conn_id.value +
+            " hub:" + (hub_id_opt.has_value() ? hub_id_opt->value : "unknown") +
+            " channel:" + (channel_id_opt.has_value() ? channel_id_opt->value : "unknown") +
+            " state:" + sercom::protocol::command::VoiceChannelMembership_State_Name(cmd.state()),
+        utils::LogDest::BOTH);
+
     if (!user_exp.has_value()) {
         return {make_drop_connection(event->conn_id,
                                      sercom::protocol::event::CommandErrorCode_UNAUTHORIZED,
@@ -41,14 +55,12 @@ std::vector<net::outbound::OutgoingMessage> JoinVoiceChannelCommand::execute(
     }
     const UserId user_id = user_exp.value();
 
-    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd.hub_id()});
     if (!hub_id_opt.has_value()) {
         return single_outgoing(make_command_error(
             event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_NOT_FOUND,
             "Hub not found"));
     }
 
-    auto channel_id_opt = ctx.ids.to_internal(PublicChannelId{cmd.channel_id()});
     if (!channel_id_opt.has_value()) {
         return single_outgoing(make_command_error(
             event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_NOT_FOUND,
@@ -210,6 +222,9 @@ std::vector<net::outbound::OutgoingMessage> JoinVoiceChannelCommand::execute(
             *prev_voice_channel == *channel_id_opt) {
             ctx.session_manager.leaveVoiceChannel(user_id);
 
+            // Log voice leave event
+            utils::EventLogger::instance().voice_leave(user_id.value, channel_id_opt->value);
+
             // Check if channel is now empty, if so clear the E2EE key
             const auto remaining =
                 ctx.session_manager.voiceParticipantsInChannel(*hub_id_opt, *channel_id_opt);
@@ -252,6 +267,10 @@ std::vector<net::outbound::OutgoingMessage> JoinVoiceChannelCommand::execute(
         }
 
         ctx.session_manager.joinVoiceChannel(user_id, *hub_id_opt, *channel_id_opt);
+
+        // Log voice join event
+        utils::EventLogger::instance().voice_join(user_id.value, channel_id_opt->value);
+
         auto updates = publish_participants(*hub_id_opt, *channel_id_opt);
         out.insert(out.end(), updates.begin(), updates.end());
         auto presence_updates =
