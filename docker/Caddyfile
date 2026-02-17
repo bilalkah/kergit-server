@@ -12,6 +12,8 @@
       Access-Control-Allow-Methods "GET, OPTIONS"
       Access-Control-Allow-Headers "Authorization, Content-Type, X-Room-ID"
     }
+    # Browser WebSocket can't set custom headers; derive routing header from query.
+    request_header X-Room-ID {query.room_id}
 
     reverse_proxy {
       to 127.0.0.1:7880
