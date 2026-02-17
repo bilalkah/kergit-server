@@ -1,396 +1,167 @@
 # System Overview
 
-## High-Level Architecture
+This document reflects the current implementation in `server/`, `app/`, `net/`, `control/`, `clients/web/`, and `docker/`.
+
+## Runtime Topology
 
 ```mermaid
 flowchart TB
-    subgraph Clients["Clients"]
-        WEB[Web App]
-        MOBILE[Mobile App]
-        CLI[CLI Tool]
+    subgraph Clients
+        WEB[Web Client\nNuxt app (:3000 via Caddy)]
+        ADMIN[Admin Client\nNuxt app (:3001 direct)]
     end
 
-    subgraph Server["Server"]
-        direction TB
-        
-        subgraph Control["Control Plane"]
-            HTTP[HTTP Server<br/>Admin & Health]
-        end
-        
-        subgraph Network["Network Layer"]
-            ROUTER[Network Router]
-            NS1[Network Stack 1]
-            NS2[Network Stack N...]
-            WS[WebSocket Transport]
-        end
-        
-        subgraph Application["Application Layer"]
-            QUEUE[Event Queue]
-            WORKERS[Worker Pool]
-            CMDS[Command Handlers]
-            SERVICES[Services]
-            MANAGERS[Managers]
-        end
-        
-        subgraph Data["Data Layer"]
-            PERSIST[Persistence Gateway]
-            CACHE[Caches]
-        end
+    CADDY[Caddy TLS Entry\n:443]
+
+    subgraph Backend
+        SRV[Server]
+        APP[AppStack]
+        ROUTER[NetworkRouter]
+        NS1[NetworkStack :9001]
+        NS2[NetworkStack :9002]
+        CTRL[HttpServer :8081]
     end
 
-    subgraph External["External Services"]
+    subgraph External
         DB[(PostgreSQL)]
-        LIVEKIT[LiveKit<br/>Voice Server]
-        SUPABASE[Supabase<br/>Auth Provider]
+        REDIS[(Redis :6379)]
+        LK1[LiveKit Node1 :7880]
+        LK2[LiveKit Node2 :7890]
+        SUPA[Supabase JWT verification]
     end
 
-    %% Client connections
-    WEB <-->|WebSocket| WS
-    MOBILE <-->|WebSocket| WS
-    CLI <-->|WebSocket| WS
+    WEB -->|HTTPS/WSS :443| CADDY
 
-    %% Internal flow
-    WS --> NS1
-    NS1 --> ROUTER
-    ROUTER --> QUEUE
-    QUEUE --> WORKERS
-    WORKERS --> CMDS
-    CMDS --> SERVICES
-    CMDS --> MANAGERS
-    SERVICES --> PERSIST
-    PERSIST --> CACHE
-    PERSIST --> DB
-    
-    %% Outbound
-    CMDS -->|responses| ROUTER
-    ROUTER -->|broadcast| WS
+    CADDY -->|/ws*| NS1
+    CADDY -->|/ws*| NS2
+    CADDY -->|/livekit*| LK1
+    CADDY -->|/livekit*| LK2
+    CADDY -->|/*| WEB
 
-    %% External
-    SERVICES -->|auth verify| SUPABASE
-    SERVICES -->|voice tokens| LIVEKIT
+    SRV --> APP
+    SRV --> ROUTER
+    SRV --> CTRL
+    ROUTER --> NS1
+    ROUTER --> NS2
+
+    APP --> DB
+    APP --> SUPA
+    LK1 --> REDIS
+    LK2 --> REDIS
 ```
 
-## Server Startup Sequence
+In current dev scripts, the admin client is served directly on `:3001` (not through Caddy).
+
+## Server Composition
+
+`server::Server` owns:
+1. `app::AppStack`
+2. `net::NetworkRouter` with one or more `NetworkStack` instances
+3. `control::http::HttpServer`
+
+Start order (`server/Server.cpp`):
+1. Initialize `EventLogger`
+2. Build/register network stacks (`init_stacks()`)
+3. `AppStack::bootstrap()`
+4. `AppStack::start()`
+5. Start metrics timeseries
+6. `NetworkRouter::start_all()`
+7. `HttpServer::start()`
+
+Stop order:
+1. `HttpServer::stop()`
+2. `AppStack::stop()`
+3. `NetworkRouter::stop_all()`
+4. Stop metrics timeseries
+5. Shutdown `EventLogger`
+
+## Authentication + Bootstrap Flow
 
 ```mermaid
 sequenceDiagram
-    participant Main
-    participant Server
-    participant AppStack
-    participant NetworkRouter
-    participant NetworkStack
-    participant Transport
+    participant Browser
+    participant Caddy
+    participant WS as TextWSServer
+    participant App as AppStack/WorkerPool
 
-    Main->>Main: Load environment config
-    Main->>Server: Create Server(config)
-    
-    Server->>AppStack: Create AppStack
-    AppStack->>AppStack: Init database connection
-    AppStack->>AppStack: Init managers (Session, Subscription)
-    AppStack->>AppStack: Init services (Auth, Hub, Channel, User...)
-    AppStack->>AppStack: Register command handlers
-    AppStack->>AppStack: Create worker pool
-    
-    Server->>NetworkRouter: Create NetworkRouter
-    Server->>NetworkStack: Create NetworkStack(s)
-    NetworkStack->>Transport: Create WebSocket Transport
-    
-    Server->>Server: Wire components together
-    Note over Server: AppStack ←→ NetworkRouter<br/>EventSink ↔ OutboundSink
-    
-    Main->>Server: start()
-    Server->>AppStack: start()
-    AppStack->>AppStack: Start worker threads
-    Server->>NetworkRouter: start_all()
-    NetworkRouter->>NetworkStack: start()
-    NetworkStack->>Transport: Listen on port
-    
-    Note over Transport: Server ready for connections
+    Browser->>Caddy: WSS /ws (cookie ws_auth or Authorization)
+    Caddy->>WS: Upgrade + Authorization: supabase <jwt>
+    WS->>WS: open(): attach connection as AUTHONFLY
+    WS->>App: Synthetic AUTH envelope from pending token
+
+    App->>App: AuthenticateCommand validates JWT
+    App-->>WS: UpdateAuthState(AUTHED)
+    App-->>Browser: AUTH_OK
+
+    App->>App: push ConnectionEvent
+    App->>App: BootstrapCommand builds SessionBootstrap
+    App-->>Browser: SESSION_BOOTSTRAP
 ```
 
-## Client Lifecycle
+Notes:
+- Session is created only after successful auth (`SessionManager::tryCreateSession`).
+- Bootstrap is triggered by a queued `ConnectionEvent`, not directly in transport.
+- Re-auth updates auth state and returns `AUTH_OK` without rebuilding session.
 
-```mermaid
-sequenceDiagram
-    participant Client
-    participant Transport
-    participant App as Application Layer
-    participant DB as Database
-
-    %% Connection
-    rect rgb(200, 230, 200)
-        Note over Client,DB: 1. Connect & Authenticate
-        Client->>Transport: WebSocket Connect
-        Transport->>App: ConnectionEvent
-        Client->>Transport: Authenticate (JWT token)
-        App->>App: Verify token with Supabase
-        App->>App: Create user session
-        App-->>Client: Auth Success
-    end
-
-    %% Bootstrap
-    rect rgb(200, 220, 240)
-        Note over Client,DB: 2. Bootstrap (Get Initial State)
-        Client->>Transport: Bootstrap Request
-        App->>DB: Fetch user's hubs
-        App->>DB: Fetch hub snapshots (members, channels)
-        App->>App: Subscribe to hub topics
-        App-->>Client: Bootstrap Response (all hubs + snapshots)
-    end
-
-    %% Active Usage
-    rect rgb(240, 230, 200)
-        Note over Client,DB: 3. Active Session
-        
-        Client->>Transport: Select Channel
-        App->>App: Subscribe to channel topic
-        App-->>Client: Channel messages
-        
-        Client->>Transport: Send Message
-        App->>DB: Store message
-        App->>App: Get channel subscribers
-        App-->>Client: Broadcast to all subscribers
-        
-        Client->>Transport: Join Voice Channel
-        App->>App: Mint LiveKit token
-        App-->>Client: Voice token + room info
-    end
-
-    %% Disconnection
-    rect rgb(240, 200, 200)
-        Note over Client,DB: 4. Disconnect & Cleanup
-        Client->>Transport: Disconnect
-        Transport->>App: DisconnectionEvent
-        App->>App: Remove all subscriptions
-        App->>App: Destroy session
-        App->>App: Notify others (user offline)
-    end
-```
-
-## Message Flow: Sending a Chat Message
+## Command Processing Path
 
 ```mermaid
 flowchart LR
-    subgraph Client["Sender"]
-        C1[User types message]
-    end
-
-    subgraph Server["Server Processing"]
-        direction TB
-        WS1[WebSocket Receive]
-        EQ[Event Queue]
-        W[Worker]
-        CMD[SendMessageCommand]
-        CS[ChannelService]
-        SUBS[SubscriptionManager]
-        OUT[Outbound Queue]
-    end
-
-    subgraph Recipients["Recipients"]
-        C2[User A]
-        C3[User B]
-        C4[User C]
-    end
-
-    subgraph Storage["Storage"]
-        DB[(Database)]
-    end
-
-    C1 -->|1. SendMessage| WS1
-    WS1 -->|2. Enqueue| EQ
-    EQ -->|3. Pop| W
-    W -->|4. Dispatch| CMD
-    CMD -->|5. Save| CS
-    CS -->|6. Store| DB
-    CMD -->|7. Get subscribers| SUBS
-    SUBS -->|8. Return connections| CMD
-    CMD -->|9. Create broadcasts| OUT
-    OUT -->|10. Send| C2
-    OUT -->|10. Send| C3
-    OUT -->|10. Send| C4
+    IN[Inbound Envelope] --> EQ[EventQueue high/low]
+    EQ --> WP[WorkerPool]
+    WP --> PV[ProtoMessageValidator]
+    PV --> DISP[Dispatcher]
+    DISP --> CMD[Command handler]
+    CMD --> OUT[OutgoingMessage intents]
+    OUT --> ROUTER[NetworkRouter]
+    ROUTER --> NS[Target NetworkStack]
+    NS --> OQ[OutgoingQueue]
+    OQ --> OW[OutgoingWorker]
+    OW --> WS[WebSocket send / auth update / drop]
 ```
 
-## Module Overview
+## Queueing and Priority Model
 
-```mermaid
-flowchart TB
-    subgraph server["server/"]
-        MAIN[main.cpp<br/>Entry point]
-        SRV[Server<br/>Top orchestrator]
-    end
+Inbound (`app::queue::EventQueue`):
+- `High`: authoritative state events
+- `Low`: ephemeral events (`TYPING`, `PRESENCE`, `VOICE_ACTIVITY`)
+- If full, low-priority incoming events are dropped
+- If full and a high-priority event arrives, low-priority entries may be evicted first
 
-    subgraph core["core/"]
-        CFG[ServerConfig<br/>Configuration]
-    end
+Outbound (`net::outbound::OutgoingQueue`):
+- `High` and `Low` deques
+- If full, low-priority outgoing events are dropped
+- If full and a high-priority event arrives, low-priority entries may be evicted first
 
-    subgraph net["net/"]
-        direction TB
-        NR[NetworkRouter<br/>Multi-stack routing]
-        NS[NetworkStack<br/>Single transport unit]
-        CR[ConnectionRegistry<br/>Track connections]
-        OQ[OutgoingQueue<br/>Message buffering]
-        WS[WebSocketTransport<br/>uWebSockets server]
-        HB[HeartbeatService<br/>Keep-alive pings]
-    end
+Per-connection outbox (`ConnectionContext::PerConnectionOutbox`):
+- Capacity `128`
+- On pressure: low drops first; repeated overflow can mark/drop slow connection queue
 
-    subgraph app["app/"]
-        direction TB
-        AS[AppStack<br/>App orchestrator]
-        EQ[EventQueue<br/>Inbound events]
-        WP[WorkerPool<br/>Parallel processing]
-        DISP[Dispatcher<br/>Command routing]
-        CMDS[Commands<br/>Business logic]
-        MGR[Managers<br/>Session + Subscriptions]
-        SVC[Services<br/>Domain operations]
-    end
+## Control Plane Endpoints
 
-    subgraph infra["infra/"]
-        PG[PersistenceGateway<br/>Database access]
-        SEC[Security<br/>JWT verification]
-    end
+`control/http/HttpServer.cpp` exposes:
+- `GET /health`
+- `GET /metrics/snapshot`
+- `GET /metrics/timeseries?window=<sec>`
+- `GET /metrics/public`
 
-    subgraph control["control/"]
-        HTTP[HttpServer<br/>Admin API]
-    end
+Default bind: `127.0.0.1:8081` (overridable via `CONTROL_HOST`, `CONTROL_PORT`).
 
-    %% Relationships
-    MAIN --> SRV
-    SRV --> AS
-    SRV --> NR
-    SRV --> HTTP
-    SRV --> CFG
+## Configuration Highlights
 
-    NR --> NS
-    NS --> WS
-    NS --> CR
-    NS --> OQ
-    NS --> HB
+`core/ServerConfig.h` + `ServerConfigFiller::fill_from_env`:
+- Socket ports: either `SOCKET_PORT=[p1,p2,...]` or single `SOCKET_PORT`
+- If socket port list is provided, number of stacks == list size
+- Else stacks == `socket_threads` (default `2`)
+- Event queue capacity default `30000`
+- Outbound queue capacity default `50000`
+- Worker threads default `3`
 
-    AS --> EQ
-    AS --> WP
-    AS --> DISP
-    DISP --> CMDS
-    AS --> MGR
-    AS --> SVC
-    SVC --> PG
-    AS --> SEC
-```
+## Current Protocol Surface
 
-## Pub/Sub Topic System
-
-```mermaid
-flowchart TB
-    subgraph Topics["Topic Types"]
-        HT["hub:{hub_id}<br/>Hub-level events"]
-        CT["hub:{hub_id}:channel:{channel_id}<br/>Channel messages"]
-        UT["user:{user_id}<br/>Direct messages"]
-    end
-
-    subgraph Events["Event Types"]
-        HUB_EVT[Hub renamed<br/>Hub deleted<br/>Member joined/left<br/>Channel created/deleted]
-        CHAN_EVT[New message<br/>Typing indicator<br/>Message edited]
-        USER_EVT[Direct message<br/>Friend request]
-    end
-
-    subgraph Subscribers["Who Subscribes?"]
-        HUB_SUB[All hub members]
-        CHAN_SUB[Users viewing channel]
-        USER_SUB[The specific user]
-    end
-
-    HT --> HUB_EVT
-    CT --> CHAN_EVT
-    UT --> USER_EVT
-
-    HUB_EVT --> HUB_SUB
-    CHAN_EVT --> CHAN_SUB
-    USER_EVT --> USER_SUB
-```
-
-## Voice Channel Flow
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant Server
-    participant LiveKit as LiveKit Server
-
-    User->>Server: JoinVoiceChannel(channel_id)
-    Server->>Server: Verify user is hub member
-    Server->>Server: Update session (voice_channel = channel_id)
-    Server->>Server: Mint LiveKit token (identity, room, permissions)
-    Server-->>User: VoiceJoinResponse (token, server_url)
-    
-    User->>LiveKit: Connect with token
-    LiveKit-->>User: Joined room
-    
-    Note over User,LiveKit: User is now in voice chat
-    
-    User->>LiveKit: Publish audio track
-    LiveKit->>LiveKit: Forward to other participants
-    
-    User->>Server: LeaveVoiceChannel
-    Server->>Server: Clear voice_channel from session
-    Server->>Server: Notify channel participants
-    User->>LiveKit: Disconnect
-```
-
-## Key Concepts Summary
-
-| Concept | What It Does | Where It Lives |
-|---------|--------------|----------------|
-| **Server** | Orchestrates all components | `server/` |
-| **NetworkStack** | Handles one WebSocket listener + connections | `net/` |
-| **NetworkRouter** | Routes messages to correct NetworkStack | `net/` |
-| **AppStack** | Business logic orchestrator | `app/` |
-| **EventQueue** | Buffers inbound events with priority | `app/queue/` |
-| **WorkerPool** | Processes events in parallel | `app/worker/` |
-| **Dispatcher** | Routes events to command handlers | `app/dispatcher/` |
-| **Commands** | Execute business logic | `app/commands/` |
-| **SessionManager** | Tracks logged-in users & state | `app/managers/` |
-| **SubscriptionManager** | Pub/sub for real-time broadcasts | `app/managers/` |
-| **Services** | Domain operations (Hub, Channel, User) | `app/services/` |
-| **PersistenceGateway** | Database access | `infra/persistence/` |
-
-## Data Flow Summary
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         CLIENT                                  │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              │ WebSocket
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  NETWORK LAYER                                                  │
-│  ┌─────────────┐  ┌──────────────┐  ┌─────────────────────┐    │
-│  │  Transport  │──│ Connections  │──│   Outbound Queue    │    │
-│  └─────────────┘  └──────────────┘  └─────────────────────┘    │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              │ Events
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  APPLICATION LAYER                                              │
-│  ┌───────────┐  ┌─────────────┐  ┌────────────┐  ┌──────────┐  │
-│  │  Queue    │──│   Workers   │──│ Dispatcher │──│ Commands │  │
-│  └───────────┘  └─────────────┘  └────────────┘  └──────────┘  │
-│                                                       │         │
-│                         ┌─────────────────────────────┘         │
-│                         ▼                                       │
-│  ┌────────────────────────────────────────────────────────┐    │
-│  │  Managers (Session, Subscriptions)                      │    │
-│  │  Services (Auth, Hub, Channel, User, Presence, etc.)   │    │
-│  └────────────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              │ SQL
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  DATA LAYER                                                     │
-│  ┌─────────────────────┐  ┌─────────────────────────────────┐  │
-│  │  Persistence        │──│  PostgreSQL                     │  │
-│  │  Gateway + Caches   │  │                                 │  │
-│  └─────────────────────┘  └─────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
-```
+`proto/envelope.proto` currently includes:
+- Session/auth: `AUTH`, `AUTH_OK`, `SESSION_BOOTSTRAP`, `CommandError`
+- Heartbeat: `PING`, `PONG`
+- Presence/activity: `PRESENCE`, `TYPING`, `ACTIVE_CHANNEL`, `VOICE_JOIN`, `VOICE_ACTIVITY`, voice events
+- Messages: send/fetch + `MESSAGE_CREATED`/`MESSAGE_BATCH`
+- Hubs/channels/users: create/update/remove and corresponding events
