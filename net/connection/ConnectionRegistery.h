@@ -34,6 +34,7 @@ struct HeartbeatState {
 struct AuthState {
     outbound::AuthStatus status{outbound::AuthStatus::UNAUTHED};
     std::chrono::system_clock::time_point expires_at{};
+    std::optional<UserId> user_id{};
 };
 
 /**

@@ -10,6 +10,7 @@
 #include "proto/envelope.pb.h"
 #include "proto/event/error.pb.h"
 #include "proto/event/message.pb.h"
+#include "utils/EventLogger.h"
 
 #include <chrono>
 #include <string_view>
@@ -105,7 +106,13 @@ std::vector<net::outbound::OutgoingMessage> SendMessageCommand::execute(CommandC
             "Channel is not active"));
     }
 
+    // Time the DB/message save operation
+    auto db_start = std::chrono::steady_clock::now();
     auto saved_exp = ctx.channel_service.sendMessage(*channel_id_opt, user_id, cmd.content());
+    auto db_end = std::chrono::steady_clock::now();
+    auto db_duration_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(db_end - db_start).count();
+
     if (!saved_exp.has_value()) {
         if (saved_exp.error() == services::ChannelService::MessageError::QueueFull) {
             return single_outgoing(make_command_error(
@@ -117,6 +124,10 @@ std::vector<net::outbound::OutgoingMessage> SendMessageCommand::execute(CommandC
             "Failed to send message"));
     }
     Message saved = std::move(saved_exp.value());
+
+    // Log message sent event with DB timing
+    utils::EventLogger::instance().message_sent(user_id.value, channel_id_opt->value,
+                                                db_duration_ms);
 
     sercom::protocol::event::MessageCreated created;
     created.set_hub_id(ctx.ids.to_public(*hub_id_opt).value);

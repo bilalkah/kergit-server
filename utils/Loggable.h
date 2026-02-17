@@ -14,16 +14,20 @@
 
 namespace utils {
 
+/**
+ * Base class for components that need terminal logging.
+ */
 class Loggable {
    public:
-    virtual ~Loggable() = default;  // makes it polymorphic!
+    virtual ~Loggable() = default;
+
    protected:
     template <typename... Args>
     void log(LogLevel level, Args&&... args) const {
         std::ostringstream oss;
         oss << demangled_class_name() << ": ";
-        (oss << ... << std::forward<Args>(args));  // C++17 fold
-        log_line(level, oss.str());                // ← function, not macro
+        (oss << ... << std::forward<Args>(args));
+        log_line(level, oss.str());
     }
 
     std::string demangled_class_name() const {

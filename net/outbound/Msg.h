@@ -48,6 +48,7 @@ struct SendPayload {
 struct UpdateAuthState {
     AuthStatus status{AuthStatus::UNAUTHED};
     std::chrono::system_clock::time_point expires_at{};
+    std::optional<UserId> user_id{};
 };
 
 struct DropConnection {

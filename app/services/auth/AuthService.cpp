@@ -16,15 +16,21 @@ AuthService::AuthService()
 
 AuthResult AuthService::authenticate(const std::string_view token) {
     auto result = token_verifier_.verify_token(token);
+
     if (!result) {
+        AuthError err;
         switch (result.error()) {
             case JwtVerifyError::InvalidSignature:
-                return std::unexpected(AuthError::InvalidToken);
+                err = AuthError::InvalidToken;
+                break;
             case JwtVerifyError::TokenExpired:
-                return std::unexpected(AuthError::ExpiredToken);
+                err = AuthError::ExpiredToken;
+                break;
             default:
-                return std::unexpected(AuthError::Other);
+                err = AuthError::Other;
+                break;
         }
+        return std::unexpected(err);
     }
 
     return result.value();
