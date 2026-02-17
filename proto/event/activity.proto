@@ -15,6 +15,10 @@ message VoiceTokenIssued {
 
   // Expiration in seconds (informational)
   uint64 expires_in = 4;
+
+  // E2EE shared key (base64-encoded, 32 bytes) for end-to-end encryption
+  // All participants in the same channel use this key
+  string e2ee_key = 5;
 }
 
 
