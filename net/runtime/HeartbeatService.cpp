@@ -100,22 +100,51 @@ void HeartbeatService::on_timer(us_timer_t* timer) {
 void HeartbeatService::tick() {
     if (!running_.load()) return;
     const auto now = std::chrono::system_clock::now();
-    auto connections = conns_.get();
+    const auto conn_ids = conns_.get_ids();
 
-    for (auto conn : connections) {
+    for (const auto& id : conn_ids) {
+        auto conn = conns_.get(id);
         if (!conn.has_value()) continue;
         auto ctx = conn.value();
-        auto id = ctx.conn_id;
         if (!ctx.handle.valid()) continue;
 
-        if (ctx.auth.status == outbound::AuthStatus::UNAUTHED) {
-            const char* reason = "unauthenticated";
+        if (ctx.auth_state == connection::AuthState::AUTH_FAILED) {
+            auto latest = conns_.get_view(id);
+            if (!latest.has_value() || latest->auth_state != connection::AuthState::AUTH_FAILED) {
+                continue;
+            }
+            const char* reason = "auth_failed";
             ctx.handle.end(4401, reason);
             continue;
         }
 
+        if (ctx.auth_state == connection::AuthState::AUTH_PENDING) {
+            if (now - ctx.heartbeat.connected_at >= cfg_.auth_pending_timeout) {
+                auto latest = conns_.get_view(id);
+                if (!latest.has_value() ||
+                    latest->auth_state != connection::AuthState::AUTH_PENDING) {
+                    continue;
+                }
+                conns_.mutate(id, [&](net::connection::ConnectionContext& real) {
+                    real.auth_state = connection::AuthState::AUTH_FAILED;
+                });
+                const char* reason = "auth_timeout";
+                ctx.handle.end(4403, reason);
+            }
+            continue;
+        }
+
         // Only check token expiry for fully authenticated connections.
-        if (ctx.auth.status == outbound::AuthStatus::AUTHED && now >= ctx.auth.expires_at) {
+        if (ctx.auth_state == connection::AuthState::AUTHENTICATED &&
+            now >= ctx.auth_expires_at) {
+            auto latest = conns_.get_view(id);
+            if (!latest.has_value() ||
+                latest->auth_state != connection::AuthState::AUTHENTICATED) {
+                continue;
+            }
+            conns_.mutate(id, [&](net::connection::ConnectionContext& real) {
+                real.auth_state = connection::AuthState::AUTH_FAILED;
+            });
             const char* reason = "auth_token_expired";
             ctx.handle.end(4402, reason);
             continue;
@@ -123,15 +152,6 @@ void HeartbeatService::tick() {
 
         if (ctx.heartbeat.rtt_ms > cfg_.timeout) {
             ctx.handle.end(cfg_.close_code, cfg_.close_reason);
-            continue;
-        }
-
-        if (ctx.auth.status == outbound::AuthStatus::AUTHONFLY) {
-            // For connections in the process of authenticating, we allow a longer grace period
-            if (now - ctx.heartbeat.connected_at >= auth_grace_period) {
-                const char* reason = "authentication_timeout";
-                ctx.handle.end(4403, reason);
-            }
             continue;
         }
 

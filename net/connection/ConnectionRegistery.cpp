@@ -63,8 +63,12 @@ std::optional<ConnectionView> ConnectionRegistery::get_view(const ConnId& conn_i
         return std::nullopt;
     }
     const auto& ctx = it->second;
-    return ConnectionView{
-        .conn_id = ctx.conn_id, .handle = ctx.handle, .kind = ctx.kind, .auth = ctx.auth};
+    return ConnectionView{.conn_id = ctx.conn_id,
+                          .handle = ctx.handle,
+                          .kind = ctx.kind,
+                          .auth_state = ctx.auth_state,
+                          .auth_expires_at = ctx.auth_expires_at,
+                          .user_id = ctx.user_id};
 }
 
 std::vector<ConnId> ConnectionRegistery::get_ids() const {

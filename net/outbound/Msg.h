@@ -4,22 +4,22 @@
 #include "domains/ids/Ids.h"
 
 #include <chrono>
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <variant>
 #include <vector>
+
+namespace net::connection {
+enum class AuthState : uint8_t;
+}
 
 namespace net::outbound {
 
 enum class OutboundPriority : uint8_t {
     High = 0,
     Low = 1,
-};
-
-enum class AuthStatus : uint8_t {
-    UNAUTHED = 0,
-    AUTHONFLY = 1,
-    AUTHED = 2,
 };
 
 struct Payload {
@@ -46,10 +46,17 @@ struct SendPayload {
 };
 
 struct UpdateAuthState {
-    AuthStatus status{AuthStatus::UNAUTHED};
+    connection::AuthState state{};
     std::chrono::system_clock::time_point expires_at{};
     std::optional<UserId> user_id{};
 };
+
+inline constexpr connection::AuthState kAuthStatePending =
+    static_cast<connection::AuthState>(0);
+inline constexpr connection::AuthState kAuthStateAuthenticated =
+    static_cast<connection::AuthState>(1);
+inline constexpr connection::AuthState kAuthStateFailed =
+    static_cast<connection::AuthState>(2);
 
 struct DropConnection {
     int code = 0;

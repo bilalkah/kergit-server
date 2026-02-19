@@ -8,6 +8,7 @@
 #include <unordered_set>
 
 namespace net::outbound {
+
 // OutgoingWorker is the single owner of per-connection outbox execution.
 // All outbound actions (SendPayload, UpdateAuthState, DropConnection)
 // are executed here on the event loop thread.
@@ -113,9 +114,15 @@ void OutgoingWorker::flush_connection_outbox(connection::ConnectionContext& ctx)
                         1, std::memory_order_relaxed);
                     return;
                 } else if constexpr (std::is_same_v<T, UpdateAuthState>) {
-                    ctx.auth.status = action.status;
-                    ctx.auth.expires_at = action.expires_at;
-                    ctx.auth.user_id = action.user_id;
+                    const auto next_state = action.state;
+                    // AUTH_FAILED is terminal for the connection lifecycle.
+                    // Ignore any late queued update that would recover the auth state.
+                    if (!(ctx.auth_state == connection::AuthState::AUTH_FAILED &&
+                          next_state != connection::AuthState::AUTH_FAILED)) {
+                        ctx.auth_state = next_state;
+                        ctx.auth_expires_at = action.expires_at;
+                        ctx.user_id = action.user_id;
+                    }
                     ctx.outbox.slow_hits = 0;
                     ctx.outbox.q.pop_front();
                     popped_one = true;
@@ -280,9 +287,15 @@ void OutgoingWorker::tick() {
                                 processed = true;
                             }
                         } else if constexpr (std::is_same_v<T, UpdateAuthState>) {
-                            ctx.auth.status = action.status;
-                            ctx.auth.expires_at = action.expires_at;
-                            ctx.auth.user_id = action.user_id;
+                            const auto next_state = action.state;
+                            // AUTH_FAILED is terminal for the connection lifecycle.
+                            // Ignore any late queued update that would recover the auth state.
+                            if (!(ctx.auth_state == connection::AuthState::AUTH_FAILED &&
+                                  next_state != connection::AuthState::AUTH_FAILED)) {
+                                ctx.auth_state = next_state;
+                                ctx.auth_expires_at = action.expires_at;
+                                ctx.user_id = action.user_id;
+                            }
                             utils::metrics::counters().outbound_update_auth_state_total.fetch_add(
                                 1, std::memory_order_relaxed);
                             processed = true;

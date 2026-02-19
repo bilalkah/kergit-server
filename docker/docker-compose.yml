@@ -45,6 +45,12 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
     network_mode: host
+    pid: host
+    cap_add:
+      - SYS_ADMIN
+      - SYS_PTRACE
+    security_opt:
+      - seccomp:unconfined
     command: bash -lc "sleep infinity"
 
   livekit-node1:

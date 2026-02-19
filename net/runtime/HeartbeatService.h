@@ -15,6 +15,7 @@ namespace net::runtime {
 struct HeartbeatConfig {
     std::chrono::seconds interval{5};
     std::chrono::seconds timeout{15};
+    std::chrono::seconds auth_pending_timeout{5};
     int close_code = 4000;
     const char* close_reason = "Client did not respond to heartbeat PINGs";
 };
@@ -52,11 +53,6 @@ class HeartbeatService {
      */
     std::atomic<bool> running_{false};
     ::us_timer_t* timer_{nullptr};
-
-    /**
-     * Grace period for new connections to complete authentication
-     */
-    static constexpr auto auth_grace_period = std::chrono::seconds{10};
 
     /**
      * Helper to make connection status message
