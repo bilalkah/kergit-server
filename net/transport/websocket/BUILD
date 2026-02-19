@@ -74,6 +74,7 @@ cc_library(
         "//net/connection:connection_registery",
         "//net/outbound:outgoing_worker",
         "//net/runtime:heartbeat_service",
+        "//net/security/transport:ws_origin_policy",
         "//net/transport:i_transport",
         "//net/transport:outbound_transport_iface",
         "//proto/command:session_cc_proto",

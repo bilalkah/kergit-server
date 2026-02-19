@@ -5,16 +5,30 @@
 #include "utils/EventLogger.h"
 #include "utils/Metrics.h"
 
-#include <cctype>
+#include <string>
 #include <string_view>
+
+namespace {
+template <typename TResponse>
+std::string get_remote_ip_text(TResponse* res) {
+    if constexpr (requires(TResponse* response) { response->getRemoteAddressAsText(); }) {
+        auto addr = res->getRemoteAddressAsText();
+        return std::string(addr);
+    } else {
+        return {};
+    }
+}
+
+}  // namespace
 
 namespace net::transport::websocket {
 
 TextWSServer::TextWSServer(core::NetworkStackConfig cfg, connection::ConnectionRegistery& conns,
-                           outbound::OutgoingQueue& outgoing_queue, OriginAllowlist origins,
+                           outbound::OutgoingQueue& outgoing_queue,
+                           security::transport::WsOriginPolicy policy,
                            WsLimits limits)
     : cfg_(std::move(cfg)),
-      origins_(std::move(origins)),
+      policy_(std::move(policy)),
       limits_(std::move(limits)),
       conns_(conns),
       app_(AppFactory::create(cfg_)),
@@ -85,10 +99,24 @@ void TextWSServer::wire() {
             .sendPingsAutomatically = false,
             .upgrade =
                 [this](auto* res, auto* req, auto* ctx) {
-                    std::string origin = std::string(req->getHeader("origin"));
-                    if (!origins_.is_allowed(origin)) {
-                        res->writeStatus("403")->end("Origin not allowed");
-                        log(utils::LogLevel::ERROR, "Origin not allowed: " + origin);
+                    const std::string origin_hdr = std::string(req->getHeader("origin"));
+                    const std::string forwarded_origin =
+                        std::string(req->getHeader("x-forwarded-origin"));
+                    const std::string remote_ip = get_remote_ip_text(res);
+                    const bool proxy_is_trusted = policy_.is_trusted_proxy(remote_ip);
+                    const std::string effective_origin =
+                        (proxy_is_trusted && !forwarded_origin.empty()) ? forwarded_origin
+                                                                        : origin_hdr;
+
+                    if (effective_origin.empty()) {
+                        res->writeStatus("403")->end("Forbidden");
+                        log(utils::LogLevel::ERROR, "[ws] missing origin");
+                        return;
+                    }
+
+                    if (!policy_.is_allowed(effective_origin)) {
+                        res->writeStatus("403")->end("Forbidden");
+                        log(utils::LogLevel::ERROR, "[ws] origin rejected: " + effective_origin);
                         return;
                     }
                     if (active_connections_.load(std::memory_order_relaxed) >=

@@ -6,6 +6,7 @@
 #include "net/outbound/OutgoingQueue.h"
 #include "net/outbound/OutgoingWorker.h"
 #include "net/runtime/HeartbeatService.h"
+#include "net/security/transport/WsOriginPolicy.h"
 #include "net/transport/IOutboundTransport.h"
 #include "net/transport/ITransport.h"
 #include "net/transport/websocket/IWsApp.h"
@@ -31,22 +32,13 @@ struct WsLimits {
     uint8_t max_connections = 255;
 };
 
-struct OriginAllowlist {
-    bool is_allowed(const std::string& origin) const {
-        if (origin.empty()) return true;
-
-        return origin.find("http://localhost") == 0 || origin.find("https://localhost") == 0 ||
-               origin.find("http://127.0.0.1") == 0 || origin.find("https://127.0.0.1") == 0 ||
-               origin.find("http://192.168.") == 0 || origin.find("https://192.168.") == 0;
-    }
-};
-
 class TextWSServer : public ITransportServer,
                      public transport::IOutboundTransport,
                      public utils::Loggable {
    public:
     explicit TextWSServer(core::NetworkStackConfig cfg, connection::ConnectionRegistery& conns,
-                          outbound::OutgoingQueue& outgoing_queue, OriginAllowlist origins = {},
+                          outbound::OutgoingQueue& outgoing_queue,
+                          security::transport::WsOriginPolicy policy,
                           WsLimits limits = {});
     ~TextWSServer();
 
@@ -78,7 +70,7 @@ class TextWSServer : public ITransportServer,
      * Configuration
      */
     core::NetworkStackConfig cfg_{};
-    OriginAllowlist origins_{};
+    security::transport::WsOriginPolicy policy_;
     WsLimits limits_{};
 
     /**
