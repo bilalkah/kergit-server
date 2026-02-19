@@ -111,8 +111,10 @@ void NetworkStack::wire_components() {
     outgoing_queue_ = std::make_unique<outbound::OutgoingQueue>(cfg_.outbound_queue_capacity);
 
     // Transport later
+    auto ws_origin_policy =
+        security::transport::WsOriginPolicy::from_file(cfg_.ws_origin_policy_path);
     transport_layer_ = std::make_unique<transport::websocket::TextWSServer>(
-        cfg_, *connection_registry_, *outgoing_queue_);
+        cfg_, *connection_registry_, *outgoing_queue_, std::move(ws_origin_policy));
 
     transport_layer_->set_hooks(
         {.on_open =

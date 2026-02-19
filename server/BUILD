@@ -20,7 +20,9 @@ cc_binary(
         "main.cpp",
     ],
     copts = ["-std=gnu++23"],
-    data = select({
+    data = [
+        "//config:ws_origin_policy.yaml",
+    ] + select({
         ":ssl_on": [
             "//certs:cert.pem",
             "//certs:key.pem",

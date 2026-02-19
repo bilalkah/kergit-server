@@ -45,6 +45,7 @@ struct NetworkStackConfig {
     utils::TlsConfig tls{};
     std::string net_stack_name{"default_netstack"};
     std::size_t port_index{0};  // Index in socket_ports array, for metrics tracking
+    std::string ws_origin_policy_path{"config/ws_origin_policy.yaml"};
 
     size_t socket_threads{2};
     std::size_t outbound_queue_capacity{50000};
@@ -95,6 +96,8 @@ class ServerConfigFiller {
             cfg.network.port = std::stoi(utils::EnvLoader::get_env("SOCKET_PORT", "9001"));
         }
         cfg.network.ws_path = utils::EnvLoader::get_env("SOCKET_PATTERN", cfg.network.ws_path);
+        cfg.network.ws_origin_policy_path =
+            utils::EnvLoader::get_env("WS_ORIGIN_POLICY_PATH", cfg.network.ws_origin_policy_path);
         cfg.network.outbound_queue_capacity =
             static_cast<std::size_t>(std::stoul(utils::EnvLoader::get_env(
                 "OUTBOUND_QUEUE_CAPACITY", std::to_string(cfg.network.outbound_queue_capacity))));
