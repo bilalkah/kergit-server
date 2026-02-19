@@ -2,7 +2,6 @@
 #define NET_TRANSPORT_WEBSOCKET_WebSocketTransport_H
 
 #include "core/ServerConfig.h"
-#include "infra/security/token/SupabaseVerifier.h"
 #include "net/connection/ConnectionRegistery.h"
 #include "net/outbound/OutgoingQueue.h"
 #include "net/outbound/OutgoingWorker.h"
@@ -18,10 +17,8 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
-#include <optional>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 
 namespace app::queue {
 class IEventSink;
@@ -98,8 +95,6 @@ class TextWSServer : public ITransportServer,
     runtime::HeartbeatService heartbeat_service_;
     outbound::OutgoingWorker out_worker_;
     Hooks hooks_{};
-    std::optional<infra::security::token::SupabaseVerifier> auth_{};
-    std::unordered_map<ConnId, std::string> pending_auth_{};
     ConnIdGenerator conn_id_gen_{};
 
     /**

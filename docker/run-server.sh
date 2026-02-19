@@ -16,7 +16,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 COMPOSE_FILE="$REPO_ROOT/docker/docker-compose.yml"
 PROJECT_NAME="${COMPOSE_PROJECT_NAME:-sercom}"
 DEV_CONTAINER="sercom-dev-ubuntu"
-BAZEL_CONFIG="vanilla_opt"
+BAZEL_CONFIG="vanilla_dbg"
 
 echo "▶ Starting Redis..."
 docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d redis

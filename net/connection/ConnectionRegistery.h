@@ -7,6 +7,7 @@
 #include "net/transport/Handle.h"
 
 #include <deque>
+#include <cstdint>
 #include <expected>
 #include <mutex>
 #include <optional>
@@ -31,10 +32,10 @@ struct HeartbeatState {
 /**
  * State associated with authentication.
  */
-struct AuthState {
-    outbound::AuthStatus status{outbound::AuthStatus::UNAUTHED};
-    std::chrono::system_clock::time_point expires_at{};
-    std::optional<UserId> user_id{};
+enum class AuthState : uint8_t {
+    AUTH_PENDING = 0,
+    AUTHENTICATED = 1,
+    AUTH_FAILED = 2,
 };
 
 /**
@@ -62,7 +63,9 @@ struct ConnectionContext {
     HeartbeatState heartbeat{};
 
     // Authentication state
-    AuthState auth{};
+    AuthState auth_state{AuthState::AUTH_PENDING};
+    std::chrono::system_clock::time_point auth_expires_at{};
+    std::optional<UserId> user_id{};
 
     // deque for backpressured outgoing messages
     std::deque<std::pair<std::string, uWS::OpCode>> pending;
@@ -95,7 +98,9 @@ struct ConnectionView {
     ConnId conn_id{""};
     transport::WsHandle handle{};
     TransportKind kind{TransportKind::TextWebSocket};
-    AuthState auth{};
+    AuthState auth_state{AuthState::AUTH_PENDING};
+    std::chrono::system_clock::time_point auth_expires_at{};
+    std::optional<UserId> user_id{};
 };
 
 /**

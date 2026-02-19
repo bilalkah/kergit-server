@@ -8,6 +8,7 @@
 #include "proto/event/session.pb.h"
 
 #include <chrono>
+#include <optional>
 
 namespace app {
 
@@ -23,6 +24,17 @@ net::outbound::OutgoingMessage make_auth_ok(const GlobalConnId& conn) {
         .action = net::outbound::Action{
             std::in_place_type<net::outbound::SendPayload>,
             net::outbound::SendPayload{.payload = net::outbound::Payload{std::move(bytes), true}}}};
+}
+
+net::outbound::OutgoingMessage make_auth_failed(const GlobalConnId& conn) {
+    return net::outbound::OutgoingMessage{
+        .target = net::outbound::Target::one(conn),
+        .action = net::outbound::Action{
+            std::in_place_type<net::outbound::UpdateAuthState>,
+            net::outbound::UpdateAuthState{
+                .state = net::outbound::kAuthStateFailed,
+                .expires_at = std::chrono::system_clock::time_point{},
+                .user_id = std::nullopt}}};
 }
 
 }  // namespace
@@ -45,6 +57,7 @@ std::vector<net::outbound::OutgoingMessage> AuthenticateCommand::execute(Command
     // 4. Validate command fields
     if (auth.type() != sercom::protocol::command::AuthType_REAUTH &&
         auth.type() != sercom::protocol::command::AuthType_AUTH) {
+        result.emplace_back(make_auth_failed(event->conn_id));
         result.emplace_back(net::outbound::OutgoingMessage{
             .target = net::outbound::Target::one(event->conn_id),
             .action = net::outbound::Action{
@@ -56,6 +69,7 @@ std::vector<net::outbound::OutgoingMessage> AuthenticateCommand::execute(Command
     }
 
     if (auth.provider() != sercom::protocol::command::AuthProvider_SUPABASE) {
+        result.emplace_back(make_auth_failed(event->conn_id));
         result.emplace_back(net::outbound::OutgoingMessage{
             .target = net::outbound::Target::one(event->conn_id),
             .action = net::outbound::Action{
@@ -67,6 +81,7 @@ std::vector<net::outbound::OutgoingMessage> AuthenticateCommand::execute(Command
     }
 
     if (auth.token().empty()) {
+        result.emplace_back(make_auth_failed(event->conn_id));
         result.emplace_back(net::outbound::OutgoingMessage{
             .target = net::outbound::Target::one(event->conn_id),
             .action = net::outbound::Action{
@@ -79,6 +94,7 @@ std::vector<net::outbound::OutgoingMessage> AuthenticateCommand::execute(Command
 
     auto auth_result = ctx.auth_service.authenticate(auth.token());
     if (!auth_result.has_value()) {
+        result.emplace_back(make_auth_failed(event->conn_id));
         result.emplace_back(net::outbound::OutgoingMessage{
             .target = net::outbound::Target::one(event->conn_id),
             .action = net::outbound::Action{
@@ -96,6 +112,7 @@ std::vector<net::outbound::OutgoingMessage> AuthenticateCommand::execute(Command
     if (existing) {
         // Re-authentication - verify same user
         if (existing->value != claims.id) {
+            result.emplace_back(make_auth_failed(event->conn_id));
             result.emplace_back(net::outbound::OutgoingMessage{
                 .target = net::outbound::Target::one(event->conn_id),
                 .action = net::outbound::Action{
@@ -110,7 +127,7 @@ std::vector<net::outbound::OutgoingMessage> AuthenticateCommand::execute(Command
             .action = net::outbound::Action{
                 std::in_place_type<net::outbound::UpdateAuthState>,
                 net::outbound::UpdateAuthState{
-                    .status = net::outbound::AuthStatus::AUTHED,
+                    .state = net::outbound::kAuthStateAuthenticated,
                     .expires_at =
                         std::chrono::system_clock::time_point{std::chrono::seconds{claims.exp}},
                     .user_id = user_id}}});
@@ -120,6 +137,7 @@ std::vector<net::outbound::OutgoingMessage> AuthenticateCommand::execute(Command
 
     // First-time authentication - create session
     if (!ctx.session_manager.tryCreateSession(event->conn_id, user_id)) {
+        result.emplace_back(make_auth_failed(event->conn_id));
         result.emplace_back(net::outbound::OutgoingMessage{
             .target = net::outbound::Target::one(event->conn_id),
             .action = net::outbound::Action{
@@ -136,7 +154,7 @@ std::vector<net::outbound::OutgoingMessage> AuthenticateCommand::execute(Command
         .action = net::outbound::Action{
             std::in_place_type<net::outbound::UpdateAuthState>,
             net::outbound::UpdateAuthState{
-                .status = net::outbound::AuthStatus::AUTHED,
+                .state = net::outbound::kAuthStateAuthenticated,
                 .expires_at =
                     std::chrono::system_clock::time_point{std::chrono::seconds{claims.exp}},
                 .user_id = user_id}}});

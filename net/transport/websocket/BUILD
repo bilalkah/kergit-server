@@ -71,7 +71,6 @@ cc_library(
         ":text_websocket_utils",
         ":ws_app_factory",
         "//core:server_config",
-        "//infra/security:supabase_jwt_verifier",
         "//net/connection:connection_registery",
         "//net/outbound:outgoing_worker",
         "//net/runtime:heartbeat_service",

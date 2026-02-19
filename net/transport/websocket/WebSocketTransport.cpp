@@ -2,28 +2,11 @@
 
 #include "net/transport/websocket/WsAppFactory.h"
 #include "net/transport/websocket/utils.h"
-#include "proto/command/session.pb.h"
 #include "utils/EventLogger.h"
 #include "utils/Metrics.h"
 
 #include <cctype>
-#include <chrono>
 #include <string_view>
-
-namespace {
-sercom::protocol::Envelope make_authenticate_envelope(std::string_view token) {
-    sercom::protocol::command::Authenticate auth_cmd;
-    auth_cmd.set_type(sercom::protocol::command::AuthType_AUTH);
-    auth_cmd.set_provider(sercom::protocol::command::AuthProvider_SUPABASE);
-    auth_cmd.set_token(token);
-
-    sercom::protocol::Envelope env;
-    env.set_version(1);
-    env.set_type(sercom::protocol::Envelope::AUTH);
-    auth_cmd.SerializeToString(env.mutable_payload());
-    return env;
-}
-}  // namespace
 
 namespace net::transport::websocket {
 
@@ -36,14 +19,7 @@ TextWSServer::TextWSServer(core::NetworkStackConfig cfg, connection::ConnectionR
       conns_(conns),
       app_(AppFactory::create(cfg_)),
       heartbeat_service_(*app_, conns_),
-      out_worker_(*app_, conns_, *this, outgoing_queue) {
-    auto verifier = infra::security::token::SupabaseVerifier::create();
-    if (!verifier.has_value()) {
-        throw std::runtime_error("Failed to initialize SupabaseVerifier. Error code: " +
-                                 std::to_string(static_cast<int>(verifier.error())));
-    }
-    auth_.emplace(std::move(verifier.value()));
-}
+      out_worker_(*app_, conns_, *this, outgoing_queue) {}
 
 TextWSServer::~TextWSServer() {}
 
@@ -115,11 +91,6 @@ void TextWSServer::wire() {
                         log(utils::LogLevel::ERROR, "Origin not allowed: " + origin);
                         return;
                     }
-                    if (!auth_.has_value()) {
-                        res->writeStatus("500")->end("Server misconfiguration");
-                        log(utils::LogLevel::ERROR, "Server misconfiguration");
-                        return;
-                    }
                     if (active_connections_.load(std::memory_order_relaxed) >=
                         limits_.max_connections) {
                         res->writeStatus("503")->end("Max connections reached");
@@ -130,22 +101,8 @@ void TextWSServer::wire() {
                         return;
                     }
                     const auto ws_key = req->getHeader("sec-websocket-key");
-                    const auto auth_header = std::string(req->getHeader("authorization"));
-                    if (auth_header.empty()) {
-                        res->writeStatus("401")->end("Unauthorized");
-                        log(utils::LogLevel::ERROR, "Missing authorization header");
-                        return;
-                    }
-                    const auto token = extract_supabase_token(auth_header);
-                    if (!token.has_value()) {
-                        res->writeStatus("401")->end("Unauthorized");
-                        log(utils::LogLevel::ERROR, "Invalid authorization header format");
-                        return;
-                    }
-
                     PerSocketData psd{};
                     psd.conn_id = conn_id_gen_.allocate();
-                    pending_auth_.insert_or_assign(psd.conn_id, token.value());
 
                     // Capture conn_id before moving psd
                     auto conn_id_str = psd.conn_id.value;
@@ -172,18 +129,11 @@ void TextWSServer::wire() {
                     connection::ConnectionContext ctx(psd->conn_id, transport::WsHandle{ws},
                                                       TransportKind::TextWebSocket,
                                                       cfg_.port_index);
-                    ctx.auth.status = outbound::AuthStatus::AUTHONFLY;
+                    ctx.auth_state = connection::AuthState::AUTH_PENDING;
                     conns_.attach(psd->conn_id, std::move(ctx));
                     heartbeat_service_.on_open(psd->conn_id);
                     // Note: on_open not called here - bootstrap is triggered after auth
                     // via AuthenticateCommand pushing ConnectionEvent
-
-                    auto pending = pending_auth_.find(psd->conn_id);
-                    if (pending != pending_auth_.end()) {
-                        hooks_.on_message(psd->conn_id,
-                                          make_authenticate_envelope(pending->second));
-                        pending_auth_.erase(pending);
-                    }
 
                     utils::metrics::counters().active_connections.fetch_add(
                         1, std::memory_order_relaxed);
@@ -207,7 +157,25 @@ void TextWSServer::wire() {
                         return;
                     }
 
-                    // FAST-PATH: application-level PING
+                    auto conn_view = conns_.get_view(psd->conn_id);
+                    if (!conn_view.has_value()) {
+                        ws->end(4401, "connection_not_found");
+                        return;
+                    }
+
+                    if (conn_view->auth_state == connection::AuthState::AUTH_FAILED) {
+                        ws->end(4401, "auth_failed");
+                        return;
+                    }
+
+                    if (conn_view->auth_state != connection::AuthState::AUTHENTICATED &&
+                        env.type() != sercom::protocol::Envelope::AUTH) {
+                        // Strict AUTH-first policy in socket layer: drop everything except AUTH
+                        // until the connection becomes authenticated.
+                        return;
+                    }
+
+                    // FAST-PATH: application-level PING (only after auth)
                     if (env.type() == sercom::protocol::Envelope::PING) {
                         auto res = make_app_pong_response(env);
                         if (!res.has_value()) {
@@ -257,15 +225,14 @@ void TextWSServer::wire() {
                     // Get user_id from connection context before detaching
                     std::string user_id_str = "";
                     auto conn = conns_.get(conn_id);
-                    if (conn.has_value() && conn->auth.user_id.has_value()) {
-                        user_id_str = conn->auth.user_id->value;
+                    if (conn.has_value() && conn->user_id.has_value()) {
+                        user_id_str = conn->user_id->value;
                     }
 
                     utils::EventLogger::instance().log(
                         utils::EventCategory::SESSION, user_id_str, "WS_CLOSE", 0,
                         "conn:" + conn_id.value + " code:" + std::to_string(code));
 
-                    pending_auth_.erase(conn_id);
                     conns_.detach(conn_id);
 
                     hooks_.on_close(conn_id, code, std::string(reason));
