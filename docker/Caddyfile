@@ -38,6 +38,13 @@
 
   # Nuxt frontend
   handle {
-    reverse_proxy 127.0.0.1:3000
+    reverse_proxy {
+      to 127.0.0.1:3000
+      header_down Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+      header_down X-Frame-Options "DENY"
+      header_down Referrer-Policy "strict-origin-when-cross-origin"
+      header_down Permissions-Policy "geolocation=(), camera=(), microphone=(self), usb=(), payment=(), accelerometer=(), gyroscope=(), magnetometer=()"
+      header_down Content-Security-Policy "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; frame-src 'self'; form-action 'self' https://xxinxxsxutfkqajbmlar.supabase.co; object-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://api.dicebear.com; connect-src 'self' https://xxinxxsxutfkqajbmlar.supabase.co wss:; worker-src 'self' blob:; media-src 'self' blob:"
+    }
   }
 }
