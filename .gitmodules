@@ -1,4 +1,9 @@
 [submodule "clients/web"]
 	path = clients/web
-	url = https://github.com/bilalkah/sercom-web-client.git
+	url = git@github.com:bilalkah/sercom-web-client.git
 	branch = master
+[submodule "clients/admin"]
+	path = clients/admin
+	url = git@github.com:bilalkah/sercom-admin-client.git
+	branch = master
+
