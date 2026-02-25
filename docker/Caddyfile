@@ -4,6 +4,43 @@
   @preflight method OPTIONS
   respond @preflight 204
 
+  # Admin/control panel routes are LAN-only (blocked from public internet).
+  @adminDenied {
+    path /admin* /admin-api* /admin-livekit-metrics*
+    not remote_ip {$ADMIN_ALLOWED_CIDR:private_ranges} 127.0.0.1/8 ::1
+  }
+  respond @adminDenied 403
+
+  # Admin app metrics from the backend control plane.
+  handle_path /admin-api* {
+    reverse_proxy {
+      to {$ADMIN_CONTROL_TARGET:sercom-dev-ubuntu:8081}
+    }
+  }
+
+  # Admin app LiveKit Prometheus metrics.
+  handle_path /admin-livekit-metrics/node-1* {
+    rewrite * /metrics
+    reverse_proxy {
+      to {$ADMIN_LIVEKIT_NODE1_METRICS_TARGET:livekit-node1:6789}
+    }
+  }
+
+  handle_path /admin-livekit-metrics/node-2* {
+    rewrite * /metrics
+    reverse_proxy {
+      to {$ADMIN_LIVEKIT_NODE2_METRICS_TARGET:livekit-node2:6790}
+    }
+  }
+
+  # Nuxt admin frontend (served under /admin)
+  # Keep /admin prefix; Nuxt is configured with baseURL=/admin/.
+  handle /admin* {
+    reverse_proxy {
+      to {$ADMIN_APP_TARGET:host.docker.internal:3001}
+    }
+  }
+
   # LiveKit signaling (CORS only here)
   handle_path /livekit* {
     header {
@@ -16,8 +53,8 @@
     request_header X-Room-ID {query.room_id}
 
     reverse_proxy {
-      to 127.0.0.1:7880
-      to 127.0.0.1:7890
+      to livekit-node1:7880
+      to livekit-node2:7890
       lb_policy header X-Room-ID
     }
   }
@@ -25,9 +62,7 @@
   # Backend WebSocket server
   handle_path /ws* {
     reverse_proxy {
-      to 127.0.0.1:9001
-      to 127.0.0.1:9002
-      lb_policy least_conn
+      to sercom-dev-ubuntu:9001
       header_up Host {host}
       header_up X-Forwarded-For {remote}
       header_up X-Forwarded-Proto {scheme}
@@ -39,7 +74,7 @@
   # Nuxt frontend
   handle {
     reverse_proxy {
-      to 127.0.0.1:3000
+      to host.docker.internal:3000
       header_down Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
       header_down X-Frame-Options "DENY"
       header_down Referrer-Policy "strict-origin-when-cross-origin"

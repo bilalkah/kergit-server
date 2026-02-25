@@ -4,7 +4,6 @@ load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 
 # Export files for Docker build
 exports_files([
-    "requirements.txt",
     ".env",
 ])
 

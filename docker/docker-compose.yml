@@ -7,6 +7,7 @@ services:
     volumes:
       - ./../:/home/sercom/workspace:cached
       - ccache:/home/sercom/.ccache
+      - bazel-cache:/home/sercom/.cache/bazel
     working_dir: /home/sercom/workspace
     tty: true
     stdin_open: true
@@ -16,7 +17,6 @@ services:
       - "443:443"
       - "3000:3000"
       - "3001:3001"
-      - "8081:8081"
       - "9001:9001"
       - "7880:7880"
       - "7881:7881"
@@ -36,6 +36,7 @@ services:
     volumes:
       - ../:/home/sercom/workspace:cached
       - ccache:/home/sercom/.ccache
+      - bazel-cache:/home/sercom/.cache/bazel
     working_dir: /home/sercom/workspace
     tty: true
     stdin_open: true
@@ -44,7 +45,11 @@ services:
       - REDIS_URL=redis://redis:6379
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-    network_mode: host
+      - CONTROL_HOST=${CONTROL_HOST:-0.0.0.0}
+      - CONTROL_PORT=${CONTROL_PORT:-8081}
+    ports:
+      - "9001:9001"
+      - "8081:8081"
     pid: host
     cap_add:
       - SYS_ADMIN
@@ -57,7 +62,10 @@ services:
     image: livekit/livekit-server:v1.9
     container_name: livekit-node1
     command: --config /config/livekit.yaml
-    network_mode: host
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+      - "50000-50100:50000-50100/udp"
     volumes:
       - ../livekit/lan_node1.yaml:/config/livekit.yaml:ro
     restart: unless-stopped
@@ -68,7 +76,10 @@ services:
     image: livekit/livekit-server:v1.9
     container_name: livekit-node2
     command: --config /config/livekit.yaml
-    network_mode: host
+    ports:
+      - "7890:7890"
+      - "7891:7891"
+      - "50101-50200:50101-50200/udp"
     volumes:
       - ../livekit/lan_node2.yaml:/config/livekit.yaml:ro
     restart: unless-stopped
@@ -79,7 +90,16 @@ services:
   caddy:
     image: caddy:2
     container_name: livekit-caddy
-    network_mode: host
+    ports:
+      - "443:443"
+    environment:
+      - ADMIN_ALLOWED_CIDR=${ADMIN_ALLOWED_CIDR:-private_ranges}
+      - ADMIN_APP_TARGET=${ADMIN_APP_TARGET:-host.docker.internal:3001}
+      - ADMIN_CONTROL_TARGET=${ADMIN_CONTROL_TARGET:-sercom-dev-ubuntu:8081}
+      - ADMIN_LIVEKIT_NODE1_METRICS_TARGET=${ADMIN_LIVEKIT_NODE1_METRICS_TARGET:-livekit-node1:6789}
+      - ADMIN_LIVEKIT_NODE2_METRICS_TARGET=${ADMIN_LIVEKIT_NODE2_METRICS_TARGET:-livekit-node2:6790}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ../certs:/certs:ro
@@ -99,6 +119,7 @@ services:
 
 volumes:
   ccache:
+  bazel-cache:
   redis-data:
 
 networks:

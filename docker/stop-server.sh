@@ -6,8 +6,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 PROJECT_NAME="${COMPOSE_PROJECT_NAME:-sercom}"
 
 echo "[+] Stopping client containers..."
-"$REPO_ROOT/clients/admin/docker/docker-stop-nuxt.sh" || true
-"$REPO_ROOT/clients/web/docker/docker-stop-nuxt.sh" || true
+"$REPO_ROOT/clients/admin/docker/stop-app.sh" || true
+"$REPO_ROOT/clients/web/docker/stop-app.sh" || true
 
 echo "[+] Stopping and removing server containers..."
 docker compose -p "$PROJECT_NAME" -f "$REPO_ROOT/docker/docker-compose.yml" down

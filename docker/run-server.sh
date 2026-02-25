@@ -12,6 +12,11 @@ for arg in "$@"; do
     --prod)
       PROD=1
       ;;
+    *)
+      echo "❌ Unknown argument: $arg"
+      echo "Usage: $0 [--multi] [--prod]"
+      exit 1
+      ;;
   esac
 done
 
@@ -38,17 +43,26 @@ echo "▶ Starting Caddy load balancer..."
 docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d caddy
 
 echo "▶ Starting socket server..."
-docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d ubuntu-dev
+docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --force-recreate ubuntu-dev
+
+echo "▶ Preparing cache permissions..."
+docker exec -u root "$DEV_CONTAINER" bash -lc \
+  "mkdir -p /home/sercom/.cache/bazel /home/sercom/.cache/bazelisk && chown -R sercom:sercom /home/sercom/.cache /home/sercom/.ccache"
 
 echo "▶ Starting admin client..."
-"$REPO_ROOT/clients/admin/docker/docker-run-nuxt.sh" --detached
+"$REPO_ROOT/clients/admin/docker/run-app.sh" --detached
 
 echo "▶ Starting web client..."
 if [ "$PROD" -eq 1 ]; then
-  "$REPO_ROOT/clients/web/docker/docker-run-nuxt.sh" --detached --prod
+  "$REPO_ROOT/clients/web/docker/run-app.sh" --detached --prod
 else
-  "$REPO_ROOT/clients/web/docker/docker-run-nuxt.sh" --detached
+  "$REPO_ROOT/clients/web/docker/run-app.sh" --detached
 fi
 
-exec docker exec -it "$DEV_CONTAINER" bash -lc \
+DOCKER_EXEC_FLAGS=(-i)
+if [ -t 0 ] && [ -t 1 ]; then
+  DOCKER_EXEC_FLAGS=(-it)
+fi
+
+exec docker exec "${DOCKER_EXEC_FLAGS[@]}" -u sercom "$DEV_CONTAINER" bash -lc \
   "cd /home/sercom/workspace && bazel run --config=$BAZEL_CONFIG //server:fake_discord"
