@@ -25,6 +25,8 @@ enum CommandErrorCode {
     CommandErrorCode_RATE_LIMITED = 14;
     CommandErrorCode_INTERNAL_ERROR = 15;
     CommandErrorCode_DUPLICATE_IN_FLIGHT = 16;
+    CommandErrorCode_VOICE_TAKEOVER_REQUIRED = 17;
+    CommandErrorCode_SESSION_LIMIT_EXCEEDED = 18;
 }
 
 /*

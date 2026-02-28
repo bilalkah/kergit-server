@@ -1,7 +1,6 @@
 #ifndef APP_SERVICES_HUB_HUBNOTIFIER_H
 #define APP_SERVICES_HUB_HUBNOTIFIER_H
 
-#include "app/services/PublicIdService.h"
 #include "domains/Channel.h"
 #include "domains/ids/Ids.h"
 #include "domains/Hub.h"
@@ -13,7 +12,7 @@ namespace app::services {
 
 class HubNotifier {
    public:
-    HubNotifier(PublicIdService& ids);
+    HubNotifier() = default;
 
     // hub-level events
     std::string hubRenamed(const HubId& hubId, const std::string& newName);
@@ -33,11 +32,8 @@ class HubNotifier {
 
     // channel events
     std::string channelCreated(const HubId& hubId, const Channel& channel);
-    std::string channelRenamed(const HubId& hubId, const Channel& channel);
-    std::string channelDeleted(const HubId& hubId, const ChannelId& channelId);
-
-   private:
-    PublicIdService& ids_;
+    std::string channelRenamed(const Channel& channel);
+    std::string channelDeleted(const ChannelId& channelId);
 };
 
 }  // namespace app::services

@@ -61,15 +61,7 @@ std::vector<net::outbound::OutgoingMessage> RenameChannelCommand::execute(
     }
     const UserId user_id = user_exp.value();
 
-    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd.hub_id()});
-    if (!hub_id_opt.has_value()) {
-        return single_outgoing(make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_NOT_FOUND,
-                                   "Hub not found"));
-    }
-    const HubId hub_id = hub_id_opt.value();
-
-    auto channel_id_opt = ctx.ids.to_internal(PublicChannelId{cmd.channel_id()});
+    auto channel_id_opt = parse_wire_id<ChannelId>(cmd.channel_id());
     if (!channel_id_opt.has_value()) {
         return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_NOT_FOUND,
@@ -77,12 +69,13 @@ std::vector<net::outbound::OutgoingMessage> RenameChannelCommand::execute(
     }
 
     auto channel_opt = ctx.channel_service.getChannel(*channel_id_opt);
-    if (!channel_opt || channel_opt->hub_id != hub_id) {
+    if (!channel_opt) {
         return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_NOT_FOUND,
                                    "Channel not found"));
     }
     const Channel channel = channel_opt.value();
+    const HubId hub_id = channel.hub_id;
 
     std::optional<std::string> requested_name;
     for (int i = 0; i < cmd.changes_size(); ++i) {
@@ -144,7 +137,7 @@ std::vector<net::outbound::OutgoingMessage> RenameChannelCommand::execute(
 
     Channel renamed_channel = channel;
     renamed_channel.name = *requested_name;
-    std::string bytes = ctx.hub_notifier.channelRenamed(hub_id, renamed_channel);
+    std::string bytes = ctx.hub_notifier.channelRenamed(renamed_channel);
 
     utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(
         1, std::memory_order_relaxed);

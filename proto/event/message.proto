@@ -7,20 +7,23 @@ import "proto/domain/message.proto";
 
 /*
  * Realtime fanout of a newly created message.
- * Delivered only if channel is active.
+ * We need to include channel_id for clients to know which channel this message belongs to.
+ * We also include the full message details since clients need to display it immediately.
+ *
+ * Delivered only if channel is focused by the client.
  */
 message MessageCreated {
-  uint64 hub_id = 1;
-  uint64 channel_id = 2;
-  sercom.protocol.domain.Message message = 3;
+  string channel_id = 1;
+  sercom.protocol.domain.Message message = 2;
 }
 
 /*
  * History delivery (initial load or scroll).
+ * We need to include channel_id for clients to know which channel these messages belong to.
+ * We also include the full message details since clients need to display them immediately.
  */
 message MessageBatch {
-  uint64 hub_id = 1;
-  uint64 channel_id = 2;
+  string channel_id = 1;
 
   enum Direction {
     DIRECTION_UNSPECIFIED = 0;
@@ -28,6 +31,6 @@ message MessageBatch {
     BEFORE = 2;   // scroll-up history
   }
 
-  Direction direction = 3;
-  repeated sercom.protocol.domain.Message messages = 4;
+  Direction direction = 2;
+  repeated sercom.protocol.domain.Message messages = 3;
 }

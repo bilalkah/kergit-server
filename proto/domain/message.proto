@@ -4,8 +4,8 @@ package sercom.protocol.domain;
 
 
 message Message {
-    uint64 id = 1;            // public message id
-    uint64 author_id = 2;     // public user id
+    string id = 1;            // public message id
+    string author_id = 2;     // public user id
     string content = 3;
     uint64 created_at_ms = 4; // server-assigned
 }

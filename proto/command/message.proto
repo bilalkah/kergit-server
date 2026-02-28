@@ -2,25 +2,26 @@ syntax = "proto3";
 
 package sercom.protocol.command;
 
+/*
+ * Client intent: send a message to a channel.
+ * channel_id is already uniquely identifying the hub, so no need for a separate hub_id.
+ */
 message SendMessage {
-  uint64 hub_id = 1;
-  uint64 channel_id = 2;
-  string content = 3;
+  string channel_id = 1;
+  string content = 2;
 }
 
 message FetchLatestMessages {
-  uint64 hub_id = 1;
-  uint64 channel_id = 2;
-  uint32 limit = 3;
+  string channel_id = 1;
+  uint32 limit = 2;
 
   // public message id last seen by client
-  optional uint64 known_latest_message_id = 4;
+  optional string known_latest_message_id = 3;
 }
 
 message FetchMessagesBefore {
-  uint64 hub_id = 1;
-  uint64 channel_id = 2;
-  uint64 before_message_id = 3;
-  uint32 limit = 4;
+  string channel_id = 1;
+  string before_message_id = 2;
+  uint32 limit = 3;
 }
 

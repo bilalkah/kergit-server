@@ -22,34 +22,3 @@ cc_library(
         "@nlohmann_json",
     ],
 )
-
-cc_library(
-    name = "message_validator",
-    srcs = ["validation/JsonValidator.cpp"],
-    hdrs = ["validation/JsonValidator.h"],
-    copts = ["-std=gnu++23"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "@nlohmann_json",
-    ],
-)
-
-cc_library(
-    name = "proto_message_validator",
-    srcs = ["validation/ProtoValidator.cpp"],
-    hdrs = ["validation/ProtoValidator.h"],
-    copts = ["-std=gnu++23"],
-    includes = ["."],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//proto:envelope_cc_proto",
-        "//proto:parsed_payload",
-        "//proto/command:activity_cc_proto",
-        "//proto/command:channel_cc_proto",
-        "//proto/command:hub_cc_proto",
-        "//proto/command:message_cc_proto",
-        "//proto/command:session_cc_proto",
-        "//proto/command:user_cc_proto",
-        "//proto/system:heartbeat_cc_proto",
-    ],
-)

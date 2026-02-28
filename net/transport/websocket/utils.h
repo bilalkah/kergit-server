@@ -4,21 +4,13 @@
 #include "proto/envelope.pb.h"
 #include "proto/system/heartbeat.pb.h"
 
-#include <expected>
 #include <optional>
 #include <string>
 #include <string_view>
 
 namespace net::transport::websocket {
 
-std::string_view trim_ws(std::string_view value);
-
-std::string_view extract_token(std::string_view protocols);
-
-std::optional<std::string> extract_supabase_token(const std::string& header);
-
-std::expected<std::string, std::string> make_app_pong_response(
-    const sercom::protocol::Envelope& env);
+std::string_view app_pong_response_bytes();
 
 }  // namespace net::transport::websocket
 #endif  // NET_TRANSPORT_WEBSOCKET_UTILS_H

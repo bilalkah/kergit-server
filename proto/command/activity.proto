@@ -8,8 +8,7 @@ package sercom.protocol.command;
  * It does NOT imply membership or presence by itself.
  */
 message SelectActiveChannel {
-  uint64 hub_id = 1;
-  uint64 channel_id = 2;
+  string channel_id = 1;
 }
 
 /*
@@ -28,9 +27,8 @@ message Typing {
     STATE_STOPPED = 2;
   }
 
-  uint64 hub_id = 1;
-  uint64 channel_id = 2;
-  State state = 3;
+  string channel_id = 1;
+  State state = 2;
 }
 
 
@@ -38,30 +36,49 @@ message VoiceChannelMembership {
   enum State {
     STATE_UNSPECIFIED = 0;
 
-    // Intent
+    // Client first intents
     STATE_REQUEST_JOIN = 1;
     STATE_REQUEST_LEAVE = 2;
+    STATE_REQUEST_TAKEOVER = 3;
 
-    // Result
-    STATE_JOIN = 3;
-    STATE_LEAVE = 4;
+    // Client follow-up intents (after connection is established)
+    STATE_JOIN = 4;
+    STATE_LEAVE = 5;
   }
-  // The voice channel the user wants to join
-  // This is your channel_id
-  uint64 hub_id = 1;
-  uint64 channel_id = 2;
-  State state = 3;
+
+  // Target voice channel
+  string channel_id = 1;
+
+  State state = 2;
 }
 
 message VoiceChannelActivity {
   enum State {
     STATE_UNSPECIFIED = 0;
+
+    // Mute the microphone only. This does not affect the user's ability to hear others.
     STATE_MUTE = 1;
     STATE_UNMUTE = 2;
+
+    // Deafen the user. This mutes the microphone and prevents the user from hearing others.
     STATE_DEAFEN = 3;
     STATE_UNDEAFEN = 4;
   }
-  uint64 hub_id = 1;
-  uint64 channel_id = 2;
-  State state = 3;
+  string channel_id = 1;
+  State state = 2;
 }
+
+/*
+ * ============================
+ *  Session Takeover Command
+ * ============================
+ *
+ * Client → Server
+ *
+ * Request to become the media-owning session.
+ * Server will:
+ *  - Revoke previous owner (if any)
+ *  - Assign this session as owner
+ *  - Broadcast updated VoiceSelfStatus to all sessions
+ */
+message VoiceSessionTakeoverRequest {}

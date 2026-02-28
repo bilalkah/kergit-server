@@ -46,13 +46,13 @@ void AppStack::init_database() {
 
 void AppStack::init_managers() {
     subscription_manager_ = std::make_unique<SubscriptionManager>();
-    session_manager_ = std::make_unique<SessionManager>();
+    session_manager_ =
+        std::make_unique<SessionManager>(config_.app_stack.max_sessions_per_user);
 }
 
 void AppStack::init_services() {
     try {
         auth_service_ = std::make_unique<services::AuthService>();
-        public_id_service_ = std::make_unique<services::PublicIdService>();
         presence_manager_ =
             std::make_unique<services::PresenceService>(*session_manager_, *subscription_manager_);
         user_service_ = std::make_unique<services::UserService>(persistence_gateway_->users());
@@ -66,9 +66,9 @@ void AppStack::init_services() {
         hub_service_ = std::make_unique<services::HubService>(persistence_gateway_->hubs(),
                                                               persistence_gateway_->channels());
         channel_service_->setHubService(*hub_service_);
-        hub_notifier_ = std::make_unique<services::HubNotifier>(*public_id_service_);
+        hub_notifier_ = std::make_unique<services::HubNotifier>();
         hub_snapshot_builder_ = std::make_unique<services::HubSnapshotBuilder>(
-            *channel_service_, *hub_service_, *presence_manager_, *public_id_service_);
+            *channel_service_, *hub_service_, *presence_manager_);
 
         auto livekit_key = utils::EnvLoader::get_env("LIVEKIT_API_KEY", "");
         auto livekit_secret = utils::EnvLoader::get_env("LIVEKIT_API_SECRET", "");
@@ -76,7 +76,7 @@ void AppStack::init_services() {
         livekit_token_service_ =
             std::make_unique<services::livekit::LiveKitTokenService>(livekit_key, livekit_secret);
         cmd_ctx_ = std::make_unique<CommandContext>(CommandContext{
-            *public_id_service_, *auth_service_, *channel_service_, *hub_service_, *hub_notifier_,
+            *auth_service_, *channel_service_, *hub_service_, *hub_notifier_,
             *hub_snapshot_builder_, *livekit_token_service_, *user_service_, *presence_manager_,
             *subscription_manager_, *session_manager_, *event_queue_});
 

@@ -4,8 +4,6 @@
 #include "utils/EnvLoader.h"
 #include "utils/Logger.h"
 
-#include <algorithm>
-#include <cctype>
 #include <chrono>
 #include <fmt/format.h>
 #include <mutex>
@@ -25,10 +23,7 @@ std::jthread timeseries_thread;
 std::atomic<bool> timeseries_started{false};
 
 bool metrics_log_enabled() {
-    auto value = utils::EnvLoader::get_env("METRICS_LOG", "1");
-    std::transform(value.begin(), value.end(), value.begin(),
-                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return !(value == "0" || value == "false" || value == "off" || value == "no");
+    return utils::EnvLoader::get<bool>("METRICS_LOG", true);
 }
 }  // namespace
 

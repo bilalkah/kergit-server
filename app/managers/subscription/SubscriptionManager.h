@@ -30,7 +30,7 @@ class SubscriptionManager final : public ISubscriptionManager {
 
     // Subscriptions are connection-scoped.
     // Each subscription represents a single active connection.
-    // The system currently enforces at most one connection per user.
+    // A single user may have multiple simultaneous active connections.
     // User-level aggregation (presence, UI) is handled elsewhere.
     std::unordered_map<Topic, SubscriberSetPtr> topic_to_conns_;
     std::unordered_map<GlobalConnId, std::unordered_set<Topic>> conn_to_topics_;

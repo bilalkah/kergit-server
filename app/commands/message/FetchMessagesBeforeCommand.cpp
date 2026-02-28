@@ -32,10 +32,10 @@ uint64_t to_epoch_ms(const std::chrono::system_clock::time_point& tp) {
     return ms > 0 ? static_cast<uint64_t>(ms) : 0;
 }
 
-sercom::protocol::domain::Message to_proto_message(CommandContext& ctx, const Message& msg) {
+sercom::protocol::domain::Message to_proto_message(const Message& msg) {
     sercom::protocol::domain::Message out;
-    out.set_id(ctx.ids.to_public(msg.id).value);
-    out.set_author_id(ctx.ids.to_public(msg.sender_id).value);
+    out.set_id(msg.id.value);
+    out.set_author_id(msg.sender_id.value);
     out.set_content(msg.text);
     out.set_created_at_ms(to_epoch_ms(msg.sent_at));
     return out;
@@ -65,14 +65,7 @@ std::vector<net::outbound::OutgoingMessage> FetchMessagesBeforeCommand::execute(
     }
     const UserId user_id = user_exp.value();
 
-    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd.hub_id()});
-    if (!hub_id_opt.has_value()) {
-        return single_outgoing(make_command_error(
-            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_NOT_FOUND,
-            "Hub not found"));
-    }
-
-    auto channel_id_opt = ctx.ids.to_internal(PublicChannelId{cmd.channel_id()});
+    auto channel_id_opt = parse_wire_id<ChannelId>(cmd.channel_id());
     if (!channel_id_opt.has_value()) {
         return single_outgoing(make_command_error(
             event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_NOT_FOUND,
@@ -80,19 +73,20 @@ std::vector<net::outbound::OutgoingMessage> FetchMessagesBeforeCommand::execute(
     }
 
     auto channel_opt = ctx.channel_service.getChannel(*channel_id_opt);
-    if (!channel_opt.has_value() || channel_opt->hub_id != *hub_id_opt) {
+    if (!channel_opt.has_value()) {
         return single_outgoing(make_command_error(
             event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_NOT_FOUND,
             "Channel not found"));
     }
+    const HubId hub_id = channel_opt->hub_id;
 
-    if (!ctx.hub_service.isHubMember(*hub_id_opt, user_id)) {
+    if (!ctx.hub_service.isHubMember(hub_id, user_id)) {
         return single_outgoing(make_command_error(
             event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_FORBIDDEN,
             "Join the hub before fetching messages"));
     }
 
-    auto before_internal = ctx.ids.to_internal(PublicMessageId{cmd.before_message_id()});
+    auto before_internal = parse_wire_id<MessageId>(cmd.before_message_id());
     if (!before_internal.has_value()) {
         return single_outgoing(make_command_error(
             event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_NOT_FOUND,
@@ -111,12 +105,11 @@ std::vector<net::outbound::OutgoingMessage> FetchMessagesBeforeCommand::execute(
     std::reverse(messages.begin(), messages.end());
 
     sercom::protocol::event::MessageBatch batch;
-    batch.set_hub_id(ctx.ids.to_public(*hub_id_opt).value);
-    batch.set_channel_id(ctx.ids.to_public(*channel_id_opt).value);
+    batch.set_channel_id(channel_id_opt->value);
     batch.set_direction(sercom::protocol::event::MessageBatch::BEFORE);
 
     for (const auto& msg : messages) {
-        *batch.add_messages() = to_proto_message(ctx, msg);
+        *batch.add_messages() = to_proto_message(msg);
     }
 
     std::string bytes =

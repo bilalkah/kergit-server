@@ -23,7 +23,6 @@ WorkerPool::WorkerPool(queue::EventQueue& in_queue, net::outbound::IOutboundSink
       out_queue_(out_queue),
       dispatcher_(dispatcher),
       cmd_ctx_(cmd_ctx),
-      message_validator_(dispatcher.registered_commands()),
       config_(appstack_config) {}
 
 WorkerPool::~WorkerPool() { stop(); }
@@ -219,7 +218,7 @@ std::vector<net::outbound::OutgoingMessage> WorkerPool::handle_event(queue::Mess
     const auto& env = msg_evt.payload.env;
 
     utils::metrics::counters().payload_parse_total.fetch_add(1, std::memory_order_relaxed);
-    auto parsed = proto_validator_.parse_and_validate(env);
+    auto parsed = sercom::protocol::parse_inbound_payload(env);
     if (!parsed.has_value()) {
         utils::metrics::counters().payload_parse_fail_total.fetch_add(1, std::memory_order_relaxed);
         // Drop connection on invalid envelope

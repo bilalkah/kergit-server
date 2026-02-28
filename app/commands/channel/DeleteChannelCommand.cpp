@@ -1,6 +1,6 @@
 #include "app/commands/channel/DeleteChannelCommand.h"
 
-#include "app/commands/CommandJson.h"
+#include "app/commands/utils.h"
 #include "app/dispatcher/CommandContext.h"
 #include "app/managers/subscription/Topic.h"
 #include "domains/Channel.h"
@@ -27,12 +27,17 @@ CommandResult DeleteChannelCommand::execute(CommandContext& ctx, const CommandIn
     }
     const UserId user_id = user_exp.value();
 
-    auto channel_id_raw = commands::read_uint64(input->body, "channel_id");
-    if (!channel_id_raw) {
+    const auto j = json::parse(input->body, nullptr, false);
+    if (j.is_discarded()) {
+        return std::unexpected(CommandError{3, "Invalid JSON"});
+    }
+
+    const std::string channel_id_raw = j.value("channel_id", "");
+    if (channel_id_raw.empty()) {
         return std::unexpected(CommandError{3, "channel_id is required"});
     }
 
-    auto channel_id_opt = ctx.ids.to_internal(PublicChannelId{channel_id_raw});
+    auto channel_id_opt = parse_wire_id<ChannelId>(channel_id_raw);
     if (!channel_id_opt.has_value()) {
         return std::unexpected(CommandError{4, "Channel not found"});
     }
@@ -48,14 +53,11 @@ CommandResult DeleteChannelCommand::execute(CommandContext& ctx, const CommandIn
         return std::unexpected(CommandError{6, "Only admins/owners can delete channels"});
     }
 
-    const auto public_hub_id = ctx.ids.to_public(channel.hub_id);
-    const auto public_channel_id = ctx.ids.to_public(channel.id);
-
     // Fan out before deleting to capture subscribers
     CommandSuccess res;
     json payload = {{"type", "channel_deleted"},
-                    {"hub_id", public_hub_id.value},
-                    {"channel_id", public_channel_id.value}};
+                    {"hub_id", channel.hub_id.value},
+                    {"channel_id", channel.id.value}};
 
     utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(
         1, std::memory_order_relaxed);

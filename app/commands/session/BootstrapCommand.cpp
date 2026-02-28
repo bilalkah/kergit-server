@@ -9,7 +9,6 @@
 #include "domains/Hub.h"
 #include "proto/envelope.pb.h"
 #include "proto/event/activity.pb.h"
-#include "proto/event/error.pb.h"
 #include "proto/event/presence.pb.h"
 #include "proto/event/session.pb.h"
 
@@ -51,6 +50,18 @@ std::vector<net::outbound::OutgoingMessage> BootstrapCommand::execute(CommandCon
                 "User not found"}});
     }
 
+    auto session_id_exp = ctx.session_manager.sessionIdOfConnection(event->conn_id);
+    if (!session_id_exp.has_value()) {
+        return single_outgoing(net::outbound::OutgoingMessage{
+            .target = net::outbound::Target::one(event->conn_id),
+            .action = net::outbound::Action{
+                std::in_place_type<net::outbound::DropConnection>,
+                static_cast<int>(
+                    sercom::protocol::event::CommandErrorCode::CommandErrorCode_UNAUTHORIZED),
+                "missing_internal_session_id"}});
+    }
+    const SessionId session_id = session_id_exp.value();
+
     // Session already created by AuthenticateCommand - just subscribe to hubs
     const auto hubs = ctx.hub_service.getUserHubs(user_id);
     for (const auto& hub : hubs) {
@@ -60,9 +71,8 @@ std::vector<net::outbound::OutgoingMessage> BootstrapCommand::execute(CommandCon
     // --- build bootstrap payload ---
     sercom::protocol::event::SessionBootstrap bootstrap;
 
-    const auto public_user_id = ctx.ids.to_public(user_id);
     auto* self = bootstrap.mutable_self();
-    self->set_id(public_user_id.value);
+    self->set_id(user_id.value);
 
     const std::string display_name =
         !db_user->username.empty() ? db_user->username
@@ -73,16 +83,15 @@ std::vector<net::outbound::OutgoingMessage> BootstrapCommand::execute(CommandCon
 
     for (const auto& hub : hubs) {
         auto* hub_state = bootstrap.add_hubs();
-        const auto public_hub_id = ctx.ids.to_public(hub.id);
 
-        hub_state->mutable_hub()->set_id(public_hub_id.value);
+        hub_state->mutable_hub()->set_id(hub.id.value);
         hub_state->mutable_hub()->set_name(hub.name);
         hub_state->mutable_hub()->set_avatar_seed(hub.avatar_seed);
 
         const auto snapshot = ctx.hub_service.getOrBuildSnapshot(hub.id);
         for (const auto& channel : snapshot.channels) {
             auto* ch = hub_state->add_channels();
-            ch->set_id(ctx.ids.to_public(channel.id).value);
+            ch->set_id(channel.id.value);
             ch->set_name(channel.name);
             ch->set_type(converters::to_proto_channel_type(channel.type));
         }
@@ -92,8 +101,8 @@ std::vector<net::outbound::OutgoingMessage> BootstrapCommand::execute(CommandCon
 
         for (const auto& member : snapshot.members) {
             auto* m = hub_state->add_members();
-            m->set_hub_id(public_hub_id.value);
-            m->set_user_id(ctx.ids.to_public(member.user_id).value);
+            m->set_hub_id(hub.id.value);
+            m->set_user_id(member.user_id.value);
             m->set_is_online(online_set.contains(member.user_id));
             m->set_role(converters::to_proto_hub_role(member.role));
 
@@ -113,30 +122,39 @@ std::vector<net::outbound::OutgoingMessage> BootstrapCommand::execute(CommandCon
 
         for (const auto& channel : snapshot.channels) {
             if (channel.type != ChannelType::VOICE) continue;
-            const auto participants =
-                ctx.session_manager.voiceParticipantsInChannel(hub.id, channel.id);
+            const auto participants = ctx.session_manager.voiceParticipantStatesInChannel(channel.id);
             if (participants.empty()) continue;
 
             auto* voice_snapshot = bootstrap.add_voice_channels();
-            voice_snapshot->set_hub_id(public_hub_id.value);
-            voice_snapshot->set_channel_id(ctx.ids.to_public(channel.id).value);
-            for (const auto& uid : participants) {
-                voice_snapshot->add_participant_user_ids(ctx.ids.to_public(uid).value);
+            voice_snapshot->set_channel_id(channel.id.value);
+            for (const auto& participant : participants) {
+                auto* out_participant = voice_snapshot->add_participants();
+                out_participant->set_user_id(participant.user_id.value);
+                out_participant->set_muted(participant.muted);
+                out_participant->set_deafened(participant.deafened);
             }
         }
 
         // --- presence fanout ---
         if (!online.empty()) {
-            std::vector<GlobalConnId> targets;
+            std::unordered_set<GlobalConnId> target_set;
             for (const auto& member_id : online) {
                 if (member_id == user_id) continue;
-                auto conn = ctx.session_manager.getMainConnection(member_id);
-                if (conn) targets.push_back(*conn);
+                const auto member_conns = ctx.session_manager.getSessionConnections(member_id);
+                for (const auto& conn : member_conns) {
+                    target_set.insert(conn);
+                }
+            }
+
+            std::vector<GlobalConnId> targets;
+            targets.reserve(target_set.size());
+            for (const auto& conn : target_set) {
+                targets.push_back(conn);
             }
 
             if (!targets.empty()) {
                 auto pe = proto_builders::presence::make_presence_changed(
-                    public_hub_id.value, public_user_id.value, true);
+                    hub.id.value, user_id.value, true);
                 std::string bytes =
                     proto_builders::serialize_envelope(sercom::protocol::Envelope::PRESENCE, pe);
 
@@ -159,6 +177,25 @@ std::vector<net::outbound::OutgoingMessage> BootstrapCommand::execute(CommandCon
     msg.target = net::outbound::Target::one(event->conn_id);
     msg.action.emplace<net::outbound::SendPayload>(
         net::outbound::SendPayload{.payload = net::outbound::Payload{std::move(out_bytes), true}});
+
+    sercom::protocol::event::VoiceSelfStatus self_status;
+    auto session_info = ctx.session_manager.getSession(user_id);
+    if (session_info && session_info->current_voice_channel && session_info->voice_owner_session) {
+        self_status.set_connected(true);
+        self_status.set_is_owner(session_info->voice_owner_session.value() == session_id);
+    } else {
+        self_status.set_connected(false);
+        self_status.set_is_owner(false);
+    }
+
+    std::string self_status_bytes = proto_builders::serialize_envelope(
+        sercom::protocol::Envelope::VOICE_SELF_STATUS, self_status);
+    out.push_back(net::outbound::OutgoingMessage{
+        .target = net::outbound::Target::one(event->conn_id),
+        .action = net::outbound::Action{
+            std::in_place_type<net::outbound::SendPayload>,
+            net::outbound::SendPayload{.payload = net::outbound::Payload{std::move(self_status_bytes),
+                                                                          true}}}});
 
     return out;
 }

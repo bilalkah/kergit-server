@@ -9,7 +9,7 @@ enum ChannelType {
 }
 
 message Channel {
-    uint64 id = 1;
+    string id = 1;
     string name = 2;
     ChannelType type = 3;
 }

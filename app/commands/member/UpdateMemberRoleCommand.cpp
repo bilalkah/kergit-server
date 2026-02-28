@@ -1,6 +1,6 @@
 #include "app/commands/member/UpdateMemberRoleCommand.h"
 
-#include "app/commands/CommandJson.h"
+#include "app/commands/utils.h"
 #include "app/dispatcher/CommandContext.h"
 #include "domains/Hub.h"
 #include "utils/Metrics.h"
@@ -32,21 +32,21 @@ CommandResult UpdateMemberRoleCommand::execute(CommandContext& ctx, const Comman
     }
     const UserId actor = actor_exp.value();
 
-    auto hub_raw = commands::read_uint64(input->body, "hub_id");
-    auto user_raw = commands::read_uint64(input->body, "user_id");
     const auto j = json::parse(input->body, nullptr, false);
     if (j.is_discarded()) {
         return std::unexpected(CommandError{3, "Invalid JSON"});
     }
 
+    const std::string hub_raw = j.value("hub_id", "");
+    const std::string user_raw = j.value("user_id", "");
     const std::string role_raw = j.value("role", "");
 
-    if (!hub_raw || !user_raw || role_raw.empty()) {
+    if (hub_raw.empty() || user_raw.empty() || role_raw.empty()) {
         return std::unexpected(CommandError{3, "hub_id, user_id and role are required"});
     }
 
-    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{hub_raw});
-    auto target_id_opt = ctx.ids.to_internal(PublicUserId{user_raw});
+    auto hub_id_opt = parse_wire_id<HubId>(hub_raw);
+    auto target_id_opt = parse_wire_id<UserId>(user_raw);
     if (!hub_id_opt || !target_id_opt) {
         return std::unexpected(CommandError{4, "Invalid hub or user identifier"});
     }
@@ -84,12 +84,9 @@ CommandResult UpdateMemberRoleCommand::execute(CommandContext& ctx, const Comman
     // Apply role change
     ctx.hub_service.addMember(hub_id, target_id, new_role);
 
-    const auto public_hub_id = ctx.ids.to_public(hub_id);
-    const auto public_target = ctx.ids.to_public(target_id);
-
     json payload = {{"type", "member_role_updated"},
-                    {"hub_id", public_hub_id.value},
-                    {"user_id", public_target.value},
+                    {"hub_id", hub_id.value},
+                    {"user_id", target_id.value},
                     {"role", role_raw}};
 
     CommandSuccess res;

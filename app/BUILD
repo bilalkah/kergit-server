@@ -12,7 +12,6 @@ cc_library(
         "//app/services/livekit:livekit_token_service",
         "//core:server_config",
         "//infra/persistence:persistence_gateway_lib",
-        "//infra/security:message_validator",
         "//net/outbound:i_outbound_sink",
         "//utils:env_loader",
         "//utils:loggable",

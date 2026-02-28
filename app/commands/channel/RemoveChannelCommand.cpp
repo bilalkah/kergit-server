@@ -36,15 +36,7 @@ std::vector<net::outbound::OutgoingMessage> RemoveChannelCommand::execute(Comman
     }
     const UserId user_id = user_exp.value();
 
-    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd.hub_id()});
-    if (!hub_id_opt.has_value()) {
-        return single_outgoing(make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_NOT_FOUND,
-                                   "Hub not found"));
-    }
-    const HubId hub_id = hub_id_opt.value();
-
-    auto channel_id_opt = ctx.ids.to_internal(PublicChannelId{cmd.channel_id()});
+    auto channel_id_opt = parse_wire_id<ChannelId>(cmd.channel_id());
     if (!channel_id_opt.has_value()) {
         return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_NOT_FOUND,
@@ -52,12 +44,13 @@ std::vector<net::outbound::OutgoingMessage> RemoveChannelCommand::execute(Comman
     }
 
     auto channel_opt = ctx.channel_service.getChannel(*channel_id_opt);
-    if (!channel_opt.has_value() || channel_opt->hub_id != hub_id) {
+    if (!channel_opt.has_value()) {
         return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_NOT_FOUND,
                                    "Channel not found"));
     }
     const Channel channel = channel_opt.value();
+    const HubId hub_id = channel.hub_id;
 
     if (!ctx.hub_service.isHubMember(hub_id, user_id)) {
         return single_outgoing(make_command_error(event->conn_id, env.type(),
@@ -80,7 +73,7 @@ std::vector<net::outbound::OutgoingMessage> RemoveChannelCommand::execute(Comman
 
     ctx.subscription_manager.removeAllForTopic(Topic::ChannelTopic(hub_id, channel.id));
 
-    std::string bytes = ctx.hub_notifier.channelDeleted(hub_id, channel.id);
+    std::string bytes = ctx.hub_notifier.channelDeleted(channel.id);
 
     utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(
         1, std::memory_order_relaxed);

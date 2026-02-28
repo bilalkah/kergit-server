@@ -7,8 +7,10 @@ import "proto/domain/hub.proto";
 import "proto/domain/user.proto";
 
 /*
- * Hub was created.
- * Sent only to the creator.
+ * Hub is created.
+ * This is a special case since we need to include the hub details in 
+ * the event for clients to know about the new hub.
+ * To be sent only to the creator.
  * Includes the creator as the first HubMember.
  */
 message HubCreated {
@@ -31,8 +33,8 @@ message HubMemberJoined {
  * Fanout to all members.
  */
 message HubMemberLeft {
-  uint64 hub_id = 1;
-  uint64 user_id = 2;
+  string hub_id = 1;
+  string user_id = 2;
 }
 
 /*
@@ -40,7 +42,7 @@ message HubMemberLeft {
  * Fanout to all members.
  */
 message HubRemoved {
-  uint64 hub_id = 1;
+  string hub_id = 1;
 }
 
 /*
@@ -48,7 +50,7 @@ message HubRemoved {
  * Sent only to requester.
  */
 message HubJoinCodeCreated {
-  uint64 hub_id = 1;
+  string hub_id = 1;
   string join_code = 2;
 }
 
@@ -57,7 +59,7 @@ message HubJoinCodeCreated {
  * Fanout to all members.
  */
 message HubRenamed {
-  uint64 hub_id = 1;
+  string hub_id = 1;
   string name = 2;
 }
 
@@ -66,7 +68,7 @@ message HubRenamed {
  * Fanout to all members.
  */
 message HubAvatarChanged {
-  uint64 hub_id = 1;
+  string hub_id = 1;
   string avatar_seed = 2;
 }
 

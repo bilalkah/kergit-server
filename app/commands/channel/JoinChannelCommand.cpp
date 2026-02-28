@@ -1,6 +1,6 @@
 #include "app/commands/channel/JoinChannelCommand.h"
 
-#include "app/commands/CommandJson.h"
+#include "app/commands/utils.h"
 #include "app/dispatcher/CommandContext.h"
 #include "app/managers/subscription/Topic.h"
 #include "domains/Channel.h"
@@ -35,7 +35,6 @@ json build_history(CommandContext& ctx, const ChannelId& channel_id, int limit =
         return arr;
     }
     const auto& history = history_exp.value();
-    const auto public_channel = ctx.ids.to_public(channel_id);
 
     // reverse to chronological order (oldest first)
     for (auto it = history.rbegin(); it != history.rend(); ++it) {
@@ -45,7 +44,7 @@ json build_history(CommandContext& ctx, const ChannelId& channel_id, int limit =
         }
         if (sender.empty()) sender = "Member";
 
-        arr.push_back(json{{"channel_id", public_channel.value},
+        arr.push_back(json{{"channel_id", channel_id.value},
                            {"sender", sender},
                            {"content", it->text},
                            {"sent_at", iso_time(it->sent_at)}});
@@ -66,12 +65,17 @@ CommandResult JoinChannelCommand::execute(CommandContext& ctx, const CommandInpu
     }
     const UserId user_id = user_exp.value();
 
-    auto channel_id_raw = commands::read_uint64(input->body, "channel_id");
-    if (!channel_id_raw.has_value()) {
+    const auto j = json::parse(input->body, nullptr, false);
+    if (j.is_discarded()) {
+        return std::unexpected(CommandError{3, "Invalid JSON"});
+    }
+
+    const std::string channel_id_raw = j.value("channel_id", "");
+    if (channel_id_raw.empty()) {
         return std::unexpected(CommandError{3, "channel_id is required"});
     }
 
-    auto channel_id_opt = ctx.ids.to_internal(PublicChannelId{channel_id_raw.value()});
+    auto channel_id_opt = parse_wire_id<ChannelId>(channel_id_raw);
     if (!channel_id_opt.has_value()) {
         return std::unexpected(CommandError{4, "Channel not found"});
     }
@@ -87,23 +91,16 @@ CommandResult JoinChannelCommand::execute(CommandContext& ctx, const CommandInpu
         return std::unexpected(CommandError{6, "Join the hub before joining channels"});
     }
 
-    // Unsubscribe from previous channel if present
-    auto session = ctx.session_manager.getSession(user_id);
-    if (session.has_value() && session->current_text_channel) {
-        auto prev = session->current_text_channel.value();
-        ctx.subscription_manager.unsubscribeConnection(
-            input->conn, Topic::ChannelTopic(hub_id, prev));
-    }
+    unsubscribe_connection_from_channel_topics(ctx.subscription_manager, input->conn);
 
     // Subscribe user to channel topic and record session context
     ctx.subscription_manager.subscribeConnection(
         input->conn, Topic::ChannelTopic(hub_id, channel.id));
-    ctx.session_manager.joinTextChannel(user_id, hub_id, channel.id);
+    ctx.session_manager.joinTextChannel(user_id, hub_id);
 
-    const auto public_channel_id = ctx.ids.to_public(channel.id);
     json payload = json{{"type", "joined_channel"},
-                        {"hub_id", ctx.ids.to_public(hub_id).value},
-                        {"channel_id", public_channel_id.value},
+                        {"hub_id", hub_id.value},
+                        {"channel_id", channel.id.value},
                         {"channel_name", channel.name},
                         {"history", build_history(ctx, channel.id)}};
 

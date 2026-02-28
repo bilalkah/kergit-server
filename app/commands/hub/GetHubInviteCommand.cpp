@@ -36,7 +36,7 @@ std::vector<net::outbound::OutgoingMessage> GetHubInviteCommand::execute(Command
     }
     const UserId user_id = user_exp.value();
 
-    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd.hub_id()});
+    auto hub_id_opt = parse_wire_id<HubId>(cmd.hub_id());
     if (!hub_id_opt.has_value()) {
         return single_outgoing(make_command_error(
             event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_NOT_FOUND,
@@ -57,10 +57,9 @@ std::vector<net::outbound::OutgoingMessage> GetHubInviteCommand::execute(Command
             "Only owners or admins can create join codes"));
     }
 
-    const auto public_hub_id = ctx.ids.to_public(hub_id).value;
     sercom::protocol::event::HubJoinCodeCreated created;
-    created.set_hub_id(public_hub_id);
-    created.set_join_code(std::to_string(public_hub_id));
+    created.set_hub_id(hub_id.value);
+    created.set_join_code(hub_id.value);
 
     std::string bytes = proto_builders::serialize_envelope(
         sercom::protocol::Envelope::HUB_JOIN_CODE_CREATED, created);

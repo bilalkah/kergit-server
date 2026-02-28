@@ -8,6 +8,7 @@
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <string>
+#include <unordered_set>
 
 using nlohmann::json;
 
@@ -94,7 +95,7 @@ CommandResult UpdateProfileCommand::execute(CommandContext& ctx, const CommandIn
     json payload = {
         {"type", "profile_updated"},      {"success", true},
         {"username", final_username},     {"full_name", final_full_name},
-        {"display_name", chosen_display}, {"user_id", ctx.ids.to_public(user_id).value}};
+        {"display_name", chosen_display}, {"user_id", user_id.value}};
 
     CommandSuccess res;
     res.intents.push_back(Unicast{.conn = input->conn, .payload = payload});
@@ -103,17 +104,23 @@ CommandResult UpdateProfileCommand::execute(CommandContext& ctx, const CommandIn
     const auto hubs = ctx.hub_service.getUserHubs(user_id);
     for (const auto& hub : hubs) {
         const auto online_members = ctx.presence_manager.onlineUsersInHub(hub.id);
-        std::vector<GlobalConnId> conns;
-        conns.reserve(online_members.size());
+        std::unordered_set<GlobalConnId> conn_set;
         for (const auto& member_id : online_members) {
             if (member_id == user_id) continue;
-            auto c = ctx.session_manager.getMainConnection(member_id);
-            if (c.has_value()) conns.push_back(c.value());
+            const auto member_conns = ctx.session_manager.getSessionConnections(member_id);
+            for (const auto& conn : member_conns) {
+                conn_set.insert(conn);
+            }
+        }
+        std::vector<GlobalConnId> conns;
+        conns.reserve(conn_set.size());
+        for (const auto& conn : conn_set) {
+            conns.push_back(conn);
         }
         if (!conns.empty()) {
             json presence = {{"type", "profile_updated"},
-                             {"hub_id", ctx.ids.to_public(hub.id).value},
-                             {"user_id", ctx.ids.to_public(user_id).value},
+                             {"hub_id", hub.id.value},
+                             {"user_id", user_id.value},
                              {"username", final_username},
                              {"full_name", final_full_name},
                              {"display_name", chosen_display}};

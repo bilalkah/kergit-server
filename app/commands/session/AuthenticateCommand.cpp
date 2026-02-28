@@ -107,10 +107,9 @@ std::vector<net::outbound::OutgoingMessage> AuthenticateCommand::execute(Command
     const auto& claims = auth_result.value();
     const UserId user_id{claims.id};
 
-    // Create session - if session already exists for this connection, this is a re-auth
+    // If the connection is already authenticated, this is a re-auth.
     auto existing = ctx.session_manager.sessionOfConnection(event->conn_id);
     if (existing) {
-        // Re-authentication - verify same user
         if (existing->value != claims.id) {
             result.emplace_back(make_auth_failed(event->conn_id));
             result.emplace_back(net::outbound::OutgoingMessage{
@@ -121,7 +120,6 @@ std::vector<net::outbound::OutgoingMessage> AuthenticateCommand::execute(Command
                     "Auth user mismatch"}});
             return result;
         }
-        // Just update auth state on re-auth, no bootstrap needed
         result.emplace_back(net::outbound::OutgoingMessage{
             .target = net::outbound::Target::one(event->conn_id),
             .action = net::outbound::Action{
@@ -135,20 +133,13 @@ std::vector<net::outbound::OutgoingMessage> AuthenticateCommand::execute(Command
         return result;
     }
 
-    // First-time authentication - create session
-    if (!ctx.session_manager.tryCreateSession(event->conn_id, user_id)) {
-        result.emplace_back(make_auth_failed(event->conn_id));
-        result.emplace_back(net::outbound::OutgoingMessage{
-            .target = net::outbound::Target::one(event->conn_id),
-            .action = net::outbound::Action{
-                std::in_place_type<net::outbound::DropConnection>,
-                static_cast<int>(
-                    sercom::protocol::event::CommandErrorCode::CommandErrorCode_INVALID_SESSION),
-                "duplicate_session"}});
+    auto attach_result = ctx.session_manager.attachConnection(event->conn_id, user_id);
+    if (!attach_result.has_value()) {
+        result.emplace_back(make_command_error(event->conn_id, env.type(), attach_result.error(),
+                                               "Session limit exceeded"));
         return result;
     }
 
-    // Update auth state
     result.emplace_back(net::outbound::OutgoingMessage{
         .target = net::outbound::Target::one(event->conn_id),
         .action = net::outbound::Action{
@@ -159,10 +150,8 @@ std::vector<net::outbound::OutgoingMessage> AuthenticateCommand::execute(Command
                     std::chrono::system_clock::time_point{std::chrono::seconds{claims.exp}},
                 .user_id = user_id}}});
 
-    // Send AUTH_OK to client - this signals auth success and client can show loading state
     result.emplace_back(make_auth_ok(event->conn_id));
 
-    // Trigger bootstrap by pushing ConnectionEvent to event sink
     queue::ConnectionEvent bootstrap_event;
     bootstrap_event.conn_id = event->conn_id;
     bootstrap_event.user_id = user_id;

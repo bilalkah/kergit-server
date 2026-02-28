@@ -99,7 +99,7 @@ sequenceDiagram
 ```
 
 Notes:
-- Session is created only after successful auth (`SessionManager::tryCreateSession`).
+- Session is created only after successful auth (`SessionManager::attachConnection`).
 - Bootstrap is triggered by a queued `ConnectionEvent`, not directly in transport.
 - Re-auth updates auth state and returns `AUTH_OK` without rebuilding session.
 
