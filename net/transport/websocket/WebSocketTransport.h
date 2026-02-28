@@ -29,7 +29,7 @@ namespace net::transport::websocket {
 
 struct WsLimits {
     size_t max_message_bytes = 256 * 1024;
-    uint8_t max_connections = 255;
+    size_t max_connections = 255;
 };
 
 class TextWSServer : public ITransportServer,

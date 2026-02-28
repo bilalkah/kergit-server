@@ -1,7 +1,6 @@
 #ifndef DOMAINS_IDS_IDS_H_
 #define DOMAINS_IDS_IDS_H_
 
-#include <cstdint>
 #include <functional>
 #include <string>
 
@@ -46,40 +45,11 @@ struct GlobalConnId {
         : netstack_id(std::move(nsid)), conn_id(std::move(cid)) {}
 };
 
-struct PublicHubId {
-    uint64_t value{};
-    PublicHubId() = default;
-    PublicHubId(uint64_t v) : value(v) {}
-};
-struct PublicChannelId {
-    uint64_t value{};
-    PublicChannelId() = default;
-    PublicChannelId(uint64_t v) : value(v) {}
-};
-struct PublicUserId {
-    uint64_t value{};
-    PublicUserId() = default;
-    PublicUserId(uint64_t v) : value(v) {}
-};
-struct PublicMessageId {
-    uint64_t value{};
-    PublicMessageId() = default;
-    PublicMessageId(uint64_t v) : value(v) {}
-};
-
 inline bool operator==(const HubId& a, const HubId& b) { return a.value == b.value; }
 inline bool operator==(const ChannelId& a, const ChannelId& b) { return a.value == b.value; }
 inline bool operator==(const UserId& a, const UserId& b) { return a.value == b.value; }
 inline bool operator==(const MessageId& a, const MessageId& b) { return a.value == b.value; }
 inline bool operator==(const ConnId& a, const ConnId& b) { return a.value == b.value; }
-inline bool operator==(const PublicHubId& a, const PublicHubId& b) { return a.value == b.value; }
-inline bool operator==(const PublicChannelId& a, const PublicChannelId& b) {
-    return a.value == b.value;
-}
-inline bool operator==(const PublicUserId& a, const PublicUserId& b) { return a.value == b.value; }
-inline bool operator==(const PublicMessageId& a, const PublicMessageId& b) {
-    return a.value == b.value;
-}
 inline bool operator==(const NetStackId& a, const NetStackId& b) { return a.value == b.value; }
 inline bool operator==(const GlobalConnId& a, const GlobalConnId& b) {
     return a.netstack_id.value == b.netstack_id.value && a.conn_id.value == b.conn_id.value;
@@ -116,30 +86,6 @@ struct hash<GlobalConnId> {
         size_t h1 = std::hash<std::string>{}(x.netstack_id.value);
         size_t h2 = std::hash<std::string>{}(x.conn_id.value);
         return h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2));
-    }
-};
-template <>
-struct hash<PublicHubId> {
-    size_t operator()(const PublicHubId& x) const noexcept {
-        return std::hash<uint64_t>{}(x.value);
-    }
-};
-template <>
-struct hash<PublicChannelId> {
-    size_t operator()(const PublicChannelId& x) const noexcept {
-        return std::hash<uint64_t>{}(x.value);
-    }
-};
-template <>
-struct hash<PublicUserId> {
-    size_t operator()(const PublicUserId& x) const noexcept {
-        return std::hash<uint64_t>{}(x.value);
-    }
-};
-template <>
-struct hash<PublicMessageId> {
-    size_t operator()(const PublicMessageId& x) const noexcept {
-        return std::hash<uint64_t>{}(x.value);
     }
 };
 }  // namespace std

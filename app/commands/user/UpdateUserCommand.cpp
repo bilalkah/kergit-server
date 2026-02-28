@@ -116,7 +116,7 @@ std::vector<net::outbound::OutgoingMessage> UpdateUserCommand::execute(CommandCo
     }
 
     sercom::protocol::event::UserProfileUpdated updated;
-    updated.set_user_id(ctx.ids.to_public(user_id).value);
+    updated.set_user_id(user_id.value);
     updated.set_username(final_username);
     updated.set_avatar_seed(final_avatar_seed);
 

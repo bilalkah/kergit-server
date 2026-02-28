@@ -5,28 +5,35 @@ package sercom.protocol.event;
 import "proto/domain/channel.proto";
 
 /*
- * Channel was created.
- * Fanout to hub members.
+ * Channel is created. 
+ * We need to include hub_id for clients to know which 
+ * hub this channel belongs to.
+ * 
+ * To be used to fanout to hub members.
  */
 message ChannelCreated {
-  uint64 hub_id = 1;
+  string hub_id = 1;
   sercom.protocol.domain.Channel channel = 2;
 }
 
 /*
- * Channel was renamed.
- * Fanout to hub members.
+ * Channel is renamed.
+ * We dont need to include hub_id since the client
+ * already know which hub this channel belongs to.
+ *
+ * To be used to fanout to hub members.
  */
 message ChannelRenamed {
-  uint64 hub_id = 1;
   sercom.protocol.domain.Channel channel = 2;
 }
 
 /*
- * Channel was renamed.
- * Fanout to hub members.
+ * Channel is removed.
+ * We dont need to include hub_id since the client
+ * already know which hub this channel belongs to.
+ *
+ * To be used to fanout to hub members.
  */
 message ChannelRemoved {
-  uint64 hub_id = 1;
-  uint64 channel_id = 2;
+  string channel_id = 1;
 }

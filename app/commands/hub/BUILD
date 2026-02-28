@@ -4,6 +4,7 @@ cc_library(
     name = "create_hub_command",
     srcs = ["CreateHubCommand.cpp"],
     hdrs = ["CreateHubCommand.h"],
+    copts = ["-std=gnu++23"],
     visibility = ["//visibility:public"],
     deps = [
         "//app/commands:i_command",
@@ -27,6 +28,7 @@ cc_library(
     name = "join_hub_command",
     srcs = ["JoinHubByInviteCommand.cpp"],
     hdrs = ["JoinHubByInviteCommand.h"],
+    copts = ["-std=gnu++23"],
     visibility = ["//visibility:public"],
     deps = [
         "//app/commands:i_command",
@@ -50,6 +52,7 @@ cc_library(
     name = "create_hub_join_code_command",
     srcs = ["GetHubInviteCommand.cpp"],
     hdrs = ["GetHubInviteCommand.h"],
+    copts = ["-std=gnu++23"],
     visibility = ["//visibility:public"],
     deps = [
         "//app/commands:i_command",
@@ -67,6 +70,7 @@ cc_library(
     name = "leave_hub_command",
     srcs = ["LeaveHubCommand.cpp"],
     hdrs = ["LeaveHubCommand.h"],
+    copts = ["-std=gnu++23"],
     visibility = ["//visibility:public"],
     deps = [
         "//app/commands:i_command",
@@ -86,6 +90,7 @@ cc_library(
     name = "remove_hub_command",
     srcs = ["DeleteHubCommand.cpp"],
     hdrs = ["DeleteHubCommand.h"],
+    copts = ["-std=gnu++23"],
     visibility = ["//visibility:public"],
     deps = [
         "//app/commands:i_command",
@@ -105,6 +110,7 @@ cc_library(
     name = "rename_hub_command",
     srcs = ["RenameHubCommand.cpp"],
     hdrs = ["RenameHubCommand.h"],
+    copts = ["-std=gnu++23"],
     visibility = ["//visibility:public"],
     deps = [
         "//app/commands:i_command",
@@ -123,6 +129,7 @@ cc_library(
     name = "update_hub_command",
     srcs = ["UpdateHubCommand.cpp"],
     hdrs = ["UpdateHubCommand.h"],
+    copts = ["-std=gnu++23"],
     visibility = ["//visibility:public"],
     deps = [
         "//app/commands:i_command",

@@ -38,41 +38,39 @@ std::vector<net::outbound::OutgoingMessage> TypingCommand::execute(CommandContex
     }
     const UserId user_id = user_exp.value();
 
-    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd.hub_id()});
-    if (!hub_id_opt.has_value()) {
-        return single_outgoing(make_command_error(
-            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_NOT_FOUND,
-            "Hub not found"));
-    }
-
-    auto channel_id_opt = ctx.ids.to_internal(PublicChannelId{cmd.channel_id()});
+    auto channel_id_opt = parse_wire_id<ChannelId>(cmd.channel_id());
     if (!channel_id_opt.has_value()) {
         return single_outgoing(make_command_error(
             event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_NOT_FOUND,
             "Channel not found"));
     }
 
-    if (!ctx.hub_service.isHubMember(*hub_id_opt, user_id)) {
+    auto channel_opt = ctx.channel_service.getChannel(*channel_id_opt);
+    if (!channel_opt.has_value()) {
+        return single_outgoing(make_command_error(
+            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_NOT_FOUND,
+            "Channel not found"));
+    }
+    const HubId hub_id = channel_opt->hub_id;
+
+    if (!ctx.hub_service.isHubMember(hub_id, user_id)) {
         return single_outgoing(make_command_error(
             event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_FORBIDDEN,
             "Join the hub before typing"));
     }
 
-    auto session = ctx.session_manager.getSession(user_id);
-    if (!session || !session->current_text_channel || !session->current_hub ||
-        session->current_text_channel != *channel_id_opt || session->current_hub != *hub_id_opt) {
+    if (!connection_has_channel_subscription(ctx.subscription_manager, event->conn_id, hub_id,
+                                             *channel_id_opt)) {
         return {};
     }
 
     sercom::protocol::event::PresenceEvent presence;
     if (cmd.state() == sercom::protocol::command::Typing::STATE_STARTED) {
-        presence = proto_builders::presence::make_typing_started(
-            ctx.ids.to_public(*hub_id_opt).value, ctx.ids.to_public(user_id).value,
-            ctx.ids.to_public(*channel_id_opt).value);
+        presence =
+            proto_builders::presence::make_typing_started(user_id.value, channel_id_opt->value);
     } else if (cmd.state() == sercom::protocol::command::Typing::STATE_STOPPED) {
-        presence = proto_builders::presence::make_typing_stopped(
-            ctx.ids.to_public(*hub_id_opt).value, ctx.ids.to_public(user_id).value,
-            ctx.ids.to_public(*channel_id_opt).value);
+        presence =
+            proto_builders::presence::make_typing_stopped(user_id.value, channel_id_opt->value);
     } else {
         return {};
     }
@@ -83,8 +81,7 @@ std::vector<net::outbound::OutgoingMessage> TypingCommand::execute(CommandContex
     std::vector<GlobalConnId> conns;
     utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(
         1, std::memory_order_relaxed);
-    auto subs =
-        ctx.subscription_manager.getSubscribers(Topic::ChannelTopic(*hub_id_opt, *channel_id_opt));
+    auto subs = ctx.subscription_manager.getSubscribers(Topic::ChannelTopic(hub_id, *channel_id_opt));
     if (subs) {
         for (const auto& conn : *subs) {
             if (conn == event->conn_id) continue;

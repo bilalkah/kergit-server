@@ -29,8 +29,8 @@ uint64_t to_epoch_ms(const std::chrono::system_clock::time_point& tp) {
 
 sercom::protocol::domain::Message to_proto_message(CommandContext& ctx, const Message& msg) {
     sercom::protocol::domain::Message out;
-    out.set_id(ctx.ids.to_public(msg.id).value);
-    out.set_author_id(ctx.ids.to_public(msg.sender_id).value);
+    out.set_id(msg.id.value);
+    out.set_author_id(msg.sender_id.value);
     out.set_content(msg.text);
     out.set_created_at_ms(to_epoch_ms(msg.sent_at));
     return out;
@@ -71,14 +71,7 @@ std::vector<net::outbound::OutgoingMessage> SendMessageCommand::execute(CommandC
             "Message exceeds maximum length"));
     }
 
-    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd.hub_id()});
-    if (!hub_id_opt.has_value()) {
-        return single_outgoing(make_command_error(
-            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_NOT_FOUND,
-            "Hub not found"));
-    }
-
-    auto channel_id_opt = ctx.ids.to_internal(PublicChannelId{cmd.channel_id()});
+    auto channel_id_opt = parse_wire_id<ChannelId>(cmd.channel_id());
     if (!channel_id_opt.has_value()) {
         return single_outgoing(make_command_error(
             event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_NOT_FOUND,
@@ -86,21 +79,21 @@ std::vector<net::outbound::OutgoingMessage> SendMessageCommand::execute(CommandC
     }
 
     auto channel_opt = ctx.channel_service.getChannel(*channel_id_opt);
-    if (!channel_opt || channel_opt->hub_id != *hub_id_opt) {
+    if (!channel_opt) {
         return single_outgoing(make_command_error(
             event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_NOT_FOUND,
             "Channel not found"));
     }
+    const HubId hub_id = channel_opt->hub_id;
 
-    if (!ctx.hub_service.isHubMember(*hub_id_opt, user_id)) {
+    if (!ctx.hub_service.isHubMember(hub_id, user_id)) {
         return single_outgoing(make_command_error(
             event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_FORBIDDEN,
             "Join the hub before sending messages"));
     }
 
-    auto session = ctx.session_manager.getSession(user_id);
-    if (!session || !session->current_text_channel ||
-        session->current_text_channel != *channel_id_opt) {
+    if (!connection_has_channel_subscription(ctx.subscription_manager, event->conn_id, hub_id,
+                                             *channel_id_opt)) {
         return single_outgoing(make_command_error(
             event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
             "Channel is not active"));
@@ -130,8 +123,7 @@ std::vector<net::outbound::OutgoingMessage> SendMessageCommand::execute(CommandC
                                                 db_duration_ms);
 
     sercom::protocol::event::MessageCreated created;
-    created.set_hub_id(ctx.ids.to_public(*hub_id_opt).value);
-    created.set_channel_id(ctx.ids.to_public(*channel_id_opt).value);
+    created.set_channel_id(channel_id_opt->value);
     *created.mutable_message() = to_proto_message(ctx, saved);
 
     std::string bytes =
@@ -140,8 +132,7 @@ std::vector<net::outbound::OutgoingMessage> SendMessageCommand::execute(CommandC
     std::vector<GlobalConnId> conns;
     utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(
         1, std::memory_order_relaxed);
-    auto subs =
-        ctx.subscription_manager.getSubscribers(Topic::ChannelTopic(*hub_id_opt, *channel_id_opt));
+    auto subs = ctx.subscription_manager.getSubscribers(Topic::ChannelTopic(hub_id, *channel_id_opt));
     if (subs) {
         for (const auto& conn : *subs) {
             conns.push_back(conn);

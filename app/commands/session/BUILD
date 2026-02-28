@@ -6,6 +6,7 @@ cc_library(
     hdrs = [
         "BootstrapCommand.h",
     ],
+    copts = ["-std=gnu++23"],
     visibility = ["//visibility:public"],
     deps = [
         "//app/commands:i_command",
@@ -29,6 +30,7 @@ cc_library(
     hdrs = [
         "AuthenticateCommand.h",
     ],
+    copts = ["-std=gnu++23"],
     visibility = ["//visibility:public"],
     deps = [
         "//app/commands:i_command",

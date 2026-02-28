@@ -9,7 +9,6 @@ cc_library(
         "//app/managers/session:session_manager",
         "//app/managers/subscription:subscription_manager",
         "//app/queue:i_event_sink",
-        "//app/services:public_id_service",
         "//app/services/auth:auth_service",
         "//app/services/channel:channel_service",
         "//app/services/hub:hub_notifier",
@@ -28,6 +27,7 @@ cc_library(
         "CommandContext.h",
         "Dispatcher.h",
     ],
+    copts = ["-std=gnu++23"],
     visibility = ["//visibility:public"],
     deps = [
         ":command_context",

@@ -4,6 +4,7 @@ cc_library(
     name = "select_active_channel_command",
     srcs = ["SelectActiveChannelCommand.cpp"],
     hdrs = ["SelectActiveChannelCommand.h"],
+    copts = ["-std=gnu++23"],
     visibility = ["//visibility:public"],
     deps = [
         "//app/commands:i_command",
@@ -19,6 +20,7 @@ cc_library(
     name = "typing_command",
     srcs = ["TypingCommand.cpp"],
     hdrs = ["TypingCommand.h"],
+    copts = ["-std=gnu++23"],
     visibility = ["//visibility:public"],
     deps = [
         "//app/commands:i_command",
@@ -36,6 +38,7 @@ cc_library(
     name = "join_voice_channel_command",
     srcs = ["JoinVoiceChannelCommand.cpp"],
     hdrs = ["JoinVoiceChannelCommand.h"],
+    copts = ["-std=gnu++23"],
     visibility = ["//visibility:public"],
     deps = [
         "//app/commands:i_command",
@@ -53,6 +56,7 @@ cc_library(
     name = "voice_channel_activity_command",
     srcs = ["VoiceChannelActivityCommand.cpp"],
     hdrs = ["VoiceChannelActivityCommand.h"],
+    copts = ["-std=gnu++23"],
     visibility = ["//visibility:public"],
     deps = [
         "//app/commands:i_command",

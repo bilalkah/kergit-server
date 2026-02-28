@@ -5,7 +5,6 @@
 #include "app/queue/IEventSink.h"
 
 // include services headers
-#include "app/services/PublicIdService.h"
 #include "app/services/auth/AuthService.h"
 #include "app/services/channel/ChannelService.h"
 #include "app/services/hub/HubNotifier.h"
@@ -22,7 +21,6 @@
 namespace app {
 
 struct CommandContext {
-    services::PublicIdService& ids;
     services::AuthService& auth_service;
     services::ChannelService& channel_service;
     services::HubService& hub_service;

@@ -2,18 +2,17 @@
 
 #include "proto/event/activity.pb.h"
 
-#include <cstdint>
+#include <string_view>
 
 namespace app::proto_builders::voice {
 
 inline sercom::protocol::event::VoiceChannelPresence make_voice_presence(
-    uint64_t hub_id, uint64_t channel_id, uint64_t user_id,
-    sercom::protocol::event::VoiceChannelPresence_State state) {
+    std::string_view channel_id, std::string_view user_id,
+    sercom::protocol::event::VoiceChannelActivityState activity) {
     sercom::protocol::event::VoiceChannelPresence presence;
-    presence.set_hub_id(hub_id);
-    presence.set_channel_id(channel_id);
-    presence.set_state(state);
-    presence.set_user_id(user_id);
+    presence.set_channel_id(channel_id.data(), channel_id.size());
+    presence.set_user_id(user_id.data(), user_id.size());
+    presence.set_activity(activity);
     return presence;
 }
 

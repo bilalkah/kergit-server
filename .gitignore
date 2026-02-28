@@ -52,3 +52,4 @@ tmp/
 **/node_modules/
 **/.nuxt/
 **/.pnpm-store/
+docker/caddy/data/caddy/**

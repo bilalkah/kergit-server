@@ -4,8 +4,6 @@
 #include "app/dispatcher/Dispatcher.h"
 #include "app/queue/EventQueue.h"
 #include "core/ServerConfig.h"
-#include "infra/security/validation/JsonValidator.h"
-#include "infra/security/validation/ProtoValidator.h"
 #include "net/outbound/IOutBoundSink.h"
 #include "utils/Loggable.h"
 
@@ -16,7 +14,6 @@
 #include <atomic>
 #include <condition_variable>
 #include <mutex>
-#include <nlohmann/json.hpp>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -46,9 +43,6 @@ class WorkerPool : public utils::Loggable {
     net::outbound::IOutboundSink& out_queue_;
     Dispatcher& dispatcher_;
     CommandContext& cmd_ctx_;
-
-    infra::security::validation::MessageValidator message_validator_;
-    infra::security::validation::ProtoMessageValidator proto_validator_;
 
     core::AppStackConfig config_;
     std::atomic_bool running_{false};

@@ -4,6 +4,7 @@ cc_library(
     name = "create_channel_command",
     srcs = ["CreateChannelCommand.cpp"],
     hdrs = ["CreateChannelCommand.h"],
+    copts = ["-std=gnu++23"],
     visibility = ["//visibility:public"],
     deps = [
         "//app/commands:i_command",
@@ -23,6 +24,7 @@ cc_library(
     name = "rename_channel_command",
     srcs = ["RenameChannelCommand.cpp"],
     hdrs = ["RenameChannelCommand.h"],
+    copts = ["-std=gnu++23"],
     visibility = ["//visibility:public"],
     deps = [
         "//app/commands:i_command",
@@ -42,6 +44,7 @@ cc_library(
     name = "remove_channel_command",
     srcs = ["RemoveChannelCommand.cpp"],
     hdrs = ["RemoveChannelCommand.h"],
+    copts = ["-std=gnu++23"],
     visibility = ["//visibility:public"],
     deps = [
         "//app/commands:i_command",

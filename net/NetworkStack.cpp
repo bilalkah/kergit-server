@@ -113,8 +113,13 @@ void NetworkStack::wire_components() {
     // Transport later
     auto ws_origin_policy =
         security::transport::WsOriginPolicy::from_file(cfg_.ws_origin_policy_path);
+    transport::websocket::WsLimits ws_limits{
+        .max_message_bytes = cfg_.max_message_size,
+        .max_connections = cfg_.max_connections,
+    };
     transport_layer_ = std::make_unique<transport::websocket::TextWSServer>(
-        cfg_, *connection_registry_, *outgoing_queue_, std::move(ws_origin_policy));
+        cfg_, *connection_registry_, *outgoing_queue_, std::move(ws_origin_policy),
+        std::move(ws_limits));
 
     transport_layer_->set_hooks(
         {.on_open =

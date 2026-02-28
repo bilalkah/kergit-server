@@ -36,19 +36,21 @@ std::vector<net::outbound::OutgoingMessage> ConnectionCommand::execute(CommandCo
                                    : (!db_user->full_name.empty() ? db_user->full_name : "Member");
 
     // Track session + subscribe to hubs for presence
-    ctx.session_manager.createSession(input->conn, user_id);
+    auto attach_result = ctx.session_manager.attachConnection(input->conn, user_id);
+    if (!attach_result.has_value()) {
+        return std::unexpected(CommandError{
+            4, "Session limit exceeded"});
+    }
     const auto hubs = ctx.hub_service.getUserHubs(user_id);
     for (const auto& hub : hubs) {
         ctx.subscription_manager.subscribeConnection(input->conn, Topic::HubTopic(hub.id));
     }
 
-    const auto public_user_id = ctx.ids.to_public(user_id);
     auto hubs_meta = json::array();
     json channels_by_hub = json::object();
     json members_by_hub = json::object();
 
     for (const auto& hub : hubs) {
-        const auto public_hub_id = ctx.ids.to_public(hub.id);
         std::string role = "member";
         if (auto it = hub.members.find(user_id); it != hub.members.end()) {
             switch (it->second) {
@@ -66,7 +68,7 @@ std::vector<net::outbound::OutgoingMessage> ConnectionCommand::execute(CommandCo
         }
 
         const auto hub_channels = ctx.channel_service.getHubChannels(hub.id);
-        hubs_meta.push_back({{"id", public_hub_id.value},
+        hubs_meta.push_back({{"id", hub.id.value},
                              {"name", hub.name},
                              {"avatar_seed", hub.avatar_seed},
                              {"role", role},
@@ -74,12 +76,11 @@ std::vector<net::outbound::OutgoingMessage> ConnectionCommand::execute(CommandCo
 
         json channels_json = json::array();
         for (const auto& channel : hub_channels) {
-            const auto public_channel = ctx.ids.to_public(channel.id);
             const std::string type_str = channel.type == ChannelType::VOICE ? "voice" : "text";
             channels_json.push_back(
-                {{"id", public_channel.value}, {"name", channel.name}, {"type", type_str}});
+                {{"id", channel.id.value}, {"name", channel.name}, {"type", type_str}});
         }
-        const auto hub_key = std::to_string(public_hub_id.value);
+        const auto& hub_key = hub.id.value;
         channels_by_hub[hub_key] = std::move(channels_json);
 
         json members_json = json::array();
@@ -88,7 +89,6 @@ std::vector<net::outbound::OutgoingMessage> ConnectionCommand::execute(CommandCo
         const auto members = ctx.hub_service.getHubMembers(hub.id);
         for (const auto& member : members) {
             const auto& member_id = member.user_id;
-            const auto public_member = ctx.ids.to_public(member_id);
             const bool is_online = online_set.find(member_id) != online_set.end();
 
             std::string name = member.display_name;
@@ -103,7 +103,7 @@ std::vector<net::outbound::OutgoingMessage> ConnectionCommand::execute(CommandCo
             if (name.empty() && member_id == user_id) name = display_name;
             if (name.empty()) name = "Member";
 
-            members_json.push_back({{"user_id", public_member.value},
+            members_json.push_back({{"user_id", member_id.value},
                                     {"display_name", name},
                                     {"online", is_online},
                                     {"avatar_seed", member.avatar_seed}});
@@ -113,7 +113,7 @@ std::vector<net::outbound::OutgoingMessage> ConnectionCommand::execute(CommandCo
 
     json auth_resp = {{"type", "auth_response"},
                       {"success", true},
-                      {"user_id", public_user_id.value},
+                      {"user_id", user_id.value},
                       {"username", display_name},
                       {"hub_count", hubs.size()},
                       {"hubs", hubs_meta},
@@ -126,14 +126,20 @@ std::vector<net::outbound::OutgoingMessage> ConnectionCommand::execute(CommandCo
     // Notify online members in shared hubs that this user is now online
     for (const auto& hub : hubs) {
         const auto online_members = ctx.presence_manager.onlineUsersInHub(hub.id);
-        std::vector<GlobalConnId> recipients;
-        recipients.reserve(online_members.size());
+        std::unordered_set<GlobalConnId> recipient_set;
 
         for (const auto& member_id : online_members) {
             if (member_id == user_id) continue;
-            auto conn_exp = ctx.session_manager.getMainConnection(member_id);
-            if (!conn_exp.has_value()) continue;
-            recipients.push_back(conn_exp.value());
+            const auto member_conns = ctx.session_manager.getSessionConnections(member_id);
+            for (const auto& conn : member_conns) {
+                recipient_set.insert(conn);
+            }
+        }
+
+        std::vector<GlobalConnId> recipients;
+        recipients.reserve(recipient_set.size());
+        for (const auto& conn : recipient_set) {
+            recipients.push_back(conn);
         }
 
         if (!recipients.empty()) {

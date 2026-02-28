@@ -11,6 +11,20 @@ namespace utils {
 std::unordered_map<std::string, std::string> EnvLoader::env_vars_;
 bool EnvLoader::loaded_ = false;
 
+std::optional<std::string> EnvLoader::lookup_env(const std::string& key) {
+    auto it = env_vars_.find(key);
+    if (it != env_vars_.end()) {
+        return it->second;
+    }
+
+    const char* env_value = std::getenv(key.c_str());
+    if (env_value) {
+        return std::string(env_value);
+    }
+
+    return std::nullopt;
+}
+
 bool EnvLoader::load_env_file(const std::string& file_path) {
     if (loaded_) {
         return true;  // Already loaded
@@ -68,16 +82,8 @@ bool EnvLoader::load_env_file(const std::string& file_path) {
 }
 
 std::string EnvLoader::get_env(const std::string& key, const std::string& default_value) {
-    // First check our loaded env vars
-    auto it = env_vars_.find(key);
-    if (it != env_vars_.end()) {
-        return it->second;
-    }
-
-    // Fallback to system environment
-    const char* env_value = std::getenv(key.c_str());
-    if (env_value) {
-        return std::string(env_value);
+    if (auto value = lookup_env(key)) {
+        return *value;
     }
 
     return default_value;

@@ -23,6 +23,8 @@ message Envelope {
         VOICE_CHANNEL_PARTICIPANTS = 34;
         VOICE_ACTIVITY = 35;
         VOICE_CHANNEL_PRESENCE = 36;
+        VOICE_SELF_STATUS = 37;
+        VOICE_SELF_REVOKED = 38;
 
         MESSAGE_SEND = 40;
         MESSAGE_FETCH_LATEST = 41;

@@ -12,14 +12,14 @@ enum HubRole {
 }
 
 message Hub {
-    uint64 id = 1;
+    string id = 1;
     string name = 2;
     string avatar_seed = 3;
 }
 
 message HubMember {
-    uint64 hub_id = 1;
-    uint64 user_id = 2;
+    string hub_id = 1;
+    string user_id = 2;
     bool is_online = 3;
     HubRole role = 4;
     string display_name = 5;

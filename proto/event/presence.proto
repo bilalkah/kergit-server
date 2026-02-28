@@ -6,24 +6,32 @@ import "proto/event/hub.proto";
 
 /*
  * Hub member presence mutation.
- * This is the ONLY way online/offline changes are communicated.
+ * This is the ONLY way online/offline changes are communicated
+ * on runtime. Clients got the initial online presence the field in HubMember
+ * and then it's only updated on hub join/leave and hub member role change.
  */
 message HubMemberPresenceChanged {
-  uint64 hub_id = 1;
-  uint64 user_id = 2;
+  string hub_id = 1;
+  string user_id = 2;
   bool is_online = 3;
 }
 
+/*
+ * Client presence events.
+ * These are best-effort signals to indicate user activity.
+ * They are not guaranteed to be delivered or ordered.
+ * They are not persisted or stored in any way.
+ *
+ * They are only used for realtime UI updates and should not be used for any critical logic.
+ */
 message TypingStarted {
-  uint64 hub_id = 1;
-  uint64 user_id = 2;
-  uint64 channel_id = 3;
+  string user_id = 1;
+  string channel_id = 2;
 }
 
 message TypingStopped {
-  uint64 hub_id = 1;
-  uint64 user_id = 2;
-  uint64 channel_id = 3;
+  string user_id = 1;
+  string channel_id = 2;
 }
 
 /*

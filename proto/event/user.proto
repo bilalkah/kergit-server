@@ -6,7 +6,7 @@ package sercom.protocol.event;
  * User profile updated.
  */
 message UserProfileUpdated {
-  uint64 user_id = 1;
+  string user_id = 1;
   string username = 2;
   string avatar_seed = 3;
 }

@@ -4,6 +4,7 @@
 #include "utils/EnvLoader.h"
 #include "utils/TlsConfig.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -46,6 +47,8 @@ struct NetworkStackConfig {
     std::string net_stack_name{"default_netstack"};
     std::size_t port_index{0};  // Index in socket_ports array, for metrics tracking
     std::string ws_origin_policy_path{"config/ws_origin_policy.yaml"};
+    std::size_t max_connections{255};
+    std::size_t max_message_size{256 * 1024};
 
     size_t socket_threads{2};
     std::size_t outbound_queue_capacity{50000};
@@ -56,6 +59,7 @@ struct AppStackConfig {
     std::string environment{"development"};
     std::string log_level{"info"};
     size_t worker_threads{3};
+    std::size_t max_sessions_per_user{0};
     std::size_t event_queue_capacity{30000};
     std::size_t db_write_queue_capacity{10000};
     std::size_t db_write_max_retries{3};
@@ -93,46 +97,54 @@ class ServerConfigFiller {
                 cfg.socket_ports.push_back(static_cast<uint16_t>(std::stoi(port_str)));
             }
         } else {
-            cfg.network.port = std::stoi(utils::EnvLoader::get_env("SOCKET_PORT", "9001"));
+            cfg.network.port = utils::EnvLoader::get<uint16_t>("SOCKET_PORT", cfg.network.port);
         }
         cfg.network.ws_path = utils::EnvLoader::get_env("SOCKET_PATTERN", cfg.network.ws_path);
         cfg.network.ws_origin_policy_path =
             utils::EnvLoader::get_env("WS_ORIGIN_POLICY_PATH", cfg.network.ws_origin_policy_path);
+        cfg.network.max_connections =
+            std::max<std::size_t>(std::size_t{1},
+                                  utils::EnvLoader::get<std::size_t>("MAX_CONNECTIONS",
+                                                                     cfg.network.max_connections));
+        cfg.network.max_message_size =
+            std::max<std::size_t>(
+                std::size_t{1},
+                utils::EnvLoader::get<std::size_t>("MAX_MESSAGE_SIZE",
+                                                   cfg.network.max_message_size));
         cfg.network.outbound_queue_capacity =
-            static_cast<std::size_t>(std::stoul(utils::EnvLoader::get_env(
-                "OUTBOUND_QUEUE_CAPACITY", std::to_string(cfg.network.outbound_queue_capacity))));
+            utils::EnvLoader::get<std::size_t>("OUTBOUND_QUEUE_CAPACITY",
+                                               cfg.network.outbound_queue_capacity);
         cfg.database.engine = utils::EnvLoader::get_env("DB_ENGINE", "postgresql");
         cfg.database.user = utils::EnvLoader::get_env("DB_USER", "postgres");
         cfg.database.password = utils::EnvLoader::get_env("DB_PASSWORD", "password");
         cfg.database.host = utils::EnvLoader::get_env("DB_HOST", "localhost");
-        cfg.database.port = std::stoi(utils::EnvLoader::get_env("DB_PORT", "5432"));
+        cfg.database.port = utils::EnvLoader::get<uint16_t>("DB_PORT", 5432);
         cfg.database.db_name = utils::EnvLoader::get_env("DB_NAME", "postgres");
-        cfg.database.ssl = utils::EnvLoader::get_env("DB_SSL", "false") == "true";
-        cfg.database.pool_size =
-            static_cast<std::size_t>(std::stoul(utils::EnvLoader::get_env("DB_POOL_SIZE", "3")));
-        cfg.database.read_pool_size = static_cast<std::size_t>(std::stoul(utils::EnvLoader::get_env(
-            "DB_READ_POOL_SIZE", std::to_string(cfg.database.pool_size))));
+        cfg.database.ssl = utils::EnvLoader::get<bool>("DB_SSL", cfg.database.ssl);
+        cfg.database.pool_size = utils::EnvLoader::get<std::size_t>("DB_POOL_SIZE", 3);
+        cfg.database.read_pool_size =
+            utils::EnvLoader::get<std::size_t>("DB_READ_POOL_SIZE", cfg.database.pool_size);
         cfg.database.write_pool_size =
-            static_cast<std::size_t>(std::stoul(utils::EnvLoader::get_env(
-                "DB_WRITE_POOL_SIZE", std::to_string(cfg.database.pool_size))));
+            utils::EnvLoader::get<std::size_t>("DB_WRITE_POOL_SIZE", cfg.database.pool_size);
         cfg.app_stack.worker_threads =
-            static_cast<std::size_t>(std::stoul(utils::EnvLoader::get_env(
-                "WORKER_THREADS", std::to_string(cfg.app_stack.worker_threads))));
+            utils::EnvLoader::get<std::size_t>("WORKER_THREADS", cfg.app_stack.worker_threads);
+        cfg.app_stack.max_sessions_per_user =
+            utils::EnvLoader::get<std::size_t>("MAX_SESSIONS_PER_USER",
+                                               cfg.app_stack.max_sessions_per_user);
         cfg.app_stack.event_queue_capacity =
-            static_cast<std::size_t>(std::stoul(utils::EnvLoader::get_env(
-                "EVENT_QUEUE_CAPACITY", std::to_string(cfg.app_stack.event_queue_capacity))));
+            utils::EnvLoader::get<std::size_t>("EVENT_QUEUE_CAPACITY",
+                                               cfg.app_stack.event_queue_capacity);
         cfg.app_stack.db_write_queue_capacity =
-            static_cast<std::size_t>(std::stoul(utils::EnvLoader::get_env(
-                "DB_WRITE_QUEUE_CAPACITY", std::to_string(cfg.app_stack.db_write_queue_capacity))));
+            utils::EnvLoader::get<std::size_t>("DB_WRITE_QUEUE_CAPACITY",
+                                               cfg.app_stack.db_write_queue_capacity);
         cfg.app_stack.db_write_max_retries =
-            static_cast<std::size_t>(std::stoul(utils::EnvLoader::get_env(
-                "DB_WRITE_MAX_RETRIES", std::to_string(cfg.app_stack.db_write_max_retries))));
+            utils::EnvLoader::get<std::size_t>("DB_WRITE_MAX_RETRIES",
+                                               cfg.app_stack.db_write_max_retries);
         cfg.app_stack.db_write_retry_ms =
-            static_cast<std::size_t>(std::stoul(utils::EnvLoader::get_env(
-                "DB_WRITE_RETRY_MS", std::to_string(cfg.app_stack.db_write_retry_ms))));
+            utils::EnvLoader::get<std::size_t>("DB_WRITE_RETRY_MS",
+                                               cfg.app_stack.db_write_retry_ms);
         cfg.control.host = utils::EnvLoader::get_env("CONTROL_HOST", cfg.control.host);
-        cfg.control.port =
-            std::stoi(utils::EnvLoader::get_env("CONTROL_PORT", std::to_string(cfg.control.port)));
+        cfg.control.port = utils::EnvLoader::get<uint16_t>("CONTROL_PORT", cfg.control.port);
 
         auto livekit_ports = utils::EnvLoader::get_env_list("LIVEKIT_PORT");
         cfg.livekit.ports.clear();

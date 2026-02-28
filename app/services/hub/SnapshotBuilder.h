@@ -1,7 +1,6 @@
 #ifndef APP_SERVICES_HUB_SNAPSHOT_BUILDER_H
 #define APP_SERVICES_HUB_SNAPSHOT_BUILDER_H
 
-#include "app/services/PublicIdService.h"
 #include "app/services/channel/ChannelService.h"
 #include "app/services/hub/HubService.h"
 #include "app/services/presence/PresenceService.h"
@@ -16,7 +15,7 @@ class HubSnapshotBuilder {
    public:
     // Deprecated: legacy JSON snapshot builder; use HubService HubSnapshot instead.
     HubSnapshotBuilder(ChannelService& channel_servise, HubService& hub_service,
-                       PresenceService& presence, PublicIdService& ids);
+                       PresenceService& presence);
 
     nlohmann::json build(const HubId& hub_id);
 
@@ -27,7 +26,6 @@ class HubSnapshotBuilder {
     ChannelService& channel_servise_;
     HubService& hub_service_;
     PresenceService& presence_;
-    PublicIdService& ids_;
 };
 
 }  // namespace app::services

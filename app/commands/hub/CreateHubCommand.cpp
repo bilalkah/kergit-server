@@ -102,19 +102,16 @@ std::vector<net::outbound::OutgoingMessage> CreateHubCommand::execute(CommandCon
 
     ctx.subscription_manager.subscribeConnection(event->conn_id, Topic::HubTopic(hub_id));
 
-    const auto public_hub_id = ctx.ids.to_public(hub_id).value;
-    const auto public_user_id = ctx.ids.to_public(user_id).value;
-
     sercom::protocol::event::HubCreated created;
-    created.mutable_hub()->set_id(public_hub_id);
+    created.mutable_hub()->set_id(hub_id.value);
     created.mutable_hub()->set_name(name);
     if (auto hub = ctx.hub_service.getHub(hub_id)) {
         created.mutable_hub()->set_avatar_seed(hub->avatar_seed);
     }
 
     auto* self = created.mutable_self_member();
-    self->set_hub_id(public_hub_id);
-    self->set_user_id(public_user_id);
+    self->set_hub_id(hub_id.value);
+    self->set_user_id(user_id.value);
     self->set_is_online(true);
     self->set_role(role_to_proto(ctx.hub_service.getMembershipRole(hub_id, user_id)));
     self->set_display_name(resolve_display_name(ctx, user_id, ""));
@@ -126,7 +123,7 @@ std::vector<net::outbound::OutgoingMessage> CreateHubCommand::execute(CommandCon
     if (!channels.empty()) {
         const auto& channel = channels.front();
         auto* ch = created.mutable_channel();
-        ch->set_id(ctx.ids.to_public(channel.id).value);
+        ch->set_id(channel.id.value);
         ch->set_name(channel.name);
         ch->set_type(converters::to_proto_channel_type(channel.type));
     }

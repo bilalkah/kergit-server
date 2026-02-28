@@ -4,6 +4,7 @@ cc_library(
     name = "send_message_command",
     srcs = ["SendMessageCommand.cpp"],
     hdrs = ["SendMessageCommand.h"],
+    copts = ["-std=gnu++23"],
     visibility = ["//visibility:public"],
     deps = [
         "//app/commands:i_command",
@@ -23,6 +24,7 @@ cc_library(
     name = "fetch_latest_messages_command",
     srcs = ["FetchLatestMessagesCommand.cpp"],
     hdrs = ["FetchLatestMessagesCommand.h"],
+    copts = ["-std=gnu++23"],
     visibility = ["//visibility:public"],
     deps = [
         "//app/commands:i_command",
@@ -41,6 +43,7 @@ cc_library(
     name = "fetch_messages_before_command",
     srcs = ["FetchMessagesBeforeCommand.cpp"],
     hdrs = ["FetchMessagesBeforeCommand.h"],
+    copts = ["-std=gnu++23"],
     visibility = ["//visibility:public"],
     deps = [
         "//app/commands:i_command",

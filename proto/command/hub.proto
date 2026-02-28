@@ -22,14 +22,14 @@ message JoinHub {
  * Only OWNER / ADMIN.
  */
 message CreateHubJoinCode {
-  uint64 hub_id = 1;
+  string hub_id = 1;
 }
 
 /*
  * Leave a hub.
  */
 message LeaveHub {
-  uint64 hub_id = 1;
+  string hub_id = 1;
 }
 
 /*
@@ -37,7 +37,7 @@ message LeaveHub {
  * Only OWNER.
  */
 message RemoveHub {
-  uint64 hub_id = 1;
+  string hub_id = 1;
 }
 
 /*
@@ -45,7 +45,7 @@ message RemoveHub {
  * Only OWNER / ADMIN.
  */
 message RenameHub {
-  uint64 hub_id = 1;
+  string hub_id = 1;
   string name = 2;
 }
 
@@ -61,6 +61,6 @@ message HubChange {
  * Only OWNER / ADMIN.
  */
 message UpdateHub {
-  uint64 hub_id = 1;
+  string hub_id = 1;
   repeated HubChange changes = 2;
 }

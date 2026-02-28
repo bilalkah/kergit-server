@@ -4,6 +4,7 @@ load("@rules_cc//cc:defs.bzl", "cc_library")
 #     name = "connection_command",
 #     srcs = ["ConnectionCommand.cpp"],
 #     hdrs = ["ConnectionCommand.h"],
+#     copts = ["-std=gnu++23"],
 #     visibility = ["//visibility:public"],
 #     deps = [
 #         "//app/commands:i_command",
@@ -19,6 +20,7 @@ cc_library(
     name = "disconnection_command",
     srcs = ["DisconnectionCommand.cpp"],
     hdrs = ["DisconnectionCommand.h"],
+    copts = ["-std=gnu++23"],
     visibility = ["//visibility:public"],
     deps = [
         "//app/commands:i_command",

@@ -33,7 +33,7 @@ build:without_ssl --config=gcc13_cpp23
 build:without_ssl --define USE_SSL=false
 build:without_ssl --define WITH_BORINGSSL=0
 build:without_ssl --define WITH_QUIC=0
-build:without_ssl --define WITH_LIBDEFLATE=0
+build:without_ssl --define WITH_LIBDEFLATE=1
 
 # === SSL + QUIC + LIBDEFLATE (Debug) ===
 build:sslquic_dbg --config=with_ssl
@@ -51,6 +51,7 @@ build:sslquic_opt --define SERCOM_DEBUG_LOGS=1
 # === Vanilla (Debug) ===
 build:vanilla_dbg --config=without_ssl
 build:vanilla_dbg --config=dbg
+build:vanilla_dbg --verbose_failures
 
 # === Vanilla (Fastbuild) ===
 build:vanilla --config=without_ssl

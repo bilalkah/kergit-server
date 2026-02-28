@@ -34,7 +34,6 @@ outbound::PushResult NetworkRouter::push(outbound::OutgoingMessage msg) {
 
 void NetworkRouter::stop_all() {
     for (auto& [id, stack] : net_stacks_by_id_) {
-        log(utils::LogLevel::WARN, "Stopping NetworkStack " + id.value);
         auto res = stack->stop();
 
         if (!res) {
@@ -49,7 +48,6 @@ void NetworkRouter::stop_all() {
 
 void NetworkRouter::start_all() {
     for (auto& [id, stack] : net_stacks_by_id_) {
-        log(utils::LogLevel::WARN, "Starting NetworkStack " + id.value);
         auto res = stack->start();
         if (!res) {
             log(utils::LogLevel::ERROR, "Failed to start NetworkStack " + id.value);

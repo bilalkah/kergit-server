@@ -61,7 +61,7 @@ std::vector<net::outbound::OutgoingMessage> CreateChannelCommand::execute(Comman
     }
     const UserId user_id = user_exp.value();
 
-    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd.hub_id()});
+    auto hub_id_opt = parse_wire_id<HubId>(cmd.hub_id());
     if (!hub_id_opt.has_value()) {
         return single_outgoing(make_command_error(event->conn_id, env.type(),
                                    sercom::protocol::event::CommandErrorCode_NOT_FOUND,

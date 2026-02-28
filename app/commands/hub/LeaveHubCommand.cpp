@@ -36,7 +36,7 @@ std::vector<net::outbound::OutgoingMessage> LeaveHubCommand::execute(CommandCont
     }
     const UserId user_id = user_exp.value();
 
-    auto hub_id_opt = ctx.ids.to_internal(PublicHubId{cmd.hub_id()});
+    auto hub_id_opt = parse_wire_id<HubId>(cmd.hub_id());
     if (!hub_id_opt.has_value()) {
         return single_outgoing(make_command_error(
             event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_NOT_FOUND,
@@ -75,9 +75,6 @@ std::vector<net::outbound::OutgoingMessage> LeaveHubCommand::execute(CommandCont
                                                        Topic::ChannelTopic(hub_id, ch.id));
     }
 
-    const auto public_hub_id = ctx.ids.to_public(hub_id).value;
-    const auto public_user_id = ctx.ids.to_public(user_id).value;
-
     std::vector<GlobalConnId> conns;
     utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(
         1, std::memory_order_relaxed);
@@ -105,8 +102,8 @@ std::vector<net::outbound::OutgoingMessage> LeaveHubCommand::execute(CommandCont
     }
 
     sercom::protocol::event::HubMemberLeft left;
-    left.set_hub_id(public_hub_id);
-    left.set_user_id(public_user_id);
+    left.set_hub_id(hub_id.value);
+    left.set_user_id(user_id.value);
 
     std::string bytes =
         proto_builders::serialize_envelope(sercom::protocol::Envelope::HUB_MEMBER_LEFT, left);

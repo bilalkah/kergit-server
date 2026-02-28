@@ -5,6 +5,8 @@
 #include "utils/EventLogger.h"
 #include "utils/Metrics.h"
 
+#include <algorithm>
+#include <climits>
 #include <string>
 #include <string_view>
 
@@ -92,10 +94,13 @@ bool TextWSServer::is_backpressured(const transport::WsHandle& handle) const noe
 }
 
 void TextWSServer::wire() {
+    const auto max_payload_length =
+        static_cast<int>(std::min<std::size_t>(limits_.max_message_bytes, INT_MAX));
     app_->uws().ws<PerSocketData>(
         cfg_.ws_path,
         {
             .compression = uWS::SHARED_COMPRESSOR,
+            .maxPayloadLength = static_cast<unsigned int>(max_payload_length),
             .sendPingsAutomatically = false,
             .upgrade =
                 [this](auto* res, auto* req, auto* ctx) {
@@ -119,6 +124,7 @@ void TextWSServer::wire() {
                         log(utils::LogLevel::ERROR, "[ws] origin rejected: " + effective_origin);
                         return;
                     }
+
                     if (active_connections_.load(std::memory_order_relaxed) >=
                         limits_.max_connections) {
                         res->writeStatus("503")->end("Max connections reached");
@@ -172,6 +178,15 @@ void TextWSServer::wire() {
                     auto* psd = ws->getUserData();
                     if (!psd) return;
 
+                    if (data.size() > limits_.max_message_bytes) {
+                        ws->end(1009, "Message too big");
+                        log(utils::LogLevel::ERROR,
+                            "WebSocket message exceeds max size: " +
+                                std::to_string(data.size()) + " > " +
+                                std::to_string(limits_.max_message_bytes));
+                        return;
+                    }
+
                     sercom::protocol::Envelope env;
                     if (!env.ParseFromArray(data.data(), data.size())) {
                         ws->end(1002, "Invalid envelope");
@@ -205,12 +220,7 @@ void TextWSServer::wire() {
 
                     // FAST-PATH: application-level PING (only after auth)
                     if (env.type() == sercom::protocol::Envelope::PING) {
-                        auto res = make_app_pong_response(env);
-                        if (!res.has_value()) {
-                            ws->end(1002, res.error());
-                            return;
-                        }
-                        ws->send(res.value(), uWS::OpCode::BINARY);
+                        ws->send(app_pong_response_bytes(), uWS::OpCode::BINARY);
                         return;
                     }
 

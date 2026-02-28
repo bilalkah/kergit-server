@@ -161,3 +161,28 @@ TEST_F(EnvLoaderTest, SetEnvAndClearEnvWork) {
     EXPECT_EQ(EnvLoader::get_env("X", "d"), "d");
     EXPECT_EQ(EnvLoader::get_env("Y", "d"), "d");
 }
+
+TEST_F(EnvLoaderTest, TypedGetParsesSupportedScalarTypes) {
+    EnvLoader::set_env("INT_VALUE", "42");
+    EnvLoader::set_env("SIZE_VALUE", "2048");
+    EnvLoader::set_env("BOOL_TRUE", "on");
+    EnvLoader::set_env("BOOL_FALSE", "false");
+    EnvLoader::set_env("FLOAT_VALUE", "3.5");
+
+    EXPECT_EQ(EnvLoader::get<int>("INT_VALUE", 0), 42);
+    EXPECT_EQ(EnvLoader::get<std::size_t>("SIZE_VALUE", 0), 2048U);
+    EXPECT_TRUE(EnvLoader::get<bool>("BOOL_TRUE", false));
+    EXPECT_FALSE(EnvLoader::get<bool>("BOOL_FALSE", true));
+    EXPECT_FLOAT_EQ(EnvLoader::get<float>("FLOAT_VALUE", 0.0f), 3.5f);
+    EXPECT_EQ(EnvLoader::get<int>("MISSING_INT", 7), 7);
+}
+
+TEST_F(EnvLoaderTest, TypedGetThrowsOnInvalidScalarValues) {
+    EnvLoader::set_env("BAD_INT", "12x");
+    EnvLoader::set_env("BAD_BOOL", "maybe");
+    EnvLoader::set_env("BAD_FLOAT", "3.5.1");
+
+    EXPECT_THROW((void)EnvLoader::get<int>("BAD_INT", 0), std::invalid_argument);
+    EXPECT_THROW((void)EnvLoader::get<bool>("BAD_BOOL", false), std::invalid_argument);
+    EXPECT_THROW((void)EnvLoader::get<double>("BAD_FLOAT", 0.0), std::invalid_argument);
+}

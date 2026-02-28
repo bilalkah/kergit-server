@@ -3,7 +3,7 @@ syntax = "proto3";
 package sercom.protocol.domain;
 
 message User {
-    uint64 id = 1;
+    string id = 1;
     string username = 2;
     string avatar_seed = 3;
 }

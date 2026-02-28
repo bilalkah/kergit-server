@@ -3,12 +3,12 @@
 namespace app::services {
 
 HubSnapshotBuilder::HubSnapshotBuilder(ChannelService& channel_servise, HubService& service,
-                                       PresenceService& presence, PublicIdService& ids)
-    : channel_servise_(channel_servise), hub_service_(service), presence_(presence), ids_(ids) {}
+                                       PresenceService& presence)
+    : channel_servise_(channel_servise), hub_service_(service), presence_(presence) {}
 
 nlohmann::json HubSnapshotBuilder::build(const HubId& hub_id) {
     return {{"type", "hub_snapshot"},
-            {"hub_id", ids_.to_public(hub_id).value},
+            {"hub_id", hub_id.value},
             {"channels", build_channels(hub_id)},
             {"members", build_members(hub_id)}};
 }
@@ -17,8 +17,8 @@ nlohmann::json HubSnapshotBuilder::build_channels(const HubId& hub_id) {
     nlohmann::json arr = nlohmann::json::array();
     auto channels = channel_servise_.getHubChannels(hub_id);
     for (const auto& channel : channels) {
-        arr.push_back({{"id", ids_.to_public(channel.id).value},
-                       {"hub_id", ids_.to_public(channel.hub_id).value},
+        arr.push_back({{"id", channel.id.value},
+                       {"hub_id", channel.hub_id.value},
                        {"name", channel.name},
                        {"type", channel.type == ChannelType::VOICE ? "voice" : "text"}});
     }
@@ -41,7 +41,7 @@ nlohmann::json HubSnapshotBuilder::build_members(const HubId& hub_id) {
         const auto& user_id = member.user_id;
         std::string display = member.display_name;
 
-        arr.push_back({{"user_id", ids_.to_public(user_id).value},
+        arr.push_back({{"user_id", user_id.value},
                        {"display_name", display},
                        {"online", online.contains(user_id)},
                        {"avatar_seed", member.avatar_seed}});

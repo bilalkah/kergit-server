@@ -4,6 +4,7 @@ cc_library(
     name = "update_user_command",
     srcs = ["UpdateUserCommand.cpp"],
     hdrs = ["UpdateUserCommand.h"],
+    copts = ["-std=gnu++23"],
     visibility = ["//visibility:public"],
     deps = [
         "//app/commands:i_command",

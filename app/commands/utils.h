@@ -1,6 +1,8 @@
 #ifndef APP_COMMANDS_UTILS_H
 #define APP_COMMANDS_UTILS_H
 
+#include "app/managers/subscription/SubscriptionManager.h"
+#include "app/managers/subscription/Topic.h"
 #include "app/queue/Msg.h"
 #include "domains/ids/Ids.h"
 #include "net/outbound/Msg.h"
@@ -13,6 +15,8 @@
 #include "proto/event/error.pb.h"
 
 #include <exception>
+#include <optional>
+#include <string>
 #include <string_view>
 #include <typeinfo>
 #include <vector>
@@ -76,6 +80,35 @@ inline std::vector<net::outbound::OutgoingMessage> single_outgoing(
     std::vector<net::outbound::OutgoingMessage> out;
     out.emplace_back(std::move(msg));
     return out;
+}
+
+inline void unsubscribe_connection_from_channel_topics(SubscriptionManager& subscription_manager,
+                                                       const GlobalConnId& conn) {
+    const auto topics_exp = subscription_manager.getSubscriptionsForConnection(conn);
+    if (!topics_exp.has_value()) {
+        return;
+    }
+
+    for (const auto& topic : topics_exp.value()) {
+        if (topic.kind != TopicKind::Channel) {
+            continue;
+        }
+        subscription_manager.unsubscribeConnection(conn, topic);
+    }
+}
+
+inline bool connection_has_channel_subscription(const SubscriptionManager& subscription_manager,
+                                                const GlobalConnId& conn, const HubId& hub,
+                                                const ChannelId& channel) {
+    return subscription_manager.isSubscribed(conn, Topic::ChannelTopic(hub, channel));
+}
+
+template <typename Id>
+inline std::optional<Id> parse_wire_id(std::string_view raw) {
+    if (raw.empty()) {
+        return std::nullopt;
+    }
+    return Id{std::string(raw)};
 }
 
 }  // namespace app
