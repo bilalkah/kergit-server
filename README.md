@@ -1,89 +1,47 @@
-```
-┌────────────────────────────────────────────────────────────────────────────┐
-│                                  INTERNET                                  │
-│                                                                            │
-│  Browsers / Mobile Clients (Web, iOS, Android)                             │
-│                                                                            │
-│  ┌────────────────────┐        ┌────────────────────────┐                │
-│  │ App Socket (WSS)   │        │ LiveKit Media (WebRTC) │                │
-│  │ Auth / Presence   │        │ Audio RTP / ICE        │                │
-│  └─────────┬──────────┘        └──────────┬────────────┘                │
-│            │                               │                               │
-└────────────┼───────────────────────────────┼───────────────────────────────┘
-             │                               │
-             ▼                               ▼
+# Sercom Server
 
-┌────────────────────────────────────────────────────────────────────────────┐
-│                        RENTED PUBLIC SERVER (EDGE)                          │
-│                     (Static IP, 24/7, Trusted TLS)                          │
-│                                                                            │
-│  ┌──────────────────────────────────────────────────────────────────────┐ │
-│  │                  REVERSE PROXY / LOAD BALANCER                        │ │
-│  │                    (Nginx / Caddy / HAProxy)                          │ │
-│  │                                                                      │ │
-│  │  HTTPS / WSS :443                                                    │ │
-│  │   - Terminates TLS                                                   │ │
-│  │   - Routes signaling traffic                                         │ │
-│  │                                                                      │ │
-│  │  UDP/TCP Forwarding                                                  │ │
-│  │   - 7881 TCP (WebRTC fallback)                                       │ │
-│  │   - 7882 UDP (WebRTC audio RTP)                                      │ │
-│  └───────────────┬───────────────────────────────┬──────────────────────┘ │
-│                  │                               │                          │
-└──────────────────┼───────────────────────────────┼──────────────────────────┘
-                   │                               │
-                   ▼                               ▼
+Private development repository for the Sercom realtime chat and voice stack.
 
-┌────────────────────────────────────────────────────────────────────────────┐
-│                YOUR PHYSICAL MACHINE (GIGABIT INTERNET)                    │
-│             (Stable LAN, High CPU, 32GB RAM, NVMe SSD)                     │
-│                                                                            │
-│  ┌──────────────────────────────────────────────────────────────────────┐ │
-│  │                      APP SERVER (C++)                                 │ │
-│  │                  (Single Process, Multithreaded)                      │ │
-│  │                                                                      │ │
-│  │  Network Layer (2 threads)                                            │ │
-│  │   - Accept WSS connections                                           │ │
-│  │   - TLS already terminated at LB                                     │ │
-│  │   - Frame IO, backpressure                                           │ │
-│  │                                                                      │ │
-│  │  App Layer (3–5 threads)                                             │ │
-│  │   - Authentication                                                   │ │
-│  │   - Presence                                                         │ │
-│  │   - Hub / Channel routing                                            │ │
-│  │   - Voice intent (join / leave / mute / deafen)                      │ │
-│  │   - LiveKit token minting                                            │ │
-│  │                                                                      │ │
-│  │  Shared State                                                        │ │
-│  │   - Connection registry                                              │ │
-│  │   - Online users                                                     │ │
-│  │   - Voice presence tables                                            │ │
-│  └──────────────────────────────────────────────────────────────────────┘ │
-│                                                                            │
-│  ┌──────────────────────────────────────────────────────────────────────┐ │
-│  │                 LIVEKIT SERVER #1 (PRIMARY SFU)                       │ │
-│  │                                                                      │ │
-│  │   - WebRTC signaling (via LB)                                        │ │
-│  │   - ICE negotiation                                                  │ │
-│  │   - Audio SFU routing (Opus)                                         │ │
-│  │                                                                      │ │
-│  │   UDP 7882 ← RTP audio                                               │ │
-│  │   TCP 7881 ← fallback                                                │ │
-│  └──────────────────────────────────────────────────────────────────────┘ │
-│                                                                            │
-│  ┌──────────────────────────────────────────────────────────────────────┐ │
-│  │                 LIVEKIT SERVER #2 (OPTIONAL / SPLIT)                 │ │
-│  │                                                                      │ │
-│  │   - Second SFU instance                                              │ │
-│  │   - Different port range or rooms                                    │ │
-│  │   - Used for load isolation                                          │ │
-│  └──────────────────────────────────────────────────────────────────────┘ │
-│                                                                            │
-│  ┌──────────────────────────────────────────────────────────────────────┐ │
-│  │                       PostgreSQL                                     │ │
-│  │   - Users                                                            │ │
-│  │   - Hubs / Channels                                                  │ │
-│  │   - Permissions                                                      │ │
-│  └──────────────────────────────────────────────────────────────────────┘ │
-└────────────────────────────────────────────────────────────────────────────┘
+## What Is Here
+
+- `server/`, `app/`, `net/`, `control/`: C++ socket server, protocol handling, control-plane pieces
+- `clients/web/`: main Nuxt web client
+- `clients/admin/`: Nuxt admin dashboard
+- `docker/`: local Docker stack for the server, Caddy, Redis, and LiveKit
+
+This README is intentionally short and does not include credentials, private endpoints, or deployment secrets. Supply runtime configuration through the repo-root `.env` file or environment variables.
+
+## Run The Full Stack
+
+From the repo root:
+
+```bash
+./docker/run-server.sh
 ```
+
+Useful variants:
+
+```bash
+./docker/run-server.sh --prod
+./docker/run-server.sh --multi
+./docker/run-server.sh --server-only
+```
+
+Default local endpoints:
+
+- Web app: `http://localhost:3000`
+- Admin app: `http://localhost:3001`
+- Edge proxy: `https://localhost`
+- Socket server: `ws://localhost:9001` behind local development routing
+
+To stop everything:
+
+```bash
+./docker/stop-server.sh
+```
+
+## Notes
+
+- Docker scripts load `.env` from the repo root when present.
+- The full stack starts Redis, LiveKit, Caddy, the C++ server, and both Nuxt clients unless `--server-only` is used.
+- For client-specific details, see [clients/web/README.md](/Users/bilal/repos/sercom-server/clients/web/README.md) and [clients/admin/README.md](/Users/bilal/repos/sercom-server/clients/admin/README.md).
