@@ -2,8 +2,35 @@
   auto_https off
 }
 
+(livekit_cors_headers) {
+  Access-Control-Allow-Origin "{http.request.header.Origin}"
+  Access-Control-Allow-Credentials "true"
+  Access-Control-Allow-Methods "GET, OPTIONS"
+  Access-Control-Allow-Headers "Authorization, Content-Type, X-Room-ID"
+  Vary "Origin"
+}
+
 :443 {
   tls /certs/cert.pem /certs/key.pem
+
+  @livekitAllowedPreflight {
+    path /livekit*
+    method OPTIONS
+    # Keep this allowlist aligned with config/ws_origin_policy.yaml.
+    expression `{header.Origin} == "https://localhost" || {header.Origin} == "https://localhost:443" || {header.Origin} == "https://127.0.0.1" || {header.Origin} == "https://127.0.0.1:443" || {header.Origin} == "http://localhost:443" || {header.Origin} == "http://127.0.0.1:443" || {header.Origin} == "http://localhost:3000" || {header.Origin} == "http://127.0.0.1:3000" || {header.Origin} == "https://7f6540pm-443.euw.devtunnels.ms"`
+  }
+  handle @livekitAllowedPreflight {
+    header {
+      import livekit_cors_headers
+    }
+    respond "" 204
+  }
+
+  @livekitPreflight {
+    path /livekit*
+    method OPTIONS
+  }
+  respond @livekitPreflight 403
 
   @preflight method OPTIONS
   respond @preflight 204
@@ -45,21 +72,49 @@
     }
   }
 
-  # LiveKit signaling (CORS only here)
+  # LiveKit signaling. Only approved frontend origins receive CORS headers.
   handle_path /livekit* {
-    header {
-      Access-Control-Allow-Origin "{http.request.header.Origin}"
-      Access-Control-Allow-Credentials "true"
-      Access-Control-Allow-Methods "GET, OPTIONS"
-      Access-Control-Allow-Headers "Authorization, Content-Type, X-Room-ID"
-    }
     # Browser WebSocket can't set custom headers; derive routing header from query.
     request_header X-Room-ID {query.room_id}
 
+    @allowedOrigin {
+      # Keep this allowlist aligned with config/ws_origin_policy.yaml.
+      expression `{header.Origin} == "https://localhost" || {header.Origin} == "https://localhost:443" || {header.Origin} == "https://127.0.0.1" || {header.Origin} == "https://127.0.0.1:443" || {header.Origin} == "http://localhost:443" || {header.Origin} == "http://127.0.0.1:443" || {header.Origin} == "http://localhost:3000" || {header.Origin} == "http://127.0.0.1:3000" || {header.Origin} == "https://7f6540pm-443.euw.devtunnels.ms"`
+    }
+    @originPresent header Origin *
+
+    handle @allowedOrigin {
+      header {
+        import livekit_cors_headers
+      }
+      reverse_proxy {
+        to livekit-node1:7880
+        to livekit-node2:7890
+        lb_policy header X-Room-ID
+        header_down -Access-Control-Allow-Origin
+        header_down -Access-Control-Allow-Credentials
+        header_down -Access-Control-Allow-Methods
+        header_down -Access-Control-Allow-Headers
+        header_down -Access-Control-Expose-Headers
+        header_down -Vary
+      }
+    }
+
+    handle @originPresent {
+      respond 403
+    }
+
+    # Requests without an Origin header are passed through without CORS headers.
     reverse_proxy {
       to livekit-node1:7880
       to livekit-node2:7890
       lb_policy header X-Room-ID
+      header_down -Access-Control-Allow-Origin
+      header_down -Access-Control-Allow-Credentials
+      header_down -Access-Control-Allow-Methods
+      header_down -Access-Control-Allow-Headers
+      header_down -Access-Control-Expose-Headers
+      header_down -Vary
     }
   }
 
