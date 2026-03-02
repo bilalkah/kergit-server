@@ -8,6 +8,7 @@ allowed_origins:
   - http://localhost:3000
   - http://127.0.0.1:3000
   - https://7f6540pm-443.euw.devtunnels.ms/
+  - https://kergit.com
 
 trusted_proxy_cidrs:
   - 127.0.0.1/32
