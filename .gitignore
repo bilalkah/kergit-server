@@ -53,3 +53,9 @@ tmp/
 **/.nuxt/
 **/.pnpm-store/
 docker/caddy/data/caddy/**
+
+
+./clients/web/.output
+./clients/web/.nuxt
+./clients/web/node_modules
+./clients/web/.pnpm-store

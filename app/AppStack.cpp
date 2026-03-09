@@ -3,16 +3,25 @@
 #include "utils/EnvLoader.h"
 
 #include <chrono>
+#include <iostream>
 
 namespace app {
 
-AppStack::AppStack(const core::ServerConfig& config) : config_(config) {
+AppStack::AppStack(const core::ServerConfig& config) : config_(config),
+    webhook_server_({config_.webhook.host, config_.webhook.port, config_.webhook.path}) 
+{
     event_queue_ = std::make_unique<queue::EventQueue>(config_.app_stack.event_queue_capacity);
 }
 
-void AppStack::start() { worker_pool_->start(); }
+void AppStack::start() {
+    // webhook_server_ already started during bootstrap for node discovery
+    worker_pool_->start();
+}
 
 void AppStack::stop() {
+    // Stop webhook server
+    webhook_server_.stop();
+
     if (channel_service_) {
         channel_service_->stopAsyncWriter();
     }
@@ -29,6 +38,7 @@ void AppStack::bootstrap() {
     }
     init_database();
     init_managers();
+    webhook_server_.start();
     init_services();
     init_dispatcher();
     init_workers();
@@ -73,11 +83,16 @@ void AppStack::init_services() {
         auto livekit_key = utils::EnvLoader::get_env("LIVEKIT_API_KEY", "");
         auto livekit_secret = utils::EnvLoader::get_env("LIVEKIT_API_SECRET", "");
 
-        livekit_token_service_ =
-            std::make_unique<services::livekit::LiveKitTokenService>(livekit_key, livekit_secret);
+        voice_service_ =
+            std::make_unique<services::voice::VoiceService>(livekit_key, livekit_secret);
+
+        webhook_server_.set_callback([this](const livekit::webhook::LiveKitEvent& event) {
+            voice_service_->on_livekit_event(event);
+        });
+
         cmd_ctx_ = std::make_unique<CommandContext>(CommandContext{
             *auth_service_, *channel_service_, *hub_service_, *hub_notifier_,
-            *hub_snapshot_builder_, *livekit_token_service_, *user_service_, *presence_manager_,
+            *hub_snapshot_builder_, *voice_service_, *user_service_, *presence_manager_,
             *subscription_manager_, *session_manager_, *event_queue_});
 
     } catch (const std::exception& ex) {

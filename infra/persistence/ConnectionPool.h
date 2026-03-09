@@ -9,8 +9,9 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include "utils/Loggable.h"
 
-class ConnectionPool {
+class ConnectionPool : public utils::Loggable {
    public:
     using Clock = std::chrono::system_clock;
 

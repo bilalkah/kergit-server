@@ -32,7 +32,8 @@ struct DataBaseConfig {
         if (engine == "postgres" || engine == "postgresql") {
             std::string u = "postgresql://" + user + ":" + password + "@" + host + ":" +
                             std::to_string(port) + "/" + db_name;
-            if (ssl) u += "?sslmode=require";
+            u += ssl ? "?sslmode=require" : "?sslmode=disable";
+            u += "&connect_timeout=5";
             return u;
         }
         throw std::runtime_error("Unsupported DB engine: " + engine);
@@ -76,11 +77,18 @@ struct ControlPlaneConfig {
     uint16_t port{8081};
 };
 
+struct WebhookConfig {
+    std::string host{"0.0.0.0"};
+    uint16_t port{8080};
+    std::string path{"/webhook"};
+};
+
 struct ServerConfig {
     NetworkStackConfig network{};
     DataBaseConfig database{};
     AppStackConfig app_stack{};
     ControlPlaneConfig control{};
+    WebhookConfig webhook{};
     std::vector<uint16_t> socket_ports{};
     LiveKitConfig livekit{};
 };
@@ -145,6 +153,10 @@ class ServerConfigFiller {
                                                cfg.app_stack.db_write_retry_ms);
         cfg.control.host = utils::EnvLoader::get_env("CONTROL_HOST", cfg.control.host);
         cfg.control.port = utils::EnvLoader::get<uint16_t>("CONTROL_PORT", cfg.control.port);
+
+        cfg.webhook.host = utils::EnvLoader::get_env("WEBHOOK_HOST", cfg.webhook.host);
+        cfg.webhook.port = utils::EnvLoader::get<uint16_t>("WEBHOOK_PORT", cfg.webhook.port);
+        cfg.webhook.path = utils::EnvLoader::get_env("WEBHOOK_PATH", cfg.webhook.path);
 
         auto livekit_ports = utils::EnvLoader::get_env_list("LIVEKIT_PORT");
         cfg.livekit.ports.clear();

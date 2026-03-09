@@ -10,7 +10,7 @@
 #include "app/services/hub/HubNotifier.h"
 #include "app/services/hub/HubService.h"
 #include "app/services/hub/SnapshotBuilder.h"
-#include "app/services/livekit/LiveKitTokenService.h"
+#include "app/services/voice/VoiceService.h"
 #include "app/services/presence/PresenceService.h"
 #include "app/services/user/UserService.h"
 
@@ -26,7 +26,7 @@ struct CommandContext {
     services::HubService& hub_service;
     services::HubNotifier& hub_notifier;
     services::HubSnapshotBuilder& hub_snapshot_builder;
-    services::livekit::LiveKitTokenService& livekit_token_service;
+    services::voice::VoiceService& voice_service;
     services::UserService& user_service;
     services::PresenceService& presence_manager;
 
