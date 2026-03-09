@@ -83,4 +83,4 @@ if [ -t 0 ] && [ -t 1 ]; then
 fi
 
 exec docker exec "${DOCKER_EXEC_FLAGS[@]}" "$DEV_CONTAINER" bash -lc \
-  "cd /root/workspace && bazel --config=$BAZEL_CONFIG //server:fake_discord"
+  "cd /root/workspace && bazel run --config=$BAZEL_CONFIG //server:fake_discord"
