@@ -77,6 +77,11 @@ struct ControlPlaneConfig {
     uint16_t port{8081};
 };
 
+struct RedisConfig {
+    std::string host{"localhost"};
+    uint16_t port{6379};
+};
+
 struct WebhookConfig {
     std::string host{"0.0.0.0"};
     uint16_t port{8080};
@@ -88,6 +93,7 @@ struct ServerConfig {
     DataBaseConfig database{};
     AppStackConfig app_stack{};
     ControlPlaneConfig control{};
+    RedisConfig redis{};
     WebhookConfig webhook{};
     std::vector<uint16_t> socket_ports{};
     LiveKitConfig livekit{};
@@ -153,6 +159,9 @@ class ServerConfigFiller {
                                                cfg.app_stack.db_write_retry_ms);
         cfg.control.host = utils::EnvLoader::get_env("CONTROL_HOST", cfg.control.host);
         cfg.control.port = utils::EnvLoader::get<uint16_t>("CONTROL_PORT", cfg.control.port);
+
+        cfg.redis.host = utils::EnvLoader::get_env("REDIS_HOST", cfg.redis.host);
+        cfg.redis.port = utils::EnvLoader::get<uint16_t>("REDIS_PORT", cfg.redis.port);
 
         cfg.webhook.host = utils::EnvLoader::get_env("WEBHOOK_HOST", cfg.webhook.host);
         cfg.webhook.port = utils::EnvLoader::get<uint16_t>("WEBHOOK_PORT", cfg.webhook.port);

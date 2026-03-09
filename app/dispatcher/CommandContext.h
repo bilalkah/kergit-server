@@ -6,6 +6,7 @@
 
 // include services headers
 #include "app/services/auth/AuthService.h"
+#include "app/services/invite/InviteService.h"
 #include "app/services/channel/ChannelService.h"
 #include "app/services/hub/HubNotifier.h"
 #include "app/services/hub/HubService.h"
@@ -35,6 +36,8 @@ struct CommandContext {
 
     // Event sink for pushing follow-up commands
     queue::IEventSink& event_sink;
+
+    services::InviteService& invite_service;
 };
 
 }  // namespace app

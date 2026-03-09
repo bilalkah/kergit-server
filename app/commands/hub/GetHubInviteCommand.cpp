@@ -59,7 +59,7 @@ std::vector<net::outbound::OutgoingMessage> GetHubInviteCommand::execute(Command
 
     sercom::protocol::event::HubJoinCodeCreated created;
     created.set_hub_id(hub_id.value);
-    created.set_join_code(hub_id.value);
+    created.set_join_code(ctx.invite_service.createInvite(hub_id));
 
     std::string bytes = proto_builders::serialize_envelope(
         sercom::protocol::Envelope::HUB_JOIN_CODE_CREATED, created);

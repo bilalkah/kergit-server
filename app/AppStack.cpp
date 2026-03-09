@@ -37,6 +37,7 @@ void AppStack::bootstrap() {
         throw std::runtime_error("Outbound sink not attached to AppStack");
     }
     init_database();
+    init_redis();
     init_managers();
     webhook_server_.start();
     init_services();
@@ -52,6 +53,11 @@ void AppStack::init_database() {
     persistence_gateway_ = std::make_unique<PersistenceGateway>(
         config_.database.to_connection_string(), config_.database.read_pool_size,
         config_.database.write_pool_size);
+}
+
+void AppStack::init_redis() {
+    redis_client_ = std::make_unique<infra::redis::RedisClient>(config_.redis.host,
+                                                                 config_.redis.port);
 }
 
 void AppStack::init_managers() {
@@ -90,10 +96,14 @@ void AppStack::init_services() {
             voice_service_->on_livekit_event(event);
         });
 
+        auto invite_base_url = utils::EnvLoader::get_env("INVITE_BASE_URL", "https://localhost");
+        invite_service_ =
+            std::make_unique<services::InviteService>(*redis_client_, invite_base_url);
+
         cmd_ctx_ = std::make_unique<CommandContext>(CommandContext{
             *auth_service_, *channel_service_, *hub_service_, *hub_notifier_,
             *hub_snapshot_builder_, *voice_service_, *user_service_, *presence_manager_,
-            *subscription_manager_, *session_manager_, *event_queue_});
+            *subscription_manager_, *session_manager_, *event_queue_, *invite_service_});
 
     } catch (const std::exception& ex) {
         log(utils::LogLevel::ERROR, "init_services failed: ", ex.what());

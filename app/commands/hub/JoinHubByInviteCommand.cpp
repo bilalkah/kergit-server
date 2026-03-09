@@ -60,11 +60,16 @@ std::vector<net::outbound::OutgoingMessage> JoinHubByInviteCommand::execute(
     }
     const UserId user_id = user_exp.value();
 
-    auto hub_id_opt = parse_wire_id<HubId>(cmd.join_code());
+    std::string raw_code = cmd.join_code();
+    auto invite_pos = raw_code.find("/invite/");
+    std::string token = (invite_pos != std::string::npos) ? raw_code.substr(invite_pos + 8)
+                                                          : raw_code;
+
+    auto hub_id_opt = ctx.invite_service.resolveInvite(token);
     if (!hub_id_opt.has_value()) {
         return single_outgoing(make_command_error(
-            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
-            "Join code is invalid"));
+            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_INVITE_EXPIRED,
+            "Invite link is invalid or has expired"));
     }
     const HubId hub_id = hub_id_opt.value();
 

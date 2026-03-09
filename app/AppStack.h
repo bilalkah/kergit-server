@@ -3,7 +3,9 @@
 
 #include "app/dispatcher/CommandContext.h"
 #include "app/dispatcher/Dispatcher.h"
+#include "app/services/invite/InviteService.h"
 #include "app/services/voice/VoiceService.h"
+#include "infra/redis/RedisClient.h"
 #include "app/worker/WorkerPool.h"
 #include "core/ServerConfig.h"
 #include "infra/persistence/PersistenceGateway.h"
@@ -28,6 +30,7 @@ class AppStack : public utils::Loggable {
 
    private:
     void init_database();
+    void init_redis();
     void init_managers();
     void init_services();
     void init_dispatcher();
@@ -39,6 +42,9 @@ class AppStack : public utils::Loggable {
 
     // database
     std::unique_ptr<PersistenceGateway> persistence_gateway_;
+
+    // Redis
+    std::unique_ptr<infra::redis::RedisClient> redis_client_;
 
     // Managers
     std::unique_ptr<SubscriptionManager> subscription_manager_;
@@ -53,6 +59,7 @@ class AppStack : public utils::Loggable {
     std::unique_ptr<services::HubNotifier> hub_notifier_;
     std::unique_ptr<services::HubSnapshotBuilder> hub_snapshot_builder_;
     std::unique_ptr<services::voice::VoiceService> voice_service_;
+    std::unique_ptr<services::InviteService> invite_service_;
 
     // Core
     std::unique_ptr<CommandContext> cmd_ctx_;

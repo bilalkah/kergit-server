@@ -14,6 +14,7 @@ cc_library(
         "//app/services/hub:hub_notifier",
         "//app/services/hub:hub_service",
         "//app/services/hub:hub_snapshot_builder",
+        "//app/services/invite:invite_service",
         "//app/services/voice:voice_service",
         "//app/services/presence:presence_service",
         "//app/services/user:user_service",
