@@ -89,64 +89,6 @@ TEST(SessionManagerTest, RemovesActiveSessionWhenLastConnectionDisconnects) {
     EXPECT_FALSE(manager.getSession(user).has_value());
 }
 
-TEST(SessionManagerTest, VoiceOwnershipTracksOwningSessionId) {
-    SessionManager manager;
-    const UserId user{"user-1"};
-    const auto conn1 = make_conn("conn-1");
-    const auto conn2 = make_conn("conn-2");
-    const ChannelId channel{"voice-1"};
-
-    const SessionId owner_session = expect_attach_ok(manager, conn1, user);
-    const SessionId other_session = expect_attach_ok(manager, conn2, user);
-    manager.joinVoiceChannel(user, owner_session, channel);
-
-    const auto owner = manager.getVoiceOwnerSessionId(user);
-    ASSERT_TRUE(owner.has_value());
-    EXPECT_EQ(*owner, owner_session);
-
-    EXPECT_FALSE(manager.leaveVoiceChannelIfOwnedBy(user, other_session));
-    EXPECT_TRUE(manager.leaveVoiceChannelIfOwnedBy(user, owner_session));
-    EXPECT_FALSE(manager.getVoiceOwnerSessionId(user).has_value());
-    EXPECT_TRUE(manager.voiceParticipantsInChannel(channel).empty());
-}
-
-TEST(SessionManagerTest, RemovingOwnerConnectionClearsVoiceOwnershipImmediately) {
-    SessionManager manager;
-    const UserId user{"user-1"};
-    const auto conn = make_conn("conn-1");
-    const ChannelId channel{"voice-1"};
-
-    const SessionId owner_session = expect_attach_ok(manager, conn, user);
-    manager.joinVoiceChannel(user, owner_session, channel);
-
-    manager.removeConnection(conn);
-
-    EXPECT_FALSE(manager.getVoiceOwnerSessionId(user).has_value());
-    EXPECT_FALSE(manager.sessionIdHasConnections(owner_session));
-    EXPECT_FALSE(manager.getSession(user).has_value());
-}
-
-TEST(SessionManagerTest, JoinVoiceChannelCanTransferOwnershipDirectly) {
-    SessionManager manager;
-    const UserId user{"user-1"};
-    const auto conn1 = make_conn("conn-1");
-    const auto conn2 = make_conn("conn-2");
-    const ChannelId channel1{"voice-1"};
-    const ChannelId channel2{"voice-2"};
-
-    const SessionId session1 = expect_attach_ok(manager, conn1, user);
-    const SessionId session2 = expect_attach_ok(manager, conn2, user);
-
-    manager.joinVoiceChannel(user, session1, channel1);
-    manager.joinVoiceChannel(user, session2, channel2);
-
-    const auto owner = manager.getVoiceOwnerSessionId(user);
-    ASSERT_TRUE(owner.has_value());
-    EXPECT_EQ(*owner, session2);
-    EXPECT_TRUE(manager.voiceParticipantsInChannel(channel1).empty());
-    EXPECT_EQ(manager.voiceParticipantsInChannel(channel2), std::vector<UserId>{user});
-}
-
 TEST(SessionManagerTest, AttachConnectionRejectsWhenSessionLimitExceeded) {
     SessionManager manager(/*max_sessions_per_user=*/1);
     const UserId user{"user-1"};

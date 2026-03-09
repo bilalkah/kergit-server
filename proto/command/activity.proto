@@ -36,14 +36,12 @@ message VoiceChannelMembership {
   enum State {
     STATE_UNSPECIFIED = 0;
 
-    // Client first intents
-    STATE_REQUEST_JOIN = 1;
-    STATE_REQUEST_LEAVE = 2;
-    STATE_REQUEST_TAKEOVER = 3;
+    // Client wants to join (or switch to) a voice channel.
+    // Server issues a token and handles takeover automatically.
+    STATE_JOIN = 1;
 
-    // Client follow-up intents (after connection is established)
-    STATE_JOIN = 4;
-    STATE_LEAVE = 5;
+    // Client wants to leave the current voice channel.
+    STATE_LEAVE = 2;
   }
 
   // Target voice channel
@@ -67,18 +65,3 @@ message VoiceChannelActivity {
   string channel_id = 1;
   State state = 2;
 }
-
-/*
- * ============================
- *  Session Takeover Command
- * ============================
- *
- * Client → Server
- *
- * Request to become the media-owning session.
- * Server will:
- *  - Revoke previous owner (if any)
- *  - Assign this session as owner
- *  - Broadcast updated VoiceSelfStatus to all sessions
- */
-message VoiceSessionTakeoverRequest {}

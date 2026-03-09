@@ -10,21 +10,18 @@ package sercom.protocol.event;
 
 // Server → Client
 message VoiceTokenIssued {
-  // Same channel_id for correlation
-  string channel_id = 1;
-
   // LiveKit access token (JWT)
-  string token = 2;
+  string token = 1;
 
   // LiveKit server URL (without protocol)
-  string livekit_url = 3;
+  string livekit_url = 2;
 
   // Expiration in seconds (informational)
-  uint64 expires_in = 4;
+  uint64 expires_in = 3;
 
   // E2EE shared key (base64-encoded, 32 bytes)
   // All participants in the same channel use this key
-  string e2ee_key = 5;
+  string e2ee_key = 4;
 }
 
 /*
@@ -107,12 +104,8 @@ message VoiceParticipantStateUpdate {
  *  Session-Scoped Voice State
  * ============================
  *
- * Describes this session’s relationship to the user’s
+ * Describes this session's relationship to the user's
  * current voice channel presence.
- *
- * Invariants:
- *  - If connected = false → is_owner MUST be false.
- *  - At most one session per user may have is_owner = true.
  */
 message VoiceSelfStatus {
   // True if the user account is currently in a voice channel.
@@ -123,7 +116,11 @@ message VoiceSelfStatus {
 }
 
 /*
- * Sent to the previous owner session when ownership transfers.
- * Client must immediately drop LiveKit transport.
+ * ============================
+ *  Voice Self Revoked
+ * ============================
+ *
+ * Sent to a session when another session takes over voice.
+ * Client must immediately drop its LiveKit transport.
  */
 message VoiceSelfRevoked {}

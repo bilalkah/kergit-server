@@ -68,50 +68,50 @@ kergit.com {
     }
   }
 
-  # LiveKit signaling. Only approved frontend origins receive CORS headers.
-  handle_path /livekit* {
-    # Browser WebSocket can't set custom headers; derive routing header from query.
-    request_header X-Room-ID {query.room_id}
-
+  # LiveKit signaling → Node 1
+  handle_path /livekit-node-1* {
+  
     @allowedOrigin {
-      # Keep this allowlist aligned with config/ws_origin_policy.yaml.
       expression `{header.Origin} == "https://localhost" || {header.Origin} == "https://localhost:443" || {header.Origin} == "https://127.0.0.1" || {header.Origin} == "https://127.0.0.1:443" || {header.Origin} == "http://localhost:443" || {header.Origin} == "http://127.0.0.1:443" || {header.Origin} == "http://localhost:3000" || {header.Origin} == "http://127.0.0.1:3000" || {header.Origin} == "https://7f6540pm-443.euw.devtunnels.ms" || {header.Origin} == "https://kergit.com"`
     }
+  
+    @originPresent header Origin *
+  
+    handle @allowedOrigin {
+      header {
+        import livekit_cors_headers
+      }
+      reverse_proxy livekit-node1:7880
+    }
+  
+    handle @originPresent {
+      respond 403
+    }
+  
+    reverse_proxy livekit-node1:7880
+  }
+
+  # LiveKit signaling → Node 2
+  handle_path /livekit-node-2* {
+
+    @allowedOrigin {
+      expression `{header.Origin} == "https://localhost" || {header.Origin} == "https://localhost:443" || {header.Origin} == "https://127.0.0.1" || {header.Origin} == "https://127.0.0.1:443" || {header.Origin} == "http://localhost:443" || {header.Origin} == "http://127.0.0.1:443" || {header.Origin} == "http://localhost:3000" || {header.Origin} == "http://127.0.0.1:3000" || {header.Origin} == "https://7f6540pm-443.euw.devtunnels.ms" || {header.Origin} == "https://kergit.com"`
+    }
+
     @originPresent header Origin *
 
     handle @allowedOrigin {
       header {
         import livekit_cors_headers
       }
-      reverse_proxy {
-        to livekit-node1:7880
-        to livekit-node2:7890
-        lb_policy header X-Room-ID
-        header_down -Access-Control-Allow-Origin
-        header_down -Access-Control-Allow-Credentials
-        header_down -Access-Control-Allow-Methods
-        header_down -Access-Control-Allow-Headers
-        header_down -Access-Control-Expose-Headers
-        header_down -Vary
-      }
+      reverse_proxy livekit-node2:7890
     }
 
     handle @originPresent {
       respond 403
     }
 
-    # Requests without an Origin header are passed through without CORS headers.
-    reverse_proxy {
-      to livekit-node1:7880
-      to livekit-node2:7890
-      lb_policy header X-Room-ID
-      header_down -Access-Control-Allow-Origin
-      header_down -Access-Control-Allow-Credentials
-      header_down -Access-Control-Allow-Methods
-      header_down -Access-Control-Allow-Headers
-      header_down -Access-Control-Expose-Headers
-      header_down -Vary
-    }
+    reverse_proxy livekit-node2:7890
   }
 
   # Backend WebSocket server
@@ -134,7 +134,7 @@ kergit.com {
       header_down X-Frame-Options "DENY"
       header_down Referrer-Policy "strict-origin-when-cross-origin"
       header_down Permissions-Policy "geolocation=(), camera=(), microphone=(self), usb=(), payment=(), accelerometer=(), gyroscope=(), magnetometer=()"
-      header_down Content-Security-Policy "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; frame-src 'self'; form-action 'self' https://xxinxxsxutfkqajbmlar.supabase.co; object-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://api.dicebear.com; connect-src 'self' https://xxinxxsxutfkqajbmlar.supabase.co wss:; worker-src 'self' blob:; media-src 'self' blob:"
+      header_down Content-Security-Policy "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; frame-src 'self'; form-action 'self' https://xxinxxsxutfkqajbmlar.supabase.co; object-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://api.dicebear.com; connect-src 'self' https://xxinxxsxutfkqajbmlar.supabase.co wss: https://kergit.com; worker-src 'self' blob:; media-src 'self' blob:"
     }
   }
 }

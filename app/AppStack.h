@@ -3,11 +3,12 @@
 
 #include "app/dispatcher/CommandContext.h"
 #include "app/dispatcher/Dispatcher.h"
-#include "app/services/livekit/LiveKitTokenService.h"
+#include "app/services/voice/VoiceService.h"
 #include "app/worker/WorkerPool.h"
 #include "core/ServerConfig.h"
 #include "infra/persistence/PersistenceGateway.h"
 #include "utils/Loggable.h"
+#include "livekit/webhook/LivekitWebhookServer.h"
 
 namespace app {
 
@@ -51,13 +52,16 @@ class AppStack : public utils::Loggable {
     std::unique_ptr<services::HubService> hub_service_;
     std::unique_ptr<services::HubNotifier> hub_notifier_;
     std::unique_ptr<services::HubSnapshotBuilder> hub_snapshot_builder_;
-    std::unique_ptr<services::livekit::LiveKitTokenService> livekit_token_service_;
+    std::unique_ptr<services::voice::VoiceService> voice_service_;
 
     // Core
     std::unique_ptr<CommandContext> cmd_ctx_;
     std::unique_ptr<queue::EventQueue> event_queue_;
     std::unique_ptr<Dispatcher> dispatcher_;
     std::unique_ptr<worker::WorkerPool> worker_pool_;
+
+    // Webhook server for LiveKit events
+    livekit::webhook::LivekitWebhookServer webhook_server_;
 };
 
 }  // namespace app

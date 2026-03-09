@@ -36,29 +36,21 @@ RUN arch=$(uname -m) && \
     chmod +x /usr/local/bin/bazelisk && \
     ln -s /usr/local/bin/bazelisk /usr/local/bin/bazel
 
-# ---- Developer user 'sercom' with writable home, ccache, workspace
-RUN useradd -m -s /bin/bash sercom \
-    && mkdir -p /etc/sudoers.d \
-    && echo "sercom ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/sercom \
-    && chmod 0440 /etc/sudoers.d/sercom \
-    && mkdir -p /home/sercom/.ccache /home/sercom/workspace \
-    && chown -R sercom:sercom /home/sercom
+RUN mkdir -p /root/.ccache /root/workspace
 
 ENV LANG=en_US.UTF-8 \
     LC_ALL=en_US.UTF-8 \
-    CCACHE_DIR=/home/sercom/.ccache \
+    CCACHE_DIR=/root/.ccache \
     PATH="/usr/lib/ccache:/usr/local/bin:/usr/bin:/bin:$PATH" \
     CC=/usr/lib/ccache/gcc \
     CXX=/usr/lib/ccache/g++
 
 # Keep Bazel from reusing any stale auto-config (safe default)
-ENV BAZELISK_HOME=/home/sercom/.cache/bazelisk
+ENV BAZELISK_HOME=/root/.cache/bazelisk
 
 # Workspace & git safety
-WORKDIR /home/sercom/workspace
-RUN git config --system --add safe.directory /home/sercom/workspace
-
-USER sercom
+WORKDIR /root/workspace
+RUN git config --system --add safe.directory /root/workspace
 
 # Friendly login
-ENTRYPOINT ["bash","-lc","echo 'Dev container ready at /home/sercom/workspace'; exec bash"]
+ENTRYPOINT ["bash","-lc","echo 'Dev container ready at /root/workspace'; exec bash"]

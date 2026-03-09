@@ -2,17 +2,16 @@ services:
   macos-dev:
     build: .
     container_name: sercom-dev-macos
-    group_add:
-      - "1000"
     volumes:
-      - ./../:/home/sercom/workspace:cached
-      - ccache:/home/sercom/.ccache
-      - bazel-cache:/home/sercom/.cache/bazel
-    working_dir: /home/sercom/workspace
+      - ./../:/root/workspace:cached
+      - ccache:/root/.ccache
+      - bazel-cache:/root/.cache/bazel
+    working_dir: /root/workspace
     tty: true
     stdin_open: true
     environment:
-      - CCACHE_DIR=/home/sercom/.ccache
+      - CCACHE_DIR=/root/.ccache
+      - LOG_DIR=/root/workspace/logs
     ports:
       - "443:443"
       - "3000:3000"
@@ -31,17 +30,16 @@ services:
   ubuntu-dev:
     build: .
     container_name: sercom-dev-ubuntu
-    group_add:
-      - "1000"
     volumes:
-      - ../:/home/sercom/workspace:cached
-      - ccache:/home/sercom/.ccache
-      - bazel-cache:/home/sercom/.cache/bazel
-    working_dir: /home/sercom/workspace
+      - ../:/root/workspace:cached
+      - ccache:/root/.ccache
+      - bazel-cache:/root/.cache/bazel
+    working_dir: /root/workspace
     tty: true
     stdin_open: true
     environment:
-      - CCACHE_DIR=/home/sercom/.ccache
+      - CCACHE_DIR=/root/.ccache
+      - LOG_DIR=/root/workspace/logs
       - REDIS_URL=redis://redis:6379
       - REDIS_HOST=redis
       - REDIS_PORT=6379
@@ -50,6 +48,7 @@ services:
     ports:
       - "9001:9001"
       - "8081:8081"
+      - "8080:8080"
     pid: host
     cap_add:
       - SYS_ADMIN
@@ -67,7 +66,7 @@ services:
       - "7881:7881"
       - "50000-50100:50000-50100/udp"
     volumes:
-      - ../livekit/lan_node1.yaml:/config/livekit.yaml:ro
+      - ../livekit/conf/lan_node1.yaml:/config/livekit.yaml:ro
     restart: unless-stopped
     depends_on:
       - redis
@@ -81,7 +80,7 @@ services:
       - "7891:7891"
       - "50101-50200:50101-50200/udp"
     volumes:
-      - ../livekit/lan_node2.yaml:/config/livekit.yaml:ro
+      - ../livekit/conf/lan_node2.yaml:/config/livekit.yaml:ro
     restart: unless-stopped
     depends_on:
       - redis
@@ -92,6 +91,7 @@ services:
     container_name: livekit-caddy
     ports:
       - "443:443"
+      - "443:443/udp"
     environment:
       - ADMIN_ALLOWED_CIDR=${ADMIN_ALLOWED_CIDR:-private_ranges}
       - ADMIN_APP_TARGET=${ADMIN_APP_TARGET:-host.docker.internal:3001}

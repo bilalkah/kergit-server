@@ -20,12 +20,6 @@ namespace app {
 
 using SessionError = std::string;
 
-struct VoiceParticipantState {
-    UserId user_id;
-    bool muted = false;
-    bool deafened = false;
-};
-
 /**
  * SessionManager owns ACTIVE logical session state.
  *
@@ -33,48 +27,25 @@ struct VoiceParticipantState {
  *  - Sessions are created ONLY after auth
  *  - GlobalConnId is transport-level only
  *  - SessionId is internal logical app-session identity (server-only)
- *  - Voice ownership is user-owned and SessionId-scoped
  */
 class SessionManager final {
    public:
     explicit SessionManager(std::size_t max_sessions_per_user = 0);
 
     // ---- lifecycle ----
-
-    // Called on auth success. Always server-mints the logical session id.
     std::expected<SessionId, sercom::protocol::event::CommandErrorCode> attachConnection(
         const GlobalConnId& conn, const UserId& user);
-
-    // Called on DisconnectionEvent
     void removeConnection(const GlobalConnId& conn);
 
     // ---- active operations ----
     void joinTextChannel(const UserId& session, const HubId& hub);
     void leaveTextChannel(const UserId& session);
-    void stageVoiceJoin(const UserId& session, const SessionId& owner_session_id,
-                        const ChannelId& channel);
-    bool commitStagedVoiceJoin(const UserId& session, const SessionId& owner_session_id,
-                               const ChannelId& channel);
-    bool clearStagedVoiceJoinIfOwnedBy(const UserId& session, const SessionId& owner_session_id);
-    void joinVoiceChannel(const UserId& session, const SessionId& owner_session_id,
-                          const ChannelId& channel);
-    void leaveVoiceChannel(const UserId& session);
-    bool leaveVoiceChannelIfOwnedBy(const UserId& session, const SessionId& owner_session_id);
-    bool setVoiceMuted(const UserId& session, bool muted);
-    bool setVoiceDeafened(const UserId& session, bool deafened);
-    std::vector<UserId> voiceParticipantsInChannel(const ChannelId& channel) const;
-    std::vector<VoiceParticipantState> voiceParticipantStatesInChannel(
-        const ChannelId& channel) const;
 
     // ---- queries ----
-    // Returns true if user has at least one active transport connection.
     bool hasSession(const UserId& user) const;
     std::expected<UserId, SessionError> sessionOfConnection(const GlobalConnId& conn) const;
     std::expected<SessionId, SessionError> sessionIdOfConnection(const GlobalConnId& conn) const;
     const std::expected<SessionInfo, SessionError> getSession(const UserId& session) const;
-    const std::expected<SessionId, SessionError> getVoiceOwnerSessionId(
-        const UserId& session) const;
-    bool isVoiceOwnedBySession(const UserId& session, const SessionId& session_id) const;
 
     // All active transport connections for the user.
     std::vector<GlobalConnId> getSessionConnections(const UserId& session) const;

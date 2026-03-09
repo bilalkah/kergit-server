@@ -57,7 +57,7 @@ docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --force-recreate ubun
 
 echo "▶ Preparing cache permissions..."
 docker exec -u root "$DEV_CONTAINER" bash -lc \
-  "mkdir -p /home/sercom/.cache/bazel /home/sercom/.cache/bazelisk && chown -R sercom:sercom /home/sercom/.cache /home/sercom/.ccache"
+  "mkdir -p /root/.cache/bazel /root/.cache/bazelisk && chmod -R 777 /root/.cache/bazel /root/.cache/bazelisk"
 
 echo "▶ Ensuring server log directory is writable..."
 mkdir -p "$REPO_ROOT/logs"
@@ -82,5 +82,5 @@ if [ -t 0 ] && [ -t 1 ]; then
   DOCKER_EXEC_FLAGS=(-it)
 fi
 
-exec docker exec "${DOCKER_EXEC_FLAGS[@]}" -u sercom "$DEV_CONTAINER" bash -lc \
-  "cd /home/sercom/workspace && bazel run --config=$BAZEL_CONFIG //server:fake_discord"
+exec docker exec "${DOCKER_EXEC_FLAGS[@]}" "$DEV_CONTAINER" bash -lc \
+  "cd /root/workspace && bazel run --jobs=4 --config=$BAZEL_CONFIG //server:fake_discord"

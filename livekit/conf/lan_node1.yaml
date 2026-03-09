@@ -12,16 +12,29 @@ rtc:
 
   enable_loopback_candidate: false
   use_external_ip: true
-  node_ip: 142.132.178.49
+  node_ip: 31.40.204.123
 
   packet_buffer_size_audio: 100
+
+region: livekit-node1
 
 keys:
   dev: a780bc5d7c0fddb53308e170d3bbef4e01fdf7d28a3c171cde429c58b794ddd4
 
 room:
+  empty_timeout: 30
   enabled_codecs:
     - mime: audio/opus
+
+# Webhooks
+# when configured, LiveKit notifies your URL handler with room events
+webhook:
+  # the API key to use in order to sign the message
+  # this must match one of the keys LiveKit is configured with
+  api_key: dev
+  # list of URLs to be notified of room events
+  urls:
+    - http://sercom-dev-ubuntu:8080/webhook
 
 logging:
   level: debug

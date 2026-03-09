@@ -122,7 +122,7 @@ std::vector<net::outbound::OutgoingMessage> BootstrapCommand::execute(CommandCon
 
         for (const auto& channel : snapshot.channels) {
             if (channel.type != ChannelType::VOICE) continue;
-            const auto participants = ctx.session_manager.voiceParticipantStatesInChannel(channel.id);
+            const auto participants = ctx.voice_service.sessions().participants_in_channel(channel.id);
             if (participants.empty()) continue;
 
             auto* voice_snapshot = bootstrap.add_voice_channels();
@@ -179,10 +179,11 @@ std::vector<net::outbound::OutgoingMessage> BootstrapCommand::execute(CommandCon
         net::outbound::SendPayload{.payload = net::outbound::Payload{std::move(out_bytes), true}});
 
     sercom::protocol::event::VoiceSelfStatus self_status;
-    auto session_info = ctx.session_manager.getSession(user_id);
-    if (session_info && session_info->current_voice_channel && session_info->voice_owner_session) {
+    const auto voice_channel = ctx.voice_service.sessions().user_channel(user_id);
+    const auto voice_owner = ctx.voice_service.sessions().user_session(user_id);
+    if (voice_channel.has_value()) {
         self_status.set_connected(true);
-        self_status.set_is_owner(session_info->voice_owner_session.value() == session_id);
+        self_status.set_is_owner(voice_owner.has_value() && *voice_owner == session_id);
     } else {
         self_status.set_connected(false);
         self_status.set_is_owner(false);

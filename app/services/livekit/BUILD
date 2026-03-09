@@ -1,21 +1,8 @@
-load("@rules_cc//cc:defs.bzl", "cc_library")
-
-cc_library(
-    name = "livekit_token_service",
-    srcs = [
-        "LiveKitTokenService.cpp",
-    ],
-    hdrs = [
-        "LiveKitTokenService.h",
-    ],
-    linkopts = [
-        "-lssl",
-        "-lcrypto",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//domains/ids:domain_ids",  # because you include domains/ids/Ids.h
-        "//utils:loggable",
-        "@jwt-cpp//:jwt-cpp",
-    ],
-)
+# This package is deprecated.
+# LiveKit functionality has moved to:
+#   //app/services/voice:voice_service
+#   //livekit/token:livekit_token_service
+#   //livekit/crypto:livekit_e2ee_key_manager
+#   //livekit/cli:livekit_client
+#   //livekit/routing:livekit_node_registry
+#   //livekit/webhook:livekit_webhook_server
