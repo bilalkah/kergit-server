@@ -29,7 +29,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 COMPOSE_FILE="$REPO_ROOT/docker/docker-compose.yml"
 PROJECT_NAME="${COMPOSE_PROJECT_NAME:-sercom}"
 DEV_CONTAINER="sercom-dev-ubuntu"
-BAZEL_CONFIG="vanilla_dbg"
+BAZEL_CONFIG="vanilla"
 
 if [ "$PROD" -eq 1 ]; then
   BAZEL_CONFIG="vanilla_opt"
@@ -83,4 +83,4 @@ if [ -t 0 ] && [ -t 1 ]; then
 fi
 
 exec docker exec "${DOCKER_EXEC_FLAGS[@]}" "$DEV_CONTAINER" bash -lc \
-  "cd /root/workspace && bazel run --jobs=4 --config=$BAZEL_CONFIG //server:fake_discord"
+  "cd /root/workspace && bazel --config=$BAZEL_CONFIG //server:fake_discord"

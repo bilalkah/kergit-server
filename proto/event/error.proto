@@ -27,6 +27,7 @@ enum CommandErrorCode {
     CommandErrorCode_DUPLICATE_IN_FLIGHT = 16;
     CommandErrorCode_VOICE_TAKEOVER_REQUIRED = 17;
     CommandErrorCode_SESSION_LIMIT_EXCEEDED = 18;
+    CommandErrorCode_INVITE_EXPIRED = 19;    // invite link invalid or expired
 }
 
 /*
