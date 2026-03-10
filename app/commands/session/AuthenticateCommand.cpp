@@ -31,10 +31,9 @@ net::outbound::OutgoingMessage make_auth_failed(const GlobalConnId& conn) {
         .target = net::outbound::Target::one(conn),
         .action = net::outbound::Action{
             std::in_place_type<net::outbound::UpdateAuthState>,
-            net::outbound::UpdateAuthState{
-                .state = net::outbound::kAuthStateFailed,
-                .expires_at = std::chrono::system_clock::time_point{},
-                .user_id = std::nullopt}}};
+            net::outbound::UpdateAuthState{.state = net::outbound::kAuthStateFailed,
+                                           .expires_at = std::chrono::system_clock::time_point{},
+                                           .user_id = std::nullopt}}};
 }
 
 }  // namespace

@@ -94,8 +94,8 @@ CommandResult JoinChannelCommand::execute(CommandContext& ctx, const CommandInpu
     unsubscribe_connection_from_channel_topics(ctx.subscription_manager, input->conn);
 
     // Subscribe user to channel topic and record session context
-    ctx.subscription_manager.subscribeConnection(
-        input->conn, Topic::ChannelTopic(hub_id, channel.id));
+    ctx.subscription_manager.subscribeConnection(input->conn,
+                                                 Topic::ChannelTopic(hub_id, channel.id));
     ctx.session_manager.joinTextChannel(user_id, hub_id);
 
     json payload = json{{"type", "joined_channel"},

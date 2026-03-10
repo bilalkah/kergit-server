@@ -25,8 +25,7 @@ net::outbound::OutgoingMessage make_broadcast(std::vector<GlobalConnId> conns, s
         .target = net::outbound::Target::many(std::move(conns)),
         .action = net::outbound::Action{
             std::in_place_type<net::outbound::SendPayload>,
-            net::outbound::SendPayload{
-                .payload = net::outbound::Payload{std::move(bytes), true}}}};
+            net::outbound::SendPayload{.payload = net::outbound::Payload{std::move(bytes), true}}}};
 }
 
 std::vector<GlobalConnId> hub_subscriber_conns(CommandContext& ctx, const HubId& hub) {
@@ -100,8 +99,7 @@ std::vector<net::outbound::OutgoingMessage> JoinVoiceChannelCommand::execute(
 
     if (channel_opt->type != ChannelType::VOICE) {
         return single_outgoing(make_command_error(
-            event->conn_id, env.type(),
-            sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
+            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
             "Channel is not a voice channel"));
     }
 
@@ -141,13 +139,11 @@ std::vector<net::outbound::OutgoingMessage> JoinVoiceChannelCommand::execute(
         auto presence =
             proto_builders::voice::make_voice_presence(channel.value, user_id.value, state);
         return single_outgoing(make_broadcast(
-            std::move(conns),
-            proto_builders::serialize_envelope(
-                sercom::protocol::Envelope::VOICE_CHANNEL_PRESENCE, presence)));
+            std::move(conns), proto_builders::serialize_envelope(
+                                  sercom::protocol::Envelope::VOICE_CHANNEL_PRESENCE, presence)));
     };
 
-    auto publish_self_status = [&](bool connected,
-                                   const std::optional<SessionId>& owner_session_id,
+    auto publish_self_status = [&](bool connected, const std::optional<SessionId>& owner_session_id,
                                    const std::optional<SessionId>& skip_session_id = std::nullopt) {
         std::vector<net::outbound::OutgoingMessage> out_msgs;
 
@@ -179,10 +175,10 @@ std::vector<net::outbound::OutgoingMessage> JoinVoiceChannelCommand::execute(
                 status.set_muted(self_muted);
                 status.set_deafened(self_deafened);
             }
-            out_msgs.push_back(make_broadcast(
-                std::move(session_conns),
-                proto_builders::serialize_envelope(
-                    sercom::protocol::Envelope::VOICE_SELF_STATUS, status)));
+            out_msgs.push_back(
+                make_broadcast(std::move(session_conns),
+                               proto_builders::serialize_envelope(
+                                   sercom::protocol::Envelope::VOICE_SELF_STATUS, status)));
         }
         return out_msgs;
     };
@@ -197,8 +193,7 @@ std::vector<net::outbound::OutgoingMessage> JoinVoiceChannelCommand::execute(
         const bool taking_over =
             old_owner_session.has_value() && *old_owner_session != requester_session_id;
         if (taking_over) {
-            const auto old_conns =
-                ctx.session_manager.getSessionIdConnections(*old_owner_session);
+            const auto old_conns = ctx.session_manager.getSessionIdConnections(*old_owner_session);
             utils::EventLogger::instance().log(
                 utils::EventCategory::VOICE, user_id.value, "voice_takeover", 0,
                 "old_session=" + std::to_string(*old_owner_session) +
@@ -216,9 +211,8 @@ std::vector<net::outbound::OutgoingMessage> JoinVoiceChannelCommand::execute(
             if (!old_conns.empty()) {
                 sercom::protocol::event::VoiceSelfRevoked revoked;
                 out.push_back(make_broadcast(
-                    old_conns,
-                    proto_builders::serialize_envelope(
-                        sercom::protocol::Envelope::VOICE_SELF_REVOKED, revoked)));
+                    old_conns, proto_builders::serialize_envelope(
+                                   sercom::protocol::Envelope::VOICE_SELF_REVOKED, revoked)));
             }
         }
 
@@ -233,17 +227,16 @@ std::vector<net::outbound::OutgoingMessage> JoinVoiceChannelCommand::execute(
         }
 
         if (issued.token().empty() || issued.livekit_url().empty()) {
-            return single_outgoing(make_command_error(
-                event->conn_id, env.type(),
-                sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
-                "Voice token issuance failed"));
+            return single_outgoing(
+                make_command_error(event->conn_id, env.type(),
+                                   sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
+                                   "Voice token issuance failed"));
         }
 
         utils::EventLogger::instance().log(
             utils::EventCategory::VOICE, user_id.value, "voice_token_issued", 0,
-            "session=" + std::to_string(requester_session_id) +
-                " channel=" + channel_id_opt->value +
-                " token_len=" + std::to_string(issued.token().size()) +
+            "session=" + std::to_string(requester_session_id) + " channel=" +
+                channel_id_opt->value + " token_len=" + std::to_string(issued.token().size()) +
                 " livekit_url=" + issued.livekit_url(),
             utils::LogDest::BOTH);
 
@@ -284,9 +277,10 @@ std::vector<net::outbound::OutgoingMessage> JoinVoiceChannelCommand::execute(
 
         // Broadcast updated participants + presence + self status for new channel.
         append(out, publish_participants(hub_id, *channel_id_opt));
-        append(out, publish_presence(hub_id, *channel_id_opt,
-                                     sercom::protocol::event::ACTIVITY_JOINED));
-        // Skip sending VoiceSelfStatus to the old owner session — it gets VOICE_SELF_REVOKED instead.
+        append(out,
+               publish_presence(hub_id, *channel_id_opt, sercom::protocol::event::ACTIVITY_JOINED));
+        // Skip sending VoiceSelfStatus to the old owner session — it gets VOICE_SELF_REVOKED
+        // instead.
         append(out, publish_self_status(true, requester_session_id,
                                         taking_over ? old_owner_session : std::nullopt));
         return out;
@@ -301,8 +295,7 @@ std::vector<net::outbound::OutgoingMessage> JoinVoiceChannelCommand::execute(
                 return {};  // Not in voice, nothing to do.
             }
             return single_outgoing(make_command_error(
-                event->conn_id, env.type(),
-                sercom::protocol::event::CommandErrorCode_FORBIDDEN,
+                event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_FORBIDDEN,
                 "Voice is connected from another session"));
         }
 

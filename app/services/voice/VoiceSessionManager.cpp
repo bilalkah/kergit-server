@@ -2,7 +2,8 @@
 
 namespace app::services::voice {
 
-bool VoiceSessionManager::join(const ChannelId& channel, const UserId& user, const SessionId& session) {
+bool VoiceSessionManager::join(const ChannelId& channel, const UserId& user,
+                               const SessionId& session) {
     std::lock_guard lock(mutex_);
 
     // Preserve mute/deafen state when switching channels.
@@ -147,8 +148,8 @@ std::optional<SessionId> VoiceSessionManager::user_session(const UserId& user) c
     return it->second.owner_session;
 }
 
-std::vector<VoiceSessionManager::ParticipantInfo>
-VoiceSessionManager::participants_in_channel(const ChannelId& channel) const {
+std::vector<VoiceSessionManager::ParticipantInfo> VoiceSessionManager::participants_in_channel(
+    const ChannelId& channel) const {
     std::lock_guard lock(mutex_);
     std::vector<ParticipantInfo> result;
 
@@ -202,4 +203,4 @@ bool VoiceSessionManager::is_empty(const ChannelId& channel) const {
     return it == channels_.end() || it->second.empty();
 }
 
-} // namespace app::services::voice
+}  // namespace app::services::voice

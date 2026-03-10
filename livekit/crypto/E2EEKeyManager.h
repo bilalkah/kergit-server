@@ -18,7 +18,7 @@ namespace livekit {
  * When the last participant leaves, the key is destroyed.
  */
 class E2EEKeyManager {
-public:
+   public:
     /// Returns the current key or creates a new one if none exists.
     std::string get_or_create_key(const ChannelId& channel);
 
@@ -31,7 +31,7 @@ public:
     /// Immediately evict the key for a channel (e.g. when room is forcibly closed).
     void clear_key(const ChannelId& channel);
 
-private:
+   private:
     struct ChannelState {
         std::string key;
         size_t participants = 0;
@@ -43,6 +43,6 @@ private:
     std::unordered_map<ChannelId, ChannelState> channels_;
 };
 
-} // namespace livekit
+}  // namespace livekit
 
 #endif

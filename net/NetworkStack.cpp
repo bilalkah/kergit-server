@@ -71,7 +71,8 @@ bool NetworkStack::stop() {
     auto start_time = std::chrono::system_clock::now();
     while (!stopped_.load(std::memory_order_acquire)) {
         if (std::chrono::system_clock::now() - start_time > timeout) {
-            log(utils::LogLevel::ERROR, "Timeout waiting for server thread to stop for stack_id " + id_.value);
+            log(utils::LogLevel::ERROR,
+                "Timeout waiting for server thread to stop for stack_id " + id_.value);
             break;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -137,6 +138,6 @@ void NetworkStack::wire_components() {
                  event_sink_->push(Event{DisconnectionEvent{.conn_id = GlobalConnId{id_, connid},
                                                             .code = code,
                                                             .reason = std::string(reason)}});
-            }});
+             }});
 }
 }  // namespace net

@@ -38,29 +38,29 @@ std::vector<net::outbound::OutgoingMessage> SelectActiveChannelCommand::execute(
 
     auto channel_id_opt = parse_wire_id<ChannelId>(cmd.channel_id());
     if (!channel_id_opt.has_value()) {
-        return single_outgoing(make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_NOT_FOUND,
-                                   "Channel not found"));
+        return single_outgoing(make_command_error(
+            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_NOT_FOUND,
+            "Channel not found"));
     }
 
     auto channel_opt = ctx.channel_service.getChannel(*channel_id_opt);
     if (!channel_opt.has_value()) {
-        return single_outgoing(make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_NOT_FOUND,
-                                   "Channel not found"));
+        return single_outgoing(make_command_error(
+            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_NOT_FOUND,
+            "Channel not found"));
     }
     const HubId hub_id = channel_opt->hub_id;
 
     if (!ctx.hub_service.isHubMember(hub_id, user_id)) {
-        return single_outgoing(make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_FORBIDDEN,
-                                   "Join the hub before selecting a channel"));
+        return single_outgoing(make_command_error(
+            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_FORBIDDEN,
+            "Join the hub before selecting a channel"));
     }
 
     unsubscribe_connection_from_channel_topics(ctx.subscription_manager, event->conn_id);
 
-    ctx.subscription_manager.subscribeConnection(
-        event->conn_id, Topic::ChannelTopic(hub_id, *channel_id_opt));
+    ctx.subscription_manager.subscribeConnection(event->conn_id,
+                                                 Topic::ChannelTopic(hub_id, *channel_id_opt));
     ctx.session_manager.joinTextChannel(user_id, hub_id);
 
     return {};

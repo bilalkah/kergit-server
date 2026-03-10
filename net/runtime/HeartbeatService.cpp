@@ -135,11 +135,9 @@ void HeartbeatService::tick() {
         }
 
         // Only check token expiry for fully authenticated connections.
-        if (ctx.auth_state == connection::AuthState::AUTHENTICATED &&
-            now >= ctx.auth_expires_at) {
+        if (ctx.auth_state == connection::AuthState::AUTHENTICATED && now >= ctx.auth_expires_at) {
             auto latest = conns_.get_view(id);
-            if (!latest.has_value() ||
-                latest->auth_state != connection::AuthState::AUTHENTICATED) {
+            if (!latest.has_value() || latest->auth_state != connection::AuthState::AUTHENTICATED) {
                 continue;
             }
             conns_.mutate(id, [&](net::connection::ConnectionContext& real) {

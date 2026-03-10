@@ -1,5 +1,7 @@
 #include "infra/persistence/ConnectionPool.h"
+
 #include "utils/Loggable.h"
+
 #include <iostream>
 ConnectionPool::ConnectionPool(const std::string& conninfo, std::size_t pool_size,
                                std::chrono::milliseconds wait_timeout)

@@ -77,8 +77,8 @@ CommandResult DeleteChannelCommand::execute(CommandContext& ctx, const CommandIn
     res.intents.push_back(Unicast{.conn = input->conn, .payload = payload});
 
     ctx.channel_service.deleteChannel(channel.id, channel.hub_id);
-    ctx.subscription_manager.unsubscribeConnection(
-        input->conn, Topic::ChannelTopic(channel.hub_id, channel.id));
+    ctx.subscription_manager.unsubscribeConnection(input->conn,
+                                                   Topic::ChannelTopic(channel.hub_id, channel.id));
     return res;
 }
 

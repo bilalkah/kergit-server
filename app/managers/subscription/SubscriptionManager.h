@@ -18,8 +18,8 @@ class SubscriptionManager final : public ISubscriptionManager {
 
     std::shared_ptr<const std::unordered_set<GlobalConnId>> getSubscribers(
         const Topic& topic) const override;
-    std::expected<std::unordered_set<Topic>, SubscriptionError>
-    getSubscriptionsForConnection(const GlobalConnId& conn) const override;
+    std::expected<std::unordered_set<Topic>, SubscriptionError> getSubscriptionsForConnection(
+        const GlobalConnId& conn) const override;
 
     void removeAllForConnection(const GlobalConnId& conn) override;
     void removeAllForTopic(const Topic& topic) override;

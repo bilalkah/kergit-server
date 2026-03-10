@@ -38,8 +38,7 @@ std::vector<net::outbound::OutgoingMessage> ConnectionCommand::execute(CommandCo
     // Track session + subscribe to hubs for presence
     auto attach_result = ctx.session_manager.attachConnection(input->conn, user_id);
     if (!attach_result.has_value()) {
-        return std::unexpected(CommandError{
-            4, "Session limit exceeded"});
+        return std::unexpected(CommandError{4, "Session limit exceeded"});
     }
     const auto hubs = ctx.hub_service.getUserHubs(user_id);
     for (const auto& hub : hubs) {

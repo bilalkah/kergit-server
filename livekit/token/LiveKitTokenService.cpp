@@ -1,30 +1,23 @@
 #include "livekit/token/LiveKitTokenService.h"
 
+#include <chrono>
 #include <jwt-cpp/jwt.h>
 #include <picojson/picojson.h>
 
-#include <chrono>
-
 namespace livekit {
 
-LiveKitTokenService::LiveKitTokenService(std::string api_key,
-                                         std::string api_secret)
-    : api_key_(std::move(api_key)),
-      api_secret_(std::move(api_secret))
-{
-}
+LiveKitTokenService::LiveKitTokenService(std::string api_key, std::string api_secret)
+    : api_key_(std::move(api_key)), api_secret_(std::move(api_secret)) {}
 
-std::string LiveKitTokenService::mint_participant_token(
-        const ParticipantTokenRequest& req) const
-{
+std::string LiveKitTokenService::mint_participant_token(const ParticipantTokenRequest& req) const {
     const auto now = std::chrono::system_clock::now();
     const auto exp = now + req.ttl;
 
     picojson::object video;
-    video["room"]           = picojson::value(req.room.value);
-    video["roomJoin"]       = picojson::value(true);
-    video["canPublish"]     = picojson::value(req.can_publish);
-    video["canSubscribe"]   = picojson::value(req.can_subscribe);
+    video["room"] = picojson::value(req.room.value);
+    video["roomJoin"] = picojson::value(true);
+    video["canPublish"] = picojson::value(req.can_publish);
+    video["canSubscribe"] = picojson::value(req.can_subscribe);
     video["canPublishData"] = picojson::value(true);
 
     return jwt::create()
@@ -37,16 +30,14 @@ std::string LiveKitTokenService::mint_participant_token(
         .sign(jwt::algorithm::hs256{api_secret_});
 }
 
-std::string LiveKitTokenService::mint_admin_token(
-        std::chrono::seconds ttl) const
-{
+std::string LiveKitTokenService::mint_admin_token(std::chrono::seconds ttl) const {
     const auto now = std::chrono::system_clock::now();
     const auto exp = now + ttl;
 
     picojson::object video;
-    video["roomAdmin"]  = picojson::value(true);
+    video["roomAdmin"] = picojson::value(true);
     video["roomCreate"] = picojson::value(true);
-    video["roomList"]   = picojson::value(true);
+    video["roomList"] = picojson::value(true);
 
     return jwt::create()
         .set_issuer(api_key_)
@@ -56,4 +47,4 @@ std::string LiveKitTokenService::mint_admin_token(
         .sign(jwt::algorithm::hs256{api_secret_});
 }
 
-} // namespace livekit
+}  // namespace livekit

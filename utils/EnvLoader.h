@@ -4,8 +4,8 @@
 #include "utils/Loggable.h"
 
 #include <algorithm>
-#include <charconv>
 #include <cctype>
+#include <charconv>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
@@ -45,12 +45,10 @@ class EnvLoader : public Loggable {
     static constexpr bool kAlwaysFalse = false;
 
     static std::string_view trim(std::string_view value) {
-        while (!value.empty() &&
-               std::isspace(static_cast<unsigned char>(value.front()))) {
+        while (!value.empty() && std::isspace(static_cast<unsigned char>(value.front()))) {
             value.remove_prefix(1);
         }
-        while (!value.empty() &&
-               std::isspace(static_cast<unsigned char>(value.back()))) {
+        while (!value.empty() && std::isspace(static_cast<unsigned char>(value.back()))) {
             value.remove_suffix(1);
         }
         return value;
@@ -69,8 +67,8 @@ class EnvLoader : public Loggable {
             normalized == "off") {
             return false;
         }
-        throw std::invalid_argument("Invalid boolean value for env key '" + key + "': " +
-                                    std::string(raw));
+        throw std::invalid_argument("Invalid boolean value for env key '" + key +
+                                    "': " + std::string(raw));
     }
 
     template <typename T>
@@ -81,8 +79,8 @@ class EnvLoader : public Loggable {
         const auto* end = trimmed.data() + trimmed.size();
         const auto [ptr, ec] = std::from_chars(begin, end, value);
         if (ec != std::errc{} || ptr != end) {
-            throw std::invalid_argument("Invalid integer value for env key '" + key + "': " +
-                                        std::string(raw));
+            throw std::invalid_argument("Invalid integer value for env key '" + key +
+                                        "': " + std::string(raw));
         }
         return value;
     }

@@ -1,13 +1,15 @@
 #include "infra/persistence/repositories/VoiceStateRepository.h"
 
 void VoiceStateRepository::upsert(const UserId& user, const ChannelId& channel, bool muted,
-                                   bool deafened) {
+                                  bool deafened) {
     db_.write("VoiceStateRepository.upsert", [&](pqxx::work& txn) {
         txn.exec(
-            "INSERT INTO public.voice_state (user_id, channel_id, muted, deafened, joined_at, last_seen) "
+            "INSERT INTO public.voice_state (user_id, channel_id, muted, deafened, joined_at, "
+            "last_seen) "
             "VALUES ($1::uuid, $2::uuid, $3, $4, now(), now()) "
             "ON CONFLICT (user_id) DO UPDATE SET "
-            "channel_id = EXCLUDED.channel_id, muted = EXCLUDED.muted, deafened = EXCLUDED.deafened, "
+            "channel_id = EXCLUDED.channel_id, muted = EXCLUDED.muted, deafened = "
+            "EXCLUDED.deafened, "
             "joined_at = now(), last_seen = now()",
             pqxx::params{user.value, channel.value, muted, deafened});
         return 0;

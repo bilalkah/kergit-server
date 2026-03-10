@@ -1,6 +1,8 @@
 #ifndef INFRA_PERSISTENCE_CONNECTION_POOL_H
 #define INFRA_PERSISTENCE_CONNECTION_POOL_H
 
+#include "utils/Loggable.h"
+
 #include <chrono>
 #include <condition_variable>
 #include <memory>
@@ -9,7 +11,6 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
-#include "utils/Loggable.h"
 
 class ConnectionPool : public utils::Loggable {
    public:

@@ -5,12 +5,12 @@
 #include "app/dispatcher/Dispatcher.h"
 #include "app/services/invite/InviteService.h"
 #include "app/services/voice/VoiceService.h"
-#include "infra/redis/RedisClient.h"
 #include "app/worker/WorkerPool.h"
 #include "core/ServerConfig.h"
 #include "infra/persistence/PersistenceGateway.h"
-#include "utils/Loggable.h"
+#include "infra/redis/RedisClient.h"
 #include "livekit/webhook/LivekitWebhookServer.h"
+#include "utils/Loggable.h"
 
 namespace app {
 

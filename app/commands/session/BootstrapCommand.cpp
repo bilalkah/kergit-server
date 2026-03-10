@@ -122,7 +122,8 @@ std::vector<net::outbound::OutgoingMessage> BootstrapCommand::execute(CommandCon
 
         for (const auto& channel : snapshot.channels) {
             if (channel.type != ChannelType::VOICE) continue;
-            const auto participants = ctx.voice_service.sessions().participants_in_channel(channel.id);
+            const auto participants =
+                ctx.voice_service.sessions().participants_in_channel(channel.id);
             if (participants.empty()) continue;
 
             auto* voice_snapshot = bootstrap.add_voice_channels();
@@ -153,8 +154,8 @@ std::vector<net::outbound::OutgoingMessage> BootstrapCommand::execute(CommandCon
             }
 
             if (!targets.empty()) {
-                auto pe = proto_builders::presence::make_presence_changed(
-                    hub.id.value, user_id.value, true);
+                auto pe = proto_builders::presence::make_presence_changed(hub.id.value,
+                                                                          user_id.value, true);
                 std::string bytes =
                     proto_builders::serialize_envelope(sercom::protocol::Envelope::PRESENCE, pe);
 
@@ -203,8 +204,8 @@ std::vector<net::outbound::OutgoingMessage> BootstrapCommand::execute(CommandCon
         .target = net::outbound::Target::one(event->conn_id),
         .action = net::outbound::Action{
             std::in_place_type<net::outbound::SendPayload>,
-            net::outbound::SendPayload{.payload = net::outbound::Payload{std::move(self_status_bytes),
-                                                                          true}}}});
+            net::outbound::SendPayload{
+                .payload = net::outbound::Payload{std::move(self_status_bytes), true}}}});
 
     return out;
 }

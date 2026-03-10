@@ -4,13 +4,10 @@
 #include "app/services/voice/VoiceSessionManager.h"
 #include "domains/ids/Ids.h"
 #include "infra/persistence/repositories/VoiceStateRepository.h"
-
-#include "livekit/token/LiveKitTokenService.h"
-#include "livekit/routing/LivekitNodeRegistry.h"
 #include "livekit/crypto/E2EEKeyManager.h"
-
+#include "livekit/routing/LivekitNodeRegistry.h"
+#include "livekit/token/LiveKitTokenService.h"
 #include "livekit/webhook/LivekitEvent.h"
-
 #include "proto/event/activity.pb.h"
 
 #include <chrono>
@@ -30,13 +27,14 @@ namespace app::services::voice {
  * Webhooks call on_livekit_event which updates VoiceSessionManager.
  */
 class VoiceService {
-public:
-    VoiceService(std::string api_key, std::string api_secret, VoiceStateRepository& voice_state_repo);
+   public:
+    VoiceService(std::string api_key, std::string api_secret,
+                 VoiceStateRepository& voice_state_repo);
 
     /// Issue a LiveKit token + E2EE key for a user joining a voice channel.
     /// Returns a fully populated VoiceTokenIssued message (url, token, key).
-    sercom::protocol::event::VoiceTokenIssued
-    join_voice(const ChannelId& channel, const UserId& user);
+    sercom::protocol::event::VoiceTokenIssued join_voice(const ChannelId& channel,
+                                                         const UserId& user);
 
     /// Called when the last participant leaves a channel.
     /// Cleans up the E2EE key and releases the node binding.
@@ -74,7 +72,7 @@ public:
     VoiceSessionManager& sessions() { return sessions_; }
     const VoiceSessionManager& sessions() const { return sessions_; }
 
-private:
+   private:
     bool consume_takeover_left_guard(const UserId& user);
     bool consume_channel_takeover_guard(const ChannelId& channel);
     ParticipantState consume_pending_preferences(const UserId& user);
@@ -92,6 +90,6 @@ private:
     static constexpr std::chrono::seconds kTakeoverGuardTtl{45};
 };
 
-} // namespace app::services::voice
+}  // namespace app::services::voice
 
-#endif // APP_VOICE_VOICESERVICE_H_
+#endif  // APP_VOICE_VOICESERVICE_H_

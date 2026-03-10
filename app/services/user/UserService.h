@@ -26,12 +26,12 @@ class UserService {
     enum class UpdateError {
         RepoFailure,
     };
-    std::expected<void, UpdateError> updateProfile(
-        const UserId& userId, const std::optional<std::string>& username,
-        const std::optional<std::string>& full_name);
-    std::expected<void, UpdateError> updateSettings(
-        const UserId& userId, const std::optional<std::string>& username,
-        const std::optional<std::string>& avatar_seed);
+    std::expected<void, UpdateError> updateProfile(const UserId& userId,
+                                                   const std::optional<std::string>& username,
+                                                   const std::optional<std::string>& full_name);
+    std::expected<void, UpdateError> updateSettings(const UserId& userId,
+                                                    const std::optional<std::string>& username,
+                                                    const std::optional<std::string>& avatar_seed);
 
    private:
     UserRepository& repo_;

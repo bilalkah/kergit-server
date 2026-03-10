@@ -1,7 +1,6 @@
 #include "net/security/transport/WsOriginPolicy.h"
 
 #include <arpa/inet.h>
-
 #include <cctype>
 #include <cstdlib>
 #include <cstring>
@@ -353,8 +352,8 @@ bool WsOriginPolicy::is_digits(std::string_view value) {
 
 std::string WsOriginPolicy::strip_quotes(std::string_view value) {
     std::string out = trim_copy(value);
-    if (out.size() >= 2 &&
-        ((out.front() == '"' && out.back() == '"') || (out.front() == '\'' && out.back() == '\''))) {
+    if (out.size() >= 2 && ((out.front() == '"' && out.back() == '"') ||
+                            (out.front() == '\'' && out.back() == '\''))) {
         out = out.substr(1, out.size() - 2);
     }
     return trim_copy(out);

@@ -74,9 +74,10 @@ class DatabaseExecutor {
     decltype(auto) execute(const char* op, const DbRequestContext& ctx, Mux& mux, Fn&& fn) {
         const auto started_at = std::chrono::steady_clock::now();
         DbExecTiming timing{};
-        auto finalize = [&](const char* status, const char* error, std::chrono::steady_clock::time_point end_at) {
-            const auto wait_ms =
-                timing.acquired ? to_ms(timing.acquired_at - started_at) : to_ms(end_at - started_at);
+        auto finalize = [&](const char* status, const char* error,
+                            std::chrono::steady_clock::time_point end_at) {
+            const auto wait_ms = timing.acquired ? to_ms(timing.acquired_at - started_at)
+                                                 : to_ms(end_at - started_at);
             const auto exec_ms = (timing.txn_started && timing.txn_finished)
                                      ? to_ms(timing.txn_end_at - timing.txn_start_at)
                                      : 0;
@@ -88,13 +89,13 @@ class DatabaseExecutor {
             using Result = std::invoke_result_t<Fn, pqxx::work&>;
             if constexpr (std::is_void_v<Result>) {
                 mux.run(std::forward<Fn>(fn), &timing);
-                const auto end_at = timing.txn_finished ? timing.txn_end_at
-                                                        : std::chrono::steady_clock::now();
+                const auto end_at =
+                    timing.txn_finished ? timing.txn_end_at : std::chrono::steady_clock::now();
                 // finalize("ok", nullptr, end_at);
             } else {
                 auto result = mux.run(std::forward<Fn>(fn), &timing);
-                const auto end_at = timing.txn_finished ? timing.txn_end_at
-                                                        : std::chrono::steady_clock::now();
+                const auto end_at =
+                    timing.txn_finished ? timing.txn_end_at : std::chrono::steady_clock::now();
                 // finalize("ok", nullptr, end_at);
                 return result;
             }

@@ -30,8 +30,7 @@ class OutgoingQueue : public IOutboundSink {
         if (size_ == 0) {
             return false;
         }
-        OutgoingMessage tmp = !high_.empty() ? std::move(high_.front())
-                                             : std::move(low_.front());
+        OutgoingMessage tmp = !high_.empty() ? std::move(high_.front()) : std::move(low_.front());
         if (!high_.empty()) {
             high_.pop_front();
         } else {

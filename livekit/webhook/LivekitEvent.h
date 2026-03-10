@@ -1,9 +1,9 @@
 #ifndef LIVEKIT_WEBHOOK_LIVEKITEVENT_H
 #define LIVEKIT_WEBHOOK_LIVEKITEVENT_H
 
-#include <string>
 #include <cstdint>
 #include <iostream>
+#include <string>
 
 // Domain identifiers (use your existing domain types)
 #include "domains/ids/Ids.h"
@@ -37,23 +37,23 @@ struct LiveKitEvent {
     uint64_t timestamp_ms = 0;
 
     friend std::ostream& operator<<(std::ostream& os, const LiveKitEvent& e) {
-        os << "LiveKitEvent{type=" << static_cast<int>(e.type) << ", channel_id=" << e.channel_id.value
-           << ", user_id=" << e.user_id.value << ", node_id=" << e.node_id
-           << ", timestamp_ms=" << e.timestamp_ms << "}";
+        os << "LiveKitEvent{type=" << static_cast<int>(e.type)
+           << ", channel_id=" << e.channel_id.value << ", user_id=" << e.user_id.value
+           << ", node_id=" << e.node_id << ", timestamp_ms=" << e.timestamp_ms << "}";
         return os;
     }
 };
 
 // Utility for converting webhook string to enum
 inline LiveKitEventType parseLiveKitEvent(const std::string& event) {
-    if (event == "room_started")        return LiveKitEventType::ROOM_STARTED;
-    if (event == "room_finished")       return LiveKitEventType::ROOM_FINISHED;
-    if (event == "participant_joined")  return LiveKitEventType::PARTICIPANT_JOINED;
-    if (event == "participant_left")    return LiveKitEventType::PARTICIPANT_LEFT;
+    if (event == "room_started") return LiveKitEventType::ROOM_STARTED;
+    if (event == "room_finished") return LiveKitEventType::ROOM_FINISHED;
+    if (event == "participant_joined") return LiveKitEventType::PARTICIPANT_JOINED;
+    if (event == "participant_left") return LiveKitEventType::PARTICIPANT_LEFT;
 
     return LiveKitEventType::UNKNOWN;
 }
 
-} // namespace livekit::webhook
+}  // namespace livekit::webhook
 
-#endif // LIVEKIT_WEBHOOK_LIVEKITEVENT_H
+#endif  // LIVEKIT_WEBHOOK_LIVEKITEVENT_H
