@@ -16,12 +16,10 @@ struct ParticipantInfo {
 };
 
 class LivekitClient {
-public:
-    LivekitClient(std::string host,
-                  const LiveKitTokenService& token_service);
+   public:
+    LivekitClient(std::string host, const LiveKitTokenService& token_service);
 
-    bool RemoveParticipant(const ChannelId& room,
-                           const UserId& identity);
+    bool RemoveParticipant(const ChannelId& room, const UserId& identity);
 
     std::vector<ParticipantInfo> ListParticipants(const ChannelId& room);
 
@@ -31,16 +29,15 @@ public:
     void CreateRoom(const std::string& name, const std::string& metadata = "");
     void DeleteRoom(const std::string& name);
 
-private:
+   private:
     std::string host_;
 
     const LiveKitTokenService& token_service_;
 
-    std::string PostJson(const std::string& endpoint,
-                         const std::string& body,
+    std::string PostJson(const std::string& endpoint, const std::string& body,
                          const std::string& token) const;
 };
 
-} // namespace livekit::cli
+}  // namespace livekit::cli
 
 #endif

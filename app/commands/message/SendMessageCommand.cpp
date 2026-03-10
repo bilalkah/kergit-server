@@ -132,7 +132,8 @@ std::vector<net::outbound::OutgoingMessage> SendMessageCommand::execute(CommandC
     std::vector<GlobalConnId> conns;
     utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(
         1, std::memory_order_relaxed);
-    auto subs = ctx.subscription_manager.getSubscribers(Topic::ChannelTopic(hub_id, *channel_id_opt));
+    auto subs =
+        ctx.subscription_manager.getSubscribers(Topic::ChannelTopic(hub_id, *channel_id_opt));
     if (subs) {
         for (const auto& conn : *subs) {
             conns.push_back(conn);

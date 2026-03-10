@@ -29,11 +29,11 @@ inline const T& require_parsed(const queue::MessageEvent& event) {
     if (cmd) {
         return *cmd;
     }
-    utils::metrics::counters().parsed_payload_violation_total.fetch_add(
-        1, std::memory_order_relaxed);
-    utils::log_line(utils::LogLevel::ERROR,
-                    std::string("Parsed payload invariant violated for command ") +
-                        typeid(T).name());
+    utils::metrics::counters().parsed_payload_violation_total.fetch_add(1,
+                                                                        std::memory_order_relaxed);
+    utils::log_line(
+        utils::LogLevel::ERROR,
+        std::string("Parsed payload invariant violated for command ") + typeid(T).name());
     std::terminate();
 }
 
@@ -58,10 +58,9 @@ inline net::outbound::OutgoingMessage make_command_error(
 
     return net::outbound::OutgoingMessage{
         .target = net::outbound::Target::one(conn),
-        .action = net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
-                                        net::outbound::SendPayload{
-                                            .payload = net::outbound::Payload{std::move(bytes),
-                                                                              true}}}};
+        .action = net::outbound::Action{
+            std::in_place_type<net::outbound::SendPayload>,
+            net::outbound::SendPayload{.payload = net::outbound::Payload{std::move(bytes), true}}}};
 }
 
 // Helper to create a command drop connection outbound message

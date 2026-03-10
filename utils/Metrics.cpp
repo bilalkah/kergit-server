@@ -22,9 +22,7 @@ std::shared_mutex ring_mu;
 std::jthread timeseries_thread;
 std::atomic<bool> timeseries_started{false};
 
-bool metrics_log_enabled() {
-    return utils::EnvLoader::get<bool>("METRICS_LOG", true);
-}
+bool metrics_log_enabled() { return utils::EnvLoader::get<bool>("METRICS_LOG", true); }
 }  // namespace
 
 Counters& counters() {

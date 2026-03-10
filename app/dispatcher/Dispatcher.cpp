@@ -3,8 +3,8 @@
 #include "app/commands/channel/CreateChannelCommand.h"
 // #include "app/commands/channel/DeleteChannelCommand.h"
 // #include "app/commands/channel/JoinChannelCommand.h"
-#include "app/commands/channel/RenameChannelCommand.h"
 #include "app/commands/channel/RemoveChannelCommand.h"
+#include "app/commands/channel/RenameChannelCommand.h"
 #include "app/commands/hub/CreateHubCommand.h"
 #include "app/commands/hub/DeleteHubCommand.h"
 #include "app/commands/hub/GetHubInviteCommand.h"
@@ -13,18 +13,18 @@
 #include "app/commands/hub/RenameHubCommand.h"
 #include "app/commands/hub/UpdateHubCommand.h"
 // #include "app/commands/member/UpdateMemberRoleCommand.h"
+#include "app/commands/activity/JoinVoiceChannelCommand.h"
 #include "app/commands/activity/SelectActiveChannelCommand.h"
 #include "app/commands/activity/TypingCommand.h"
-#include "app/commands/activity/JoinVoiceChannelCommand.h"
 #include "app/commands/activity/VoiceChannelActivityCommand.h"
 #include "app/commands/message/FetchLatestMessagesCommand.h"
 #include "app/commands/message/FetchMessagesBeforeCommand.h"
 #include "app/commands/message/SendMessageCommand.h"
 // #include "app/commands/profile/UpdateProfileCommand.h"
-#include "app/commands/user/UpdateUserCommand.h"
 #include "app/commands/session/AuthenticateCommand.h"
 #include "app/commands/session/BootstrapCommand.h"
 #include "app/commands/system/DisconnectionCommand.h"
+#include "app/commands/user/UpdateUserCommand.h"
 
 namespace app {
 
@@ -82,14 +82,10 @@ void Dispatcher::register_all() {
     map_proto_[sercom::protocol::Envelope_Type_HUB_CREATE_JOIN_CODE] =
         std::make_unique<GetHubInviteCommand>();
     map_proto_[sercom::protocol::Envelope_Type_HUB_LEAVE] = std::make_unique<LeaveHubCommand>();
-    map_proto_[sercom::protocol::Envelope_Type_HUB_REMOVE] =
-        std::make_unique<DeleteHubCommand>();
-    map_proto_[sercom::protocol::Envelope_Type_HUB_RENAME] =
-        std::make_unique<RenameHubCommand>();
-    map_proto_[sercom::protocol::Envelope_Type_HUB_UPDATE] =
-        std::make_unique<UpdateHubCommand>();
-    map_proto_[sercom::protocol::Envelope_Type_USER_UPDATE] =
-        std::make_unique<UpdateUserCommand>();
+    map_proto_[sercom::protocol::Envelope_Type_HUB_REMOVE] = std::make_unique<DeleteHubCommand>();
+    map_proto_[sercom::protocol::Envelope_Type_HUB_RENAME] = std::make_unique<RenameHubCommand>();
+    map_proto_[sercom::protocol::Envelope_Type_HUB_UPDATE] = std::make_unique<UpdateHubCommand>();
+    map_proto_[sercom::protocol::Envelope_Type_USER_UPDATE] = std::make_unique<UpdateUserCommand>();
     map_proto_[sercom::protocol::Envelope_Type_CHANNEL_CREATE] =
         std::make_unique<CreateChannelCommand>();
     map_proto_[sercom::protocol::Envelope_Type_CHANNEL_RENAME] =

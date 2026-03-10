@@ -3,19 +3,18 @@
 
 #include "domains/ids/Ids.h"
 
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <memory>
 
 namespace livekit {
 
-struct LivekitNode
-{
+struct LivekitNode {
     std::string node_id;
-    
+
     // Used by clients
     std::string public_host;
 
@@ -27,16 +26,14 @@ struct LivekitNode
 
     double load_score = 0.0;
 
-    void update_load()
-    {
+    void update_load() {
         // example weighting
-        load_score = static_cast<double>(active_users)
-                   + static_cast<double>(active_rooms) * 0.25;
+        load_score = static_cast<double>(active_users) + static_cast<double>(active_rooms) * 0.25;
     }
 };
 
 class LivekitNodeRegistry {
-public:
+   public:
     void register_node(const LivekitNode& node);
 
     std::shared_ptr<const LivekitNode> get_node(const std::string& node_id) const;
@@ -57,7 +54,7 @@ public:
 
     std::vector<LivekitNode> list_nodes() const;
 
-private:
+   private:
     mutable std::mutex mutex_;
 
     std::unordered_map<std::string, std::shared_ptr<LivekitNode>> nodes_;
@@ -66,4 +63,4 @@ private:
 
 }  // namespace livekit
 
-#endif // LIVEKIT_ROUTING_LIVEKITNODEREGISTRY_H_
+#endif  // LIVEKIT_ROUTING_LIVEKITNODEREGISTRY_H_

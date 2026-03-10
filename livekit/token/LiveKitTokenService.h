@@ -22,7 +22,7 @@ namespace livekit {
  *    Used by backend services when calling LiveKit RoomService APIs.
  */
 class LiveKitTokenService {
-public:
+   public:
     struct ParticipantTokenRequest {
         UserId identity;
         ChannelId room;
@@ -34,8 +34,7 @@ public:
         std::chrono::seconds ttl;
     };
 
-    explicit LiveKitTokenService(std::string api_key,
-                                 std::string api_secret);
+    explicit LiveKitTokenService(std::string api_key, std::string api_secret);
 
     /// Creates a participant token used by clients to join a room.
     std::string mint_participant_token(const ParticipantTokenRequest& req) const;
@@ -43,11 +42,11 @@ public:
     /// Creates a short-lived admin token for RoomService API calls.
     std::string mint_admin_token(std::chrono::seconds ttl = std::chrono::seconds(60)) const;
 
-private:
+   private:
     std::string api_key_;
     std::string api_secret_;
 };
 
-} // namespace livekit
+}  // namespace livekit
 
-#endif // LIVEKIT_TOKEN_LIVEKITTOKENSERVICE_H_
+#endif  // LIVEKIT_TOKEN_LIVEKITTOKENSERVICE_H_

@@ -1,4 +1,5 @@
 #include "app/managers/subscription/SubscriptionManager.h"
+
 #include "utils/Metrics.h"
 
 namespace app {

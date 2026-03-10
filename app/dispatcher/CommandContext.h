@@ -6,14 +6,14 @@
 
 // include services headers
 #include "app/services/auth/AuthService.h"
-#include "app/services/invite/InviteService.h"
 #include "app/services/channel/ChannelService.h"
 #include "app/services/hub/HubNotifier.h"
 #include "app/services/hub/HubService.h"
 #include "app/services/hub/SnapshotBuilder.h"
-#include "app/services/voice/VoiceService.h"
+#include "app/services/invite/InviteService.h"
 #include "app/services/presence/PresenceService.h"
 #include "app/services/user/UserService.h"
+#include "app/services/voice/VoiceService.h"
 
 // include managers headers
 #include "app/managers/session/SessionManager.h"

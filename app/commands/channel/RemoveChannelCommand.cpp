@@ -30,45 +30,45 @@ std::vector<net::outbound::OutgoingMessage> RemoveChannelCommand::execute(Comman
 
     auto user_exp = ctx.session_manager.sessionOfConnection(event->conn_id);
     if (!user_exp.has_value()) {
-        return single_outgoing(make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_UNAUTHORIZED,
-                                   "Authenticate first"));
+        return single_outgoing(make_command_error(
+            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_UNAUTHORIZED,
+            "Authenticate first"));
     }
     const UserId user_id = user_exp.value();
 
     auto channel_id_opt = parse_wire_id<ChannelId>(cmd.channel_id());
     if (!channel_id_opt.has_value()) {
-        return single_outgoing(make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_NOT_FOUND,
-                                   "Channel not found"));
+        return single_outgoing(make_command_error(
+            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_NOT_FOUND,
+            "Channel not found"));
     }
 
     auto channel_opt = ctx.channel_service.getChannel(*channel_id_opt);
     if (!channel_opt.has_value()) {
-        return single_outgoing(make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_NOT_FOUND,
-                                   "Channel not found"));
+        return single_outgoing(make_command_error(
+            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_NOT_FOUND,
+            "Channel not found"));
     }
     const Channel channel = channel_opt.value();
     const HubId hub_id = channel.hub_id;
 
     if (!ctx.hub_service.isHubMember(hub_id, user_id)) {
-        return single_outgoing(make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_FORBIDDEN,
-                                   "Join the hub before removing channels"));
+        return single_outgoing(make_command_error(
+            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_FORBIDDEN,
+            "Join the hub before removing channels"));
     }
 
     auto role = ctx.hub_service.getMembershipRole(hub_id, user_id);
     if (!role.has_value() || *role != Role::OWNER) {
-        return single_outgoing(make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_FORBIDDEN,
-                                   "Only owners can delete channels"));
+        return single_outgoing(make_command_error(
+            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_FORBIDDEN,
+            "Only owners can delete channels"));
     }
 
     if (!ctx.channel_service.deleteChannel(channel.id, hub_id)) {
-        return single_outgoing(make_command_error(event->conn_id, env.type(),
-                                   sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
-                                   "Unable to delete channel at this time"));
+        return single_outgoing(make_command_error(
+            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
+            "Unable to delete channel at this time"));
     }
 
     ctx.subscription_manager.removeAllForTopic(Topic::ChannelTopic(hub_id, channel.id));
@@ -95,7 +95,8 @@ std::vector<net::outbound::OutgoingMessage> RemoveChannelCommand::execute(Comman
         .target = net::outbound::Target::many(std::move(conns)),
         .action =
             net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
-                                  net::outbound::SendPayload{.payload = net::outbound::Payload{std::move(bytes), true}}}});
+                                  net::outbound::SendPayload{
+                                      .payload = net::outbound::Payload{std::move(bytes), true}}}});
 }
 
 }  // namespace app

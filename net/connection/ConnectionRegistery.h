@@ -6,8 +6,8 @@
 #include "net/outbound/Msg.h"
 #include "net/transport/Handle.h"
 
-#include <deque>
 #include <cstdint>
+#include <deque>
 #include <expected>
 #include <mutex>
 #include <optional>

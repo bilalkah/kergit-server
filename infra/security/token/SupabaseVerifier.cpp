@@ -1,5 +1,7 @@
 #include "infra/security/token/SupabaseVerifier.h"
+
 #include "utils/EnvLoader.h"
+
 #include <array>
 #include <chrono>
 #include <cstdlib>
@@ -73,24 +75,43 @@ bool fill_claims(const jwt::decoded_jwt<jwt::traits::kazuho_picojson>& decoded,
     }
     return !claims.id.empty() && claims.exp != 0 && !claims.iss.empty() && !claims.aud.empty();
 }
-const std::string& expected_issuer() { static const std::string value = utils::EnvLoader::get_env("SUPABASE_EXPECTED_ISS", ""); return value; }
-const std::string& expected_audience() { static const std::string value = utils::EnvLoader::get_env("SUPABASE_EXPECTED_AUD", ""); return value; }
+const std::string& expected_issuer() {
+    static const std::string value = utils::EnvLoader::get_env("SUPABASE_EXPECTED_ISS", "");
+    return value;
+}
+const std::string& expected_audience() {
+    static const std::string value = utils::EnvLoader::get_env("SUPABASE_EXPECTED_AUD", "");
+    return value;
+}
 bool decode_b64url(std::string_view input, std::string& output) {
-    try { output = jwt::base::decode<jwt::alphabet::base64url>(
-              jwt::base::pad<jwt::alphabet::base64url>(std::string(input))); return true; }
-    catch (const std::exception&) { return false; }
+    try {
+        output = jwt::base::decode<jwt::alphabet::base64url>(
+            jwt::base::pad<jwt::alphabet::base64url>(std::string(input)));
+        return true;
+    } catch (const std::exception&) {
+        return false;
+    }
 }
 bool verify_es256_signature(evp_pkey_st* pkey, std::string_view header_b64,
                             std::string_view payload_b64, std::string_view signature_raw) {
     if (!pkey || signature_raw.size() != 64) return false;
     ECDSA_SIG* sig = ECDSA_SIG_new();
     if (!sig) return false;
-    const unsigned char* sig_bytes =
-        reinterpret_cast<const unsigned char*>(signature_raw.data());
+    const unsigned char* sig_bytes = reinterpret_cast<const unsigned char*>(signature_raw.data());
     BIGNUM* r = BN_bin2bn(sig_bytes, 32, nullptr);
     BIGNUM* s = BN_bin2bn(sig_bytes + 32, 32, nullptr);
-    if (!r || !s) { BN_free(r); BN_free(s); ECDSA_SIG_free(sig); return false; }
-    if (ECDSA_SIG_set0(sig, r, s) != 1) { BN_free(r); BN_free(s); ECDSA_SIG_free(sig); return false; }
+    if (!r || !s) {
+        BN_free(r);
+        BN_free(s);
+        ECDSA_SIG_free(sig);
+        return false;
+    }
+    if (ECDSA_SIG_set0(sig, r, s) != 1) {
+        BN_free(r);
+        BN_free(s);
+        ECDSA_SIG_free(sig);
+        return false;
+    }
     int der_len = i2d_ECDSA_SIG(sig, nullptr);
     if (der_len <= 0) {
         ECDSA_SIG_free(sig);
@@ -280,7 +301,8 @@ JwtVerifyResult SupabaseVerifier::verify_token(std::string_view token) const {
         UserClaims claims;
         if (!fill_claims(decoded, claims)) return std::unexpected(JwtVerifyError::MissingClaims);
         auto sec = std::chrono::duration_cast<std::chrono::seconds>(
-                       std::chrono::system_clock::now().time_since_epoch()).count();
+                       std::chrono::system_clock::now().time_since_epoch())
+                       .count();
         if (decoded.has_payload_claim("nbf")) {
             const auto nbf_claim = decoded.get_payload_claim("nbf");
             if (nbf_claim.get_type() != jwt::json::type::integer) {

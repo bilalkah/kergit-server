@@ -92,10 +92,9 @@ CommandResult UpdateProfileCommand::execute(CommandContext& ctx, const CommandIn
     }
     if (chosen_display.empty()) chosen_display = "Member";
 
-    json payload = {
-        {"type", "profile_updated"},      {"success", true},
-        {"username", final_username},     {"full_name", final_full_name},
-        {"display_name", chosen_display}, {"user_id", user_id.value}};
+    json payload = {{"type", "profile_updated"},      {"success", true},
+                    {"username", final_username},     {"full_name", final_full_name},
+                    {"display_name", chosen_display}, {"user_id", user_id.value}};
 
     CommandSuccess res;
     res.intents.push_back(Unicast{.conn = input->conn, .payload = payload});
@@ -118,12 +117,9 @@ CommandResult UpdateProfileCommand::execute(CommandContext& ctx, const CommandIn
             conns.push_back(conn);
         }
         if (!conns.empty()) {
-            json presence = {{"type", "profile_updated"},
-                             {"hub_id", hub.id.value},
-                             {"user_id", user_id.value},
-                             {"username", final_username},
-                             {"full_name", final_full_name},
-                             {"display_name", chosen_display}};
+            json presence = {{"type", "profile_updated"},    {"hub_id", hub.id.value},
+                             {"user_id", user_id.value},     {"username", final_username},
+                             {"full_name", final_full_name}, {"display_name", chosen_display}};
             res.intents.push_back(
                 Fanout{.conns = std::move(conns), .payload = std::move(presence)});
         }

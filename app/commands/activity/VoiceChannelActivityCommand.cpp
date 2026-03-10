@@ -150,8 +150,8 @@ std::vector<net::outbound::OutgoingMessage> VoiceChannelActivityCommand::execute
             .target = net::outbound::Target::many(std::move(conns)),
             .action =
                 net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
-                                      net::outbound::SendPayload{
-                                          .payload = net::outbound::Payload{std::move(bytes), true}}}});
+                                      net::outbound::SendPayload{.payload = net::outbound::Payload{
+                                                                     std::move(bytes), true}}}});
     }
 
     // Send VoiceSelfStatus to all of the user's sessions so mute/deafen state stays in sync.
@@ -179,14 +179,13 @@ std::vector<net::outbound::OutgoingMessage> VoiceChannelActivityCommand::execute
         out.push_back(net::outbound::OutgoingMessage{
             .priority = net::outbound::OutboundPriority::Low,
             .target = net::outbound::Target::many(std::move(session_conns)),
-            .action =
-                net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
-                                      net::outbound::SendPayload{
-                                          .payload = net::outbound::Payload{
-                                              proto_builders::serialize_envelope(
-                                                  sercom::protocol::Envelope::VOICE_SELF_STATUS,
-                                                  self_status),
-                                              true}}}});
+            .action = net::outbound::Action{
+                std::in_place_type<net::outbound::SendPayload>,
+                net::outbound::SendPayload{
+                    .payload = net::outbound::Payload{
+                        proto_builders::serialize_envelope(
+                            sercom::protocol::Envelope::VOICE_SELF_STATUS, self_status),
+                        true}}}});
     }
 
     return out;

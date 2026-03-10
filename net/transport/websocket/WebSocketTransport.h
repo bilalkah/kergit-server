@@ -38,8 +38,7 @@ class TextWSServer : public ITransportServer,
    public:
     explicit TextWSServer(core::NetworkStackConfig cfg, connection::ConnectionRegistery& conns,
                           outbound::OutgoingQueue& outgoing_queue,
-                          security::transport::WsOriginPolicy policy,
-                          WsLimits limits = {});
+                          security::transport::WsOriginPolicy policy, WsLimits limits = {});
     ~TextWSServer();
 
     void start() override;

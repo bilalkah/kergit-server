@@ -7,15 +7,13 @@
 
 namespace app {
 
-AppStack::AppStack(const core::ServerConfig& config) : config_(config),
-    webhook_server_({config_.webhook.host, config_.webhook.port, config_.webhook.path}) 
-{
+AppStack::AppStack(const core::ServerConfig& config)
+    : config_(config),
+      webhook_server_({config_.webhook.host, config_.webhook.port, config_.webhook.path}) {
     event_queue_ = std::make_unique<queue::EventQueue>(config_.app_stack.event_queue_capacity);
 }
 
-void AppStack::start() {
-    worker_pool_->start();
-}
+void AppStack::start() { worker_pool_->start(); }
 
 void AppStack::stop() {
     // Stop webhook server
@@ -56,14 +54,13 @@ void AppStack::init_database() {
 }
 
 void AppStack::init_redis() {
-    redis_client_ = std::make_unique<infra::redis::RedisClient>(config_.redis.host,
-                                                                 config_.redis.port);
+    redis_client_ =
+        std::make_unique<infra::redis::RedisClient>(config_.redis.host, config_.redis.port);
 }
 
 void AppStack::init_managers() {
     subscription_manager_ = std::make_unique<SubscriptionManager>();
-    session_manager_ =
-        std::make_unique<SessionManager>(config_.app_stack.max_sessions_per_user);
+    session_manager_ = std::make_unique<SessionManager>(config_.app_stack.max_sessions_per_user);
 }
 
 void AppStack::init_services() {

@@ -62,8 +62,8 @@ std::vector<net::outbound::OutgoingMessage> JoinHubByInviteCommand::execute(
 
     std::string raw_code = cmd.join_code();
     auto invite_pos = raw_code.find("/invite/");
-    std::string token = (invite_pos != std::string::npos) ? raw_code.substr(invite_pos + 8)
-                                                          : raw_code;
+    std::string token =
+        (invite_pos != std::string::npos) ? raw_code.substr(invite_pos + 8) : raw_code;
 
     auto hub_id_opt = ctx.invite_service.resolveInvite(token);
     if (!hub_id_opt.has_value()) {

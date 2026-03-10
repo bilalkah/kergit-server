@@ -51,12 +51,10 @@ struct UpdateAuthState {
     std::optional<UserId> user_id{};
 };
 
-inline constexpr connection::AuthState kAuthStatePending =
-    static_cast<connection::AuthState>(0);
+inline constexpr connection::AuthState kAuthStatePending = static_cast<connection::AuthState>(0);
 inline constexpr connection::AuthState kAuthStateAuthenticated =
     static_cast<connection::AuthState>(1);
-inline constexpr connection::AuthState kAuthStateFailed =
-    static_cast<connection::AuthState>(2);
+inline constexpr connection::AuthState kAuthStateFailed = static_cast<connection::AuthState>(2);
 
 struct DropConnection {
     int code = 0;

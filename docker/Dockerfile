@@ -19,7 +19,7 @@ RUN apt-get update && apt-get upgrade -y && \
       iproute2 net-tools iputils-ping procps \
       openssh-client \
       locales tzdata \
-      clang-format-20 tmux nano && \
+      clang-format tmux nano && \
     rm -rf /var/lib/apt/lists/*
 
 # Locale

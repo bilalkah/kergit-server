@@ -47,8 +47,8 @@ std::vector<GlobalConnId> SessionManager::collectUserConnectionsLocked(const Use
     return conns;
 }
 
-std::expected<SessionId, sercom::protocol::event::CommandErrorCode> SessionManager::attachConnection(
-    const GlobalConnId& conn, const UserId& user) {
+std::expected<SessionId, sercom::protocol::event::CommandErrorCode>
+SessionManager::attachConnection(const GlobalConnId& conn, const UserId& user) {
     std::unique_lock lock(mutex_);
 
     if (auto existing = conn_to_session_id_.find(conn); existing != conn_to_session_id_.end()) {
@@ -58,8 +58,7 @@ std::expected<SessionId, sercom::protocol::event::CommandErrorCode> SessionManag
     auto user_sessions_it = user_to_session_ids_.find(user);
     if (max_sessions_per_user_ > 0 && user_sessions_it != user_to_session_ids_.end() &&
         user_sessions_it->second.size() >= max_sessions_per_user_) {
-        return std::unexpected(
-            sercom::protocol::event::CommandErrorCode_SESSION_LIMIT_EXCEEDED);
+        return std::unexpected(sercom::protocol::event::CommandErrorCode_SESSION_LIMIT_EXCEEDED);
     }
 
     const bool had_active_sessions = userHasActiveSessionsLocked(user);

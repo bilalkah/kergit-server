@@ -33,8 +33,7 @@ struct UserVoiceState {
  *  - Mute/deafen states per user
  */
 class VoiceSessionManager {
-public:
-
+   public:
     /// User joins a voice channel.
     /// Returns true if this is the first participant in the channel.
     bool join(const ChannelId& channel, const UserId& user, const SessionId& session);
@@ -90,7 +89,7 @@ public:
     /// Returns true if channel has no participants.
     bool is_empty(const ChannelId& channel) const;
 
-private:
+   private:
     mutable std::mutex mutex_;
 
     // channel -> { user -> state }
@@ -100,6 +99,6 @@ private:
     std::unordered_map<UserId, UserVoiceState> user_to_channel_;
 };
 
-} // namespace app::services::voice
+}  // namespace app::services::voice
 
-#endif // APP_SERVICES_VOICE_VOICESESSIONMANAGER_H_
+#endif  // APP_SERVICES_VOICE_VOICESESSIONMANAGER_H_

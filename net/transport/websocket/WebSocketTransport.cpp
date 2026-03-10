@@ -27,8 +27,7 @@ namespace net::transport::websocket {
 
 TextWSServer::TextWSServer(core::NetworkStackConfig cfg, connection::ConnectionRegistery& conns,
                            outbound::OutgoingQueue& outgoing_queue,
-                           security::transport::WsOriginPolicy policy,
-                           WsLimits limits)
+                           security::transport::WsOriginPolicy policy, WsLimits limits)
     : cfg_(std::move(cfg)),
       policy_(std::move(policy)),
       limits_(std::move(limits)),
@@ -158,7 +157,8 @@ void TextWSServer::wire() {
 
                     utils::EventLogger::instance().log(
                         utils::EventCategory::SESSION, "", "WS_OPEN", 0,
-                        "netstack:" + std::to_string(cfg_.port_index) + ",conn:" + psd->conn_id.value);
+                        "netstack:" + std::to_string(cfg_.port_index) +
+                            ",conn:" + psd->conn_id.value);
 
                     connection::ConnectionContext ctx(psd->conn_id, transport::WsHandle{ws},
                                                       TransportKind::TextWebSocket,
@@ -181,9 +181,8 @@ void TextWSServer::wire() {
                     if (data.size() > limits_.max_message_bytes) {
                         ws->end(1009, "Message too big");
                         log(utils::LogLevel::ERROR,
-                            "WebSocket message exceeds max size: " +
-                                std::to_string(data.size()) + " > " +
-                                std::to_string(limits_.max_message_bytes));
+                            "WebSocket message exceeds max size: " + std::to_string(data.size()) +
+                                " > " + std::to_string(limits_.max_message_bytes));
                         return;
                     }
 

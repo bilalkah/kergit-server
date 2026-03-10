@@ -2,14 +2,14 @@
 #define LIVEKIT_WEBHOOK_LivekitWebhookServer_H_
 
 #include "App.h"
-
 #include "livekit/webhook/LivekitEvent.h"
+#include "utils/Loggable.h"
+
 #include <atomic>
 #include <cstdint>
 #include <functional>
 #include <string>
 #include <thread>
-#include "utils/Loggable.h"
 
 namespace livekit::webhook {
 
@@ -20,9 +20,9 @@ struct Config {
     uint16_t port{8080};
     std::string path{"/webhook"};
 };
-    
+
 class LivekitWebhookServer : public utils::Loggable {
-public:
+   public:
     LivekitWebhookServer();
     explicit LivekitWebhookServer(Config config);
     ~LivekitWebhookServer();
@@ -31,7 +31,7 @@ public:
     void start();
     void stop();
 
-private:
+   private:
     Config config_;
     EventCallback callback_;
 

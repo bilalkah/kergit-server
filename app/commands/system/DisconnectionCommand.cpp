@@ -23,8 +23,7 @@ net::outbound::OutgoingMessage make_broadcast(std::vector<GlobalConnId> conns, s
         .target = net::outbound::Target::many(std::move(conns)),
         .action = net::outbound::Action{
             std::in_place_type<net::outbound::SendPayload>,
-            net::outbound::SendPayload{
-                .payload = net::outbound::Payload{std::move(bytes), true}}}};
+            net::outbound::SendPayload{.payload = net::outbound::Payload{std::move(bytes), true}}}};
 }
 
 std::vector<GlobalConnId> hub_subscriber_conns(CommandContext& ctx, const HubId& hub) {
@@ -62,8 +61,8 @@ std::vector<net::outbound::OutgoingMessage> DisconnectionCommand::execute(Comman
 
     utils::EventLogger::instance().log(
         utils::EventCategory::SESSION, user_id.value, "connection_closed", 0,
-        "session_id=" + std::to_string(session_id) +
-            " close_code=" + std::to_string(event->code) + " reason=" + event->reason);
+        "session_id=" + std::to_string(session_id) + " close_code=" + std::to_string(event->code) +
+            " reason=" + event->reason);
 
     auto& voice_sessions = ctx.voice_service.sessions();
 
@@ -118,8 +117,7 @@ std::vector<net::outbound::OutgoingMessage> DisconnectionCommand::execute(Comman
                             sercom::protocol::Envelope::VOICE_CHANNEL_PARTICIPANTS, participants)));
 
                     auto presence = proto_builders::voice::make_voice_presence(
-                        voice_channel.value, user_id.value,
-                        sercom::protocol::event::ACTIVITY_LEFT);
+                        voice_channel.value, user_id.value, sercom::protocol::event::ACTIVITY_LEFT);
                     out.push_back(make_broadcast(
                         std::move(conns),
                         proto_builders::serialize_envelope(
@@ -133,10 +131,10 @@ std::vector<net::outbound::OutgoingMessage> DisconnectionCommand::execute(Comman
                 sercom::protocol::event::VoiceSelfStatus status;
                 status.set_connected(false);
                 status.set_is_owner(false);
-                out.push_back(make_broadcast(
-                    std::move(session_conns),
-                    proto_builders::serialize_envelope(
-                        sercom::protocol::Envelope::VOICE_SELF_STATUS, status)));
+                out.push_back(
+                    make_broadcast(std::move(session_conns),
+                                   proto_builders::serialize_envelope(
+                                       sercom::protocol::Envelope::VOICE_SELF_STATUS, status)));
             }
         }
     }

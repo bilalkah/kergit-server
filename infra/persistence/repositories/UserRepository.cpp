@@ -6,16 +6,17 @@
 std::optional<std::string> UserRepository::getUserDisplayName(const UserId& userUuid) {
     return db_.read("UserRepository.getUserDisplayName",
                     [&](pqxx::work& txn) -> std::optional<std::string> {
-        auto res = txn.exec(
-            "SELECT COALESCE(raw_user_meta_data->>'username', "
-            "raw_user_meta_data->>'preferred_username',"
-            " raw_user_meta_data->>'full_name', '') AS display FROM auth.users WHERE id = $1::uuid",
-            pqxx::params{userUuid.value});
-        if (res.empty()) return std::nullopt;
-        auto display = res[0][0].as<std::string>();
-        if (display.empty()) return std::nullopt;
-        return display;
-    });
+                        auto res = txn.exec(
+                            "SELECT COALESCE(raw_user_meta_data->>'username', "
+                            "raw_user_meta_data->>'preferred_username',"
+                            " raw_user_meta_data->>'full_name', '') AS display FROM auth.users "
+                            "WHERE id = $1::uuid",
+                            pqxx::params{userUuid.value});
+                        if (res.empty()) return std::nullopt;
+                        auto display = res[0][0].as<std::string>();
+                        if (display.empty()) return std::nullopt;
+                        return display;
+                    });
 }
 
 std::optional<User> UserRepository::getUser(const UserId& userUuid) {
@@ -89,7 +90,8 @@ void UserRepository::updateUserSettings(const UserId& userUuid,
     db_.write("UserRepository.updateUserSettings", [&](pqxx::work& txn) {
         if (username.has_value()) {
             auto res = txn.exec(
-                "SELECT COALESCE(raw_user_meta_data::text, '{}') FROM auth.users WHERE id = $1::uuid "
+                "SELECT COALESCE(raw_user_meta_data::text, '{}') FROM auth.users WHERE id = "
+                "$1::uuid "
                 "FOR UPDATE",
                 pqxx::params{userUuid.value});
             if (res.empty()) throw std::runtime_error("User not found");

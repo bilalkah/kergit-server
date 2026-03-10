@@ -116,18 +116,14 @@ class ServerConfigFiller {
         cfg.network.ws_path = utils::EnvLoader::get_env("SOCKET_PATTERN", cfg.network.ws_path);
         cfg.network.ws_origin_policy_path =
             utils::EnvLoader::get_env("WS_ORIGIN_POLICY_PATH", cfg.network.ws_origin_policy_path);
-        cfg.network.max_connections =
-            std::max<std::size_t>(std::size_t{1},
-                                  utils::EnvLoader::get<std::size_t>("MAX_CONNECTIONS",
-                                                                     cfg.network.max_connections));
-        cfg.network.max_message_size =
-            std::max<std::size_t>(
-                std::size_t{1},
-                utils::EnvLoader::get<std::size_t>("MAX_MESSAGE_SIZE",
-                                                   cfg.network.max_message_size));
-        cfg.network.outbound_queue_capacity =
-            utils::EnvLoader::get<std::size_t>("OUTBOUND_QUEUE_CAPACITY",
-                                               cfg.network.outbound_queue_capacity);
+        cfg.network.max_connections = std::max<std::size_t>(
+            std::size_t{1},
+            utils::EnvLoader::get<std::size_t>("MAX_CONNECTIONS", cfg.network.max_connections));
+        cfg.network.max_message_size = std::max<std::size_t>(
+            std::size_t{1},
+            utils::EnvLoader::get<std::size_t>("MAX_MESSAGE_SIZE", cfg.network.max_message_size));
+        cfg.network.outbound_queue_capacity = utils::EnvLoader::get<std::size_t>(
+            "OUTBOUND_QUEUE_CAPACITY", cfg.network.outbound_queue_capacity);
         cfg.database.engine = utils::EnvLoader::get_env("DB_ENGINE", "postgresql");
         cfg.database.user = utils::EnvLoader::get_env("DB_USER", "postgres");
         cfg.database.password = utils::EnvLoader::get_env("DB_PASSWORD", "password");
@@ -142,21 +138,16 @@ class ServerConfigFiller {
             utils::EnvLoader::get<std::size_t>("DB_WRITE_POOL_SIZE", cfg.database.pool_size);
         cfg.app_stack.worker_threads =
             utils::EnvLoader::get<std::size_t>("WORKER_THREADS", cfg.app_stack.worker_threads);
-        cfg.app_stack.max_sessions_per_user =
-            utils::EnvLoader::get<std::size_t>("MAX_SESSIONS_PER_USER",
-                                               cfg.app_stack.max_sessions_per_user);
-        cfg.app_stack.event_queue_capacity =
-            utils::EnvLoader::get<std::size_t>("EVENT_QUEUE_CAPACITY",
-                                               cfg.app_stack.event_queue_capacity);
-        cfg.app_stack.db_write_queue_capacity =
-            utils::EnvLoader::get<std::size_t>("DB_WRITE_QUEUE_CAPACITY",
-                                               cfg.app_stack.db_write_queue_capacity);
-        cfg.app_stack.db_write_max_retries =
-            utils::EnvLoader::get<std::size_t>("DB_WRITE_MAX_RETRIES",
-                                               cfg.app_stack.db_write_max_retries);
-        cfg.app_stack.db_write_retry_ms =
-            utils::EnvLoader::get<std::size_t>("DB_WRITE_RETRY_MS",
-                                               cfg.app_stack.db_write_retry_ms);
+        cfg.app_stack.max_sessions_per_user = utils::EnvLoader::get<std::size_t>(
+            "MAX_SESSIONS_PER_USER", cfg.app_stack.max_sessions_per_user);
+        cfg.app_stack.event_queue_capacity = utils::EnvLoader::get<std::size_t>(
+            "EVENT_QUEUE_CAPACITY", cfg.app_stack.event_queue_capacity);
+        cfg.app_stack.db_write_queue_capacity = utils::EnvLoader::get<std::size_t>(
+            "DB_WRITE_QUEUE_CAPACITY", cfg.app_stack.db_write_queue_capacity);
+        cfg.app_stack.db_write_max_retries = utils::EnvLoader::get<std::size_t>(
+            "DB_WRITE_MAX_RETRIES", cfg.app_stack.db_write_max_retries);
+        cfg.app_stack.db_write_retry_ms = utils::EnvLoader::get<std::size_t>(
+            "DB_WRITE_RETRY_MS", cfg.app_stack.db_write_retry_ms);
         cfg.control.host = utils::EnvLoader::get_env("CONTROL_HOST", cfg.control.host);
         cfg.control.port = utils::EnvLoader::get<uint16_t>("CONTROL_PORT", cfg.control.port);
 
