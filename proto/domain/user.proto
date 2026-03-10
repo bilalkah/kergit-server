@@ -7,3 +7,11 @@ message User {
     string username = 2;
     string avatar_seed = 3;
 }
+
+// Public-facing user metadata shared with all users.
+// Extensible container for display-facing profile fields.
+message UserMetadata {
+    string user_id = 1;
+    string username = 2;
+    string avatar_seed = 3;
+}

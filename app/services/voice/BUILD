@@ -13,6 +13,7 @@ cc_library(
     copts = ["-std=gnu++23"],
     deps = [
         "//domains/ids:domain_ids",
+        "//infra/persistence:persistence_gateway_lib",
         "//app/managers/session:session_manager",
         "//livekit/token:livekit_token_service",
         "//livekit/routing:livekit_node_registry",

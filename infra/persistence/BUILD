@@ -9,6 +9,7 @@ cc_library(
         "repositories/ChannelRepository.cpp",
         "repositories/HubRepository.cpp",
         "repositories/UserRepository.cpp",
+        "repositories/VoiceStateRepository.cpp",
     ],
     hdrs = [
         "ConnectionPool.h",
@@ -19,6 +20,7 @@ cc_library(
         "repositories/HubRepository.h",
         "repositories/RepositoryUtils.h",
         "repositories/UserRepository.h",
+        "repositories/VoiceStateRepository.h",
     ],
     visibility = ["//visibility:public"],
     deps = [

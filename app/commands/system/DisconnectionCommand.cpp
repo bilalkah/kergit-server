@@ -91,6 +91,10 @@ std::vector<net::outbound::OutgoingMessage> DisconnectionCommand::execute(Comman
             const ChannelId voice_channel = *leave_result.channel;
             utils::EventLogger::instance().voice_leave(user_id.value, voice_channel.value);
 
+            // Persist leave to DB (removes channel membership but preferences
+            // are already cached in pending_preferences_ if needed for recovery).
+            ctx.voice_service.persist_voice_leave(user_id);
+
             ctx.voice_service.kick_user(voice_channel, user_id);
 
             if (leave_result.became_empty) {

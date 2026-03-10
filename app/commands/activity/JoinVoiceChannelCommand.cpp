@@ -150,6 +150,21 @@ std::vector<net::outbound::OutgoingMessage> JoinVoiceChannelCommand::execute(
                                    const std::optional<SessionId>& owner_session_id,
                                    const std::optional<SessionId>& skip_session_id = std::nullopt) {
         std::vector<net::outbound::OutgoingMessage> out_msgs;
+
+        // Look up current voice state for the user.
+        auto current_ch = voice_sessions.user_channel(user_id);
+        bool self_muted = false;
+        bool self_deafened = false;
+        if (connected && current_ch.has_value()) {
+            for (const auto& p : voice_sessions.participants_in_channel(*current_ch)) {
+                if (p.user_id == user_id) {
+                    self_muted = p.muted;
+                    self_deafened = p.deafened;
+                    break;
+                }
+            }
+        }
+
         for (const auto& session_id : ctx.session_manager.getUserSessionIds(user_id)) {
             if (skip_session_id.has_value() && session_id == *skip_session_id) continue;
             auto session_conns = ctx.session_manager.getSessionIdConnections(session_id);
@@ -159,6 +174,11 @@ std::vector<net::outbound::OutgoingMessage> JoinVoiceChannelCommand::execute(
             status.set_connected(connected);
             status.set_is_owner(connected && owner_session_id.has_value() &&
                                 owner_session_id.value() == session_id);
+            if (connected && current_ch.has_value()) {
+                status.set_channel_id(current_ch->value);
+                status.set_muted(self_muted);
+                status.set_deafened(self_deafened);
+            }
             out_msgs.push_back(make_broadcast(
                 std::move(session_conns),
                 proto_builders::serialize_envelope(
@@ -237,6 +257,9 @@ std::vector<net::outbound::OutgoingMessage> JoinVoiceChannelCommand::execute(
         // Register in VoiceSessionManager (handles channel-switch cleanup internally).
         voice_sessions.join(*channel_id_opt, user_id, requester_session_id);
 
+        // Persist to DB (applies any recovery preferences and upserts).
+        ctx.voice_service.persist_voice_join(user_id, *channel_id_opt);
+
         // Send token to requester.
         std::string token_bytes = proto_builders::serialize_envelope(
             sercom::protocol::Envelope::VOICE_TOKEN_ISSUED, issued);
@@ -284,6 +307,9 @@ std::vector<net::outbound::OutgoingMessage> JoinVoiceChannelCommand::execute(
         }
 
         const ChannelId current_channel = *leave_result.channel;
+
+        // Persist leave to DB.
+        ctx.voice_service.persist_voice_leave(user_id);
 
         // Kick from LiveKit (best-effort; server state was already updated above).
         ctx.voice_service.kick_user(current_channel, user_id);

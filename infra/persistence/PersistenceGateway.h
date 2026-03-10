@@ -5,6 +5,7 @@
 #include "infra/persistence/repositories/ChannelRepository.h"
 #include "infra/persistence/repositories/HubRepository.h"
 #include "infra/persistence/repositories/UserRepository.h"
+#include "infra/persistence/repositories/VoiceStateRepository.h"
 
 #include <string>
 
@@ -16,10 +17,12 @@ class PersistenceGateway {
     HubRepository& hubs() { return hub_repo_; }
     ChannelRepository& channels() { return channel_repo_; }
     UserRepository& users() { return user_repo_; }
+    VoiceStateRepository& voice_state() { return voice_state_repo_; }
 
     const HubRepository& hubs() const { return hub_repo_; }
     const ChannelRepository& channels() const { return channel_repo_; }
     const UserRepository& users() const { return user_repo_; }
+    const VoiceStateRepository& voice_state() const { return voice_state_repo_; }
 
    private:
     ConnectionPool read_pool_;
@@ -30,6 +33,7 @@ class PersistenceGateway {
     HubRepository hub_repo_;
     ChannelRepository channel_repo_;
     UserRepository user_repo_;
+    VoiceStateRepository voice_state_repo_;
 };
 
 #endif  // INFRA_PERSISTENCE_PERSISTENCE_GATEWAY_H

@@ -184,6 +184,14 @@ std::vector<net::outbound::OutgoingMessage> BootstrapCommand::execute(CommandCon
     if (voice_channel.has_value()) {
         self_status.set_connected(true);
         self_status.set_is_owner(voice_owner.has_value() && *voice_owner == session_id);
+        self_status.set_channel_id(voice_channel->value);
+        for (const auto& p : ctx.voice_service.sessions().participants_in_channel(*voice_channel)) {
+            if (p.user_id == user_id) {
+                self_status.set_muted(p.muted);
+                self_status.set_deafened(p.deafened);
+                break;
+            }
+        }
     } else {
         self_status.set_connected(false);
         self_status.set_is_owner(false);

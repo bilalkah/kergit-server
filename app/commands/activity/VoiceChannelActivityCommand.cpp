@@ -111,33 +111,85 @@ std::vector<net::outbound::OutgoingMessage> VoiceChannelActivityCommand::execute
 
     if (!changed) return {};
 
+    // Persist mute/deafen state to DB.
+    {
+        bool final_muted = false, final_deafened = false;
+        for (const auto& p : voice_sessions.participants_in_channel(*channel_id_opt)) {
+            if (p.user_id == user_id) {
+                final_muted = p.muted;
+                final_deafened = p.deafened;
+                break;
+            }
+        }
+        ctx.voice_service.persist_mute_state(user_id, final_muted, final_deafened);
+    }
+
+    std::vector<net::outbound::OutgoingMessage> out;
+
+    // Broadcast updated participants to all hub subscribers.
     utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(
         1, std::memory_order_relaxed);
     auto subs = ctx.subscription_manager.getSubscribers(Topic::HubTopic(hub_id));
-    if (!subs || subs->empty()) return {};
+    if (subs && !subs->empty()) {
+        std::vector<GlobalConnId> conns(subs->begin(), subs->end());
 
-    std::vector<GlobalConnId> conns(subs->begin(), subs->end());
-    if (conns.empty()) return {};
+        sercom::protocol::event::VoiceChannelParticipants participants;
+        participants.set_channel_id(channel_id_opt->value);
+        for (const auto& p : voice_sessions.participants_in_channel(*channel_id_opt)) {
+            auto* out_p = participants.add_participants();
+            out_p->set_user_id(p.user_id.value);
+            out_p->set_muted(p.muted);
+            out_p->set_deafened(p.deafened);
+        }
 
-    sercom::protocol::event::VoiceChannelParticipants participants;
-    participants.set_channel_id(channel_id_opt->value);
-    for (const auto& p : voice_sessions.participants_in_channel(*channel_id_opt)) {
-        auto* out_p = participants.add_participants();
-        out_p->set_user_id(p.user_id.value);
-        out_p->set_muted(p.muted);
-        out_p->set_deafened(p.deafened);
+        std::string bytes = proto_builders::serialize_envelope(
+            sercom::protocol::Envelope::VOICE_CHANNEL_PARTICIPANTS, participants);
+
+        out.push_back(net::outbound::OutgoingMessage{
+            .priority = net::outbound::OutboundPriority::Low,
+            .target = net::outbound::Target::many(std::move(conns)),
+            .action =
+                net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
+                                      net::outbound::SendPayload{
+                                          .payload = net::outbound::Payload{std::move(bytes), true}}}});
     }
 
-    std::string bytes = proto_builders::serialize_envelope(
-        sercom::protocol::Envelope::VOICE_CHANNEL_PARTICIPANTS, participants);
+    // Send VoiceSelfStatus to all of the user's sessions so mute/deafen state stays in sync.
+    bool self_muted = false;
+    bool self_deafened = false;
+    for (const auto& p : voice_sessions.participants_in_channel(*channel_id_opt)) {
+        if (p.user_id == user_id) {
+            self_muted = p.muted;
+            self_deafened = p.deafened;
+            break;
+        }
+    }
 
-    return single_outgoing(net::outbound::OutgoingMessage{
-        .priority = net::outbound::OutboundPriority::Low,
-        .target = net::outbound::Target::many(std::move(conns)),
-        .action =
-            net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
-                                  net::outbound::SendPayload{
-                                      .payload = net::outbound::Payload{std::move(bytes), true}}}});
+    for (const auto& session_id : ctx.session_manager.getUserSessionIds(user_id)) {
+        auto session_conns = ctx.session_manager.getSessionIdConnections(session_id);
+        if (session_conns.empty()) continue;
+
+        sercom::protocol::event::VoiceSelfStatus self_status;
+        self_status.set_connected(true);
+        self_status.set_is_owner(owner_session.has_value() && *owner_session == session_id);
+        self_status.set_channel_id(channel_id_opt->value);
+        self_status.set_muted(self_muted);
+        self_status.set_deafened(self_deafened);
+
+        out.push_back(net::outbound::OutgoingMessage{
+            .priority = net::outbound::OutboundPriority::Low,
+            .target = net::outbound::Target::many(std::move(session_conns)),
+            .action =
+                net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
+                                      net::outbound::SendPayload{
+                                          .payload = net::outbound::Payload{
+                                              proto_builders::serialize_envelope(
+                                                  sercom::protocol::Envelope::VOICE_SELF_STATUS,
+                                                  self_status),
+                                              true}}}});
+    }
+
+    return out;
 }
 
 }  // namespace app
