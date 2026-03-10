@@ -9,4 +9,5 @@ PersistenceGateway::PersistenceGateway(const std::string& conninfo, std::size_t 
       db_executor_(read_repo_mux_, write_repo_mux_),
       hub_repo_(db_executor_),
       channel_repo_(db_executor_),
-      user_repo_(db_executor_) {}
+      user_repo_(db_executor_),
+      voice_state_repo_(db_executor_) {}

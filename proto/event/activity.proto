@@ -113,6 +113,30 @@ message VoiceSelfStatus {
 
   // True if this session owns the LiveKit transport.
   bool is_owner = 2;
+
+  // The voice channel the user is currently in (empty if not connected).
+  string channel_id = 3;
+
+  // Current mute state (preserved across channel switches).
+  bool muted = 4;
+
+  // Current deafen state (preserved across channel switches).
+  bool deafened = 5;
+}
+
+/*
+ * ============================
+ *  Voice Member State (Metadata)
+ * ============================
+ *
+ * Complete voice state for a single participant.
+ * Extensible metadata container for voice channel members.
+ */
+message VoiceMemberState {
+  string user_id = 1;
+  string channel_id = 2;
+  bool muted = 3;
+  bool deafened = 4;
 }
 
 /*

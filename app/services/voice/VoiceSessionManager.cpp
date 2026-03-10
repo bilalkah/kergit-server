@@ -5,9 +5,13 @@ namespace app::services::voice {
 bool VoiceSessionManager::join(const ChannelId& channel, const UserId& user, const SessionId& session) {
     std::lock_guard lock(mutex_);
 
-    // If user was already in a different channel, remove them first.
+    // Preserve mute/deafen state when switching channels.
+    ParticipantState carry_state{};
     if (auto it = user_to_channel_.find(user); it != user_to_channel_.end()) {
         auto& old_participants = channels_[it->second.channel];
+        if (auto pit = old_participants.find(user); pit != old_participants.end()) {
+            carry_state = pit->second;
+        }
         old_participants.erase(user);
         if (old_participants.empty()) {
             channels_.erase(it->second.channel);
@@ -17,7 +21,7 @@ bool VoiceSessionManager::join(const ChannelId& channel, const UserId& user, con
     auto& participants = channels_[channel];
     const bool was_empty = participants.empty();
 
-    participants.emplace(user, ParticipantState{});
+    participants.emplace(user, carry_state);
     user_to_channel_[user] = UserVoiceState{channel, session};
 
     return was_empty;

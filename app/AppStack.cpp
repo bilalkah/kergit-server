@@ -14,7 +14,6 @@ AppStack::AppStack(const core::ServerConfig& config) : config_(config),
 }
 
 void AppStack::start() {
-    // webhook_server_ already started during bootstrap for node discovery
     worker_pool_->start();
 }
 
@@ -39,8 +38,9 @@ void AppStack::bootstrap() {
     init_database();
     init_redis();
     init_managers();
-    webhook_server_.start();
     init_services();
+    voice_service_->recover_from_restart();
+    webhook_server_.start();
     init_dispatcher();
     init_workers();
 }
@@ -89,14 +89,14 @@ void AppStack::init_services() {
         auto livekit_key = utils::EnvLoader::get_env("LIVEKIT_API_KEY", "");
         auto livekit_secret = utils::EnvLoader::get_env("LIVEKIT_API_SECRET", "");
 
-        voice_service_ =
-            std::make_unique<services::voice::VoiceService>(livekit_key, livekit_secret);
+        voice_service_ = std::make_unique<services::voice::VoiceService>(
+            livekit_key, livekit_secret, persistence_gateway_->voice_state());
 
         webhook_server_.set_callback([this](const livekit::webhook::LiveKitEvent& event) {
             voice_service_->on_livekit_event(event);
         });
 
-        auto invite_base_url = utils::EnvLoader::get_env("INVITE_BASE_URL", "https://localhost");
+        auto invite_base_url = utils::EnvLoader::get_env("WEB_DOMAIN", "https://localhost");
         invite_service_ =
             std::make_unique<services::InviteService>(*redis_client_, invite_base_url);
 

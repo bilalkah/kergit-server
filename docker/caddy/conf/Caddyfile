@@ -134,7 +134,7 @@ kergit.com {
       header_down X-Frame-Options "DENY"
       header_down Referrer-Policy "strict-origin-when-cross-origin"
       header_down Permissions-Policy "geolocation=(), camera=(), microphone=(self), usb=(), payment=(), accelerometer=(), gyroscope=(), magnetometer=()"
-      header_down Content-Security-Policy "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; frame-src 'self'; form-action 'self' https://xxinxxsxutfkqajbmlar.supabase.co; object-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://api.dicebear.com; connect-src 'self' https://xxinxxsxutfkqajbmlar.supabase.co wss: https://kergit.com; worker-src 'self' blob:; media-src 'self' blob:"
+      header_down Content-Security-Policy "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; frame-src 'self'; form-action 'self' https://xxinxxsxutfkqajbmlar.supabase.co; object-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://api.dicebear.com; connect-src 'self' https://xxinxxsxutfkqajbmlar.supabase.co wss://kergit.com; worker-src 'self' blob:; media-src 'self' blob:"
     }
   }
 }
