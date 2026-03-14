@@ -3,6 +3,7 @@ syntax = "proto3";
 package sercom.protocol.command;
 
 import "proto/domain/channel.proto";
+import "proto/domain/ref.proto";
 
 /*
  * Create a channel inside a hub.
@@ -20,7 +21,7 @@ message CreateChannel {
  * Only OWNER / ADMIN.
  */
 message UpdateChannel {
-    string channel_id = 1;
+    sercom.protocol.domain.ChannelRef channel = 1;
     optional string name = 2;
 }
 
@@ -29,5 +30,5 @@ message UpdateChannel {
  * Only OWNER.
  */
 message RemoveChannel {
-    string channel_id = 1;
+    sercom.protocol.domain.ChannelRef channel = 1;
 }

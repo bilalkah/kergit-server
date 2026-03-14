@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package sercom.protocol.domain;
+
+/*
+ * Canonical reference for channel-scoped commands/events.
+ * Channel identity is always a pair: hub_id + channel_id.
+ */
+message ChannelRef {
+    string hub_id = 1;
+    string channel_id = 2;
+}

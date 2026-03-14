@@ -1,0 +1,6 @@
+syntax = "proto3";
+
+package sercom.protocol.event;
+
+// Server -> Client heartbeat response.
+message Pong {}

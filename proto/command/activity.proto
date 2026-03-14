@@ -2,45 +2,42 @@ syntax = "proto3";
 
 package sercom.protocol.command;
 
+import "proto/domain/ref.proto";
+
 /*
  * Client intent: select the active channel inside a hub.
- * This affects routing and visibility only.
- * It does NOT imply membership or presence by itself.
+ * This also carries the latest-message fetch hint for that channel.
  */
 message SelectActiveChannel {
-  string channel_id = 1;
-  string hub_id = 2;
+  sercom.protocol.domain.ChannelRef channel = 1;
+
+  // Latest fetch page size for this selection.
+  // 0 means server default.
+  uint32 latest_limit = 2;
+
+  // Public latest message id already known by client for this channel.
+  optional string known_latest_message_id = 3;
 }
 
 /*
  * Client typing hint.
  * Best-effort signal.
- *
- * Server validates:
- * - hub membership
- * - HubMember.is_online == true
- * - active_channel == channel_id
  */
 message Typing {
-  string channel_id = 1;
-  string hub_id = 2;
-  bool is_typing = 3;
+  sercom.protocol.domain.ChannelRef channel = 1;
+  bool is_typing = 2;
 }
 
-
 message JoinVoiceChannelRequest {
-  // Target voice channel
-  string channel_id = 1;
-  string hub_id = 2;
+  sercom.protocol.domain.ChannelRef channel = 1;
 
   // Preferred initial voice state for this join intent.
-  bool prefer_muted = 3;
-  bool prefer_deafened = 4;
+  bool prefer_muted = 2;
+  bool prefer_deafened = 3;
 }
 
 message VoiceChannelActivity {
-  string channel_id = 1;
-  string hub_id = 2;
-  bool is_muted = 3;
-  bool is_deafened = 4;
+  sercom.protocol.domain.ChannelRef channel = 1;
+  bool is_muted = 2;
+  bool is_deafened = 3;
 }

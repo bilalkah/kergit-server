@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package sercom.protocol.event;
+
+import "proto/domain/ref.proto";
+
+/*
+ * Non-durable member presence hint.
+ * Used for immediate UX, not authoritative state rebuild.
+ */
+message HubMemberPresenceSignal {
+    string hub_id = 1;
+    string user_id = 2;
+    bool is_online = 3;
+}
+
+/*
+ * Non-durable typing hint.
+ * Client-side expiration is local-policy based.
+ */
+message TypingSignal {
+    sercom.protocol.domain.ChannelRef channel = 1;
+    string user_id = 2;
+    bool is_typing = 3;
+}
+
+message RtSignal {
+    oneof payload {
+        HubMemberPresenceSignal presence = 1;
+        TypingSignal typing = 2;
+    }
+}

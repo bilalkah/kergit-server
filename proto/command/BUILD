@@ -13,8 +13,22 @@ cc_proto_library(
 )
 
 proto_library(
+    name = "heartbeat_proto",
+    srcs = ["heartbeat.proto"],
+)
+
+cc_proto_library(
+    name = "heartbeat_cc_proto",
+    deps = [":heartbeat_proto"],
+    visibility = ["//visibility:public"],
+)
+
+proto_library(
     name = "activity_proto",
     srcs = ["activity.proto"],
+    deps = [
+        "//proto/domain:ref_proto",
+    ],
 )
 
 cc_proto_library(
@@ -28,6 +42,7 @@ proto_library(
     srcs = ["channel.proto"],
     deps = [
         "//proto/domain:channel_proto",
+        "//proto/domain:ref_proto",
     ],
 )
 
@@ -40,6 +55,9 @@ cc_proto_library(
 proto_library(
     name = "message_proto",
     srcs = ["message.proto"],
+    deps = [
+        "//proto/domain:ref_proto",
+    ],
 )
 
 cc_proto_library(

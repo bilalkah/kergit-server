@@ -22,10 +22,10 @@ cc_library(
     deps = [
         "//proto/command:activity_cc_proto",
         "//proto/command:channel_cc_proto",
+        "//proto/command:heartbeat_cc_proto",
         "//proto/command:hub_cc_proto",
         "//proto/command:message_cc_proto",
         "//proto/command:session_cc_proto",
         "//proto/command:user_cc_proto",
-        "//proto/system:heartbeat_cc_proto",
     ],
 )

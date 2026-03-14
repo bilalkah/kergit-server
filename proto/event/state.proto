@@ -1,0 +1,208 @@
+syntax = "proto3";
+
+package sercom.protocol.event;
+
+import "proto/domain/channel.proto";
+import "proto/domain/hub.proto";
+import "proto/domain/message.proto";
+import "proto/domain/user.proto";
+
+/*
+ * Authoritative state snapshot used for bootstrap/resync.
+ */
+message StateSync {
+    sercom.protocol.domain.User self = 1;
+    repeated HubSync hubs = 2;
+}
+
+message HubSync {
+    sercom.protocol.domain.Hub hub = 1;
+    uint64 rev = 2;
+    repeated MemberState members = 3;
+    repeated UserState users = 4;
+    repeated ChannelState channels = 5;
+    optional string join_code = 6;
+}
+
+message MemberState {
+    sercom.protocol.domain.HubMember member = 1;
+    uint64 rev = 2;
+}
+
+message UserState {
+    sercom.protocol.domain.User user = 1;
+    uint64 rev = 2;
+}
+
+message ChannelState {
+    sercom.protocol.domain.Channel channel = 1;
+    uint64 rev = 2;
+
+    // Channel snapshot does not include messages.
+    // Message history is delivered via explicit message requests.
+    VoiceChannelState voice = 4;
+}
+
+message MessageState {
+    sercom.protocol.domain.Message message = 1;
+    uint64 rev = 2;
+}
+
+message VoiceParticipantState {
+    string user_id = 1;
+    bool muted = 2;
+    bool deafened = 3;
+    uint64 rev = 4;
+}
+
+message VoiceChannelState {
+    uint64 rev = 1;
+    uint64 started_at_unix = 2;
+    repeated VoiceParticipantState participants = 3;
+}
+
+/*
+ * Authoritative state delta stream.
+ * No delta-level id/time fields: idempotency is entity-level via rev.
+ */
+message StateDelta {
+    repeated HubDelta hubs = 1;
+}
+
+message HubDelta {
+    string hub_id = 1;
+    repeated HubOp hub_ops = 2;
+    repeated MemberOp member_ops = 3;
+    repeated UserOp user_ops = 4;
+    repeated ChannelDelta channels = 5;
+}
+
+message ChannelDelta {
+    string channel_id = 1;
+    repeated ChannelOp channel_ops = 2;
+    repeated MessageOp message_ops = 3;
+    repeated VoiceOp voice_ops = 4;
+}
+
+message HubOp {
+    oneof payload {
+        HubUpsert upsert = 1;
+        HubRemove remove = 2;
+        HubJoinCodeSet join_code_set = 3;
+    }
+}
+
+message HubUpsert {
+    sercom.protocol.domain.Hub hub = 1;
+    uint64 rev = 2;
+}
+
+message HubRemove {
+    uint64 rev = 1;
+}
+
+message HubJoinCodeSet {
+    string join_code = 1;
+    uint64 rev = 2;
+}
+
+message MemberOp {
+    oneof payload {
+        MemberUpsert upsert = 1;
+        MemberRemove remove = 2;
+    }
+}
+
+message MemberUpsert {
+    MemberState state = 1;
+}
+
+message MemberRemove {
+    string user_id = 1;
+    uint64 rev = 2;
+}
+
+message UserOp {
+    oneof payload {
+        UserUpsert upsert = 1;
+        UserRemove remove = 2;
+    }
+}
+
+message UserUpsert {
+    UserState state = 1;
+}
+
+message UserRemove {
+    string user_id = 1;
+    uint64 rev = 2;
+}
+
+message ChannelOp {
+    oneof payload {
+        ChannelUpsert upsert = 1;
+        ChannelRemove remove = 2;
+    }
+}
+
+message ChannelUpsert {
+    sercom.protocol.domain.Channel channel = 1;
+    uint64 rev = 2;
+}
+
+message ChannelRemove {
+    uint64 rev = 1;
+}
+
+message MessageOp {
+    oneof payload {
+        MessageAppend append = 1;
+        MessageRemove remove = 2;
+        MessageBatch batch = 3;
+    }
+}
+
+message MessageAppend {
+    MessageState state = 1;
+}
+
+message MessageRemove {
+    string message_id = 1;
+    uint64 rev = 2;
+}
+
+message MessageBatch {
+    enum Direction {
+        DIRECTION_UNSPECIFIED = 0;
+        // Latest page for active-channel selection flow.
+        LATEST = 1;
+        BEFORE = 2;
+    }
+
+    Direction direction = 1;
+    repeated MessageState states = 2;
+    bool exhausted_before = 3;
+    uint64 rev = 4;
+}
+
+message VoiceOp {
+    oneof payload {
+        VoiceSnapshot snapshot = 1;
+        VoiceParticipantUpsert upsert = 2;
+        VoiceParticipantRemove remove = 3;
+    }
+}
+
+message VoiceSnapshot {
+    VoiceChannelState state = 1;
+}
+
+message VoiceParticipantUpsert {
+    VoiceParticipantState participant = 1;
+    uint64 rev = 2;
+}
+
+message VoiceParticipantRemove {
+    string user_id = 1;
+    uint64 rev = 2;
+}

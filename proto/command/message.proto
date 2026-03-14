@@ -2,26 +2,22 @@ syntax = "proto3";
 
 package sercom.protocol.command;
 
+import "proto/domain/ref.proto";
+
 /*
  * Client intent: send a message to a channel.
- * channel_id is already uniquely identifying the hub, so no need for a separate hub_id.
  */
 message SendMessage {
-  string channel_id = 1;
+  sercom.protocol.domain.ChannelRef channel = 1;
   string content = 2;
 }
 
-message FetchLatestMessages {
-  string channel_id = 1;
-  uint32 limit = 2;
-
-  // public message id last seen by client
-  optional string known_latest_message_id = 3;
-}
-
+/*
+ * Client intent: fetch older messages before a known boundary.
+ * Latest fetch is part of SelectActiveChannel.
+ */
 message FetchMessagesBefore {
-  string channel_id = 1;
+  sercom.protocol.domain.ChannelRef channel = 1;
   string before_message_id = 2;
   uint32 limit = 3;
 }
-

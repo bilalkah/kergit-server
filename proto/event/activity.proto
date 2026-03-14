@@ -2,11 +2,7 @@ syntax = "proto3";
 
 package sercom.protocol.event;
 
-/*
- * ============================
- *  Voice Token
- * ============================
- */
+import "proto/domain/ref.proto";
 
 /*
  * Issued to a client after joining a voice channel.
@@ -20,100 +16,16 @@ message VoiceTokenIssued {
 }
 
 /*
- * ============================
- *  Core Enums
- * ============================
- */
-
-enum VoiceChannelActivityState {
-    ACTIVITY_UNSPECIFIED = 0;
-    ACTIVITY_JOINED = 1;
-    ACTIVITY_LEFT = 2;
-}
-
-/*
- * ============================
- *  Core Models
- * ============================
- */
-
-/*
- * Shared voice channel reference.
- */
-message VoiceChannelRef {
-    string hub_id = 1;
-    string channel_id = 2;
-}
-
-/*
- * Authoritative per-user voice state inside a channel.
- */
-message VoiceParticipantState {
-    string user_id = 1;
-    bool muted = 2;
-    bool deafened = 3;
-}
-
-/*
- * ============================
- *  Snapshot (Bootstrap)
- * ============================
- *
- * Full authoritative snapshot of a voice channel.
- * Sent on bootstrap and on resync after reconnect.
- */
-message VoiceChannelParticipants {
-    VoiceChannelRef channel = 1;
-    uint64 started_at_unix = 2;
-    repeated VoiceParticipantState participants = 3;
-}
-
-/*
- * ============================
- *  Voice Activity Events
- * ============================
- *
- * Sent when a user joins or leaves a voice channel.
- * Does NOT carry mute/deafen state — use VoiceState for that.
- */
-message VoiceActivity {
-    VoiceChannelRef channel = 1;
-    VoiceParticipantState participant = 2;
-    VoiceChannelActivityState activity = 3;
-}
-
-/*
- * ============================
- *  Voice State Events
- * ============================
- *
- * Sent when a participant's persistent voice state changes
- * (mute / deafen / etc).
- */
-message VoiceState {
-    VoiceParticipantState participant = 1;
-}
-
-/*
- * ============================
- *  Session-Scoped Voice State
- * ============================
- *
- * Describes this session's relationship to the user's
- * current voice channel presence.
+ * Session-scoped voice state.
  */
 message VoiceSelfStatus {
     bool connected = 1;
     bool is_owner = 2;
-    string channel_id = 3;
+    sercom.protocol.domain.ChannelRef channel = 3;
 }
 
 /*
- * ============================
- *  Voice Self Revoked
- * ============================
- *
  * Sent to a session when another session takes over voice.
- * Client must immediately drop its LiveKit transport.
+ * Client must immediately drop its transport.
  */
 message VoiceSelfRevoked {}
