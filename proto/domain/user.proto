@@ -2,16 +2,22 @@ syntax = "proto3";
 
 package sercom.protocol.domain;
 
-message User {
-    string id = 1;
-    string username = 2;
-    string avatar_seed = 3;
+/*
+ * Extensible display/profile metadata for a user.
+ * Contains all mutable, user-facing fields.
+ * Identity (id) is NOT included — it lives in the User message.
+ */
+message UserMetadata {
+    string username = 1;
+    string avatar_seed = 2;
+    // Future: bio, status, banner, etc.
 }
 
-// Public-facing user metadata shared with all users.
-// Extensible container for display-facing profile fields.
-message UserMetadata {
-    string user_id = 1;
-    string username = 2;
-    string avatar_seed = 3;
+/*
+ * Canonical user representation.
+ * Combines a stable identity (id) with mutable display metadata.
+ */
+message User {
+    string id = 1;
+    UserMetadata metadata = 2;
 }

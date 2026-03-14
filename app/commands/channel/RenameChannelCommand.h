@@ -9,9 +9,6 @@ class RenameChannelCommand : public ICommand {
    public:
     std::vector<net::outbound::OutgoingMessage> execute(CommandContext& ctx,
                                                         const queue::Event& evt) override;
-
-   private:
-    static std::string sanitize(std::string name);
 };
 
 }  // namespace app

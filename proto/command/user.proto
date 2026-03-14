@@ -3,18 +3,10 @@ syntax = "proto3";
 package sercom.protocol.command;
 
 /*
- * Update current user settings.
- */
-message UserChange {
-  oneof change {
-    string username = 1;
-    string avatar_seed = 2;
-  }
-}
-
-/*
- * Update user settings.
+ * Update current user profile.
+ * Only set the fields you want to change — unset fields are left unchanged.
  */
 message UpdateUser {
-  repeated UserChange changes = 2;
+  optional string username = 1;
+  optional string avatar_seed = 2;
 }

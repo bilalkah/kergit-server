@@ -18,13 +18,13 @@
 namespace sercom::protocol {
 
 using ParsedPayload = std::variant<std::monostate, command::Authenticate, command::Typing,
-                                   command::SelectActiveChannel, command::VoiceChannelMembership,
+                                   command::SelectActiveChannel, command::JoinVoiceChannelRequest,
                                    command::VoiceChannelActivity, command::SendMessage,
                                    command::FetchLatestMessages, command::FetchMessagesBefore,
                                    command::CreateHub, command::JoinHub,
                                    command::CreateHubJoinCode, command::LeaveHub,
-                                   command::RemoveHub, command::RenameHub,
-                                   command::UpdateHub, command::CreateChannel,
+                                   command::RemoveHub, command::UpdateHub,
+                                   command::CreateChannel,
                                    command::UpdateChannel, command::RemoveChannel,
                                    command::UpdateUser, system::Ping>;
 
@@ -76,7 +76,7 @@ inline ParsedPayloadResult parse_inbound_payload(const Envelope& env) {
             return detail::parse_payload_as<command::SelectActiveChannel>(
                 env, "Invalid ACTIVE_CHANNEL payload");
         case Envelope::VOICE_JOIN:
-            return detail::parse_payload_as<command::VoiceChannelMembership>(
+            return detail::parse_payload_as<command::JoinVoiceChannelRequest>(
                 env, "Invalid VOICE_JOIN payload");
         case Envelope::VOICE_ACTIVITY:
             return detail::parse_payload_as<command::VoiceChannelActivity>(
@@ -100,16 +100,14 @@ inline ParsedPayloadResult parse_inbound_payload(const Envelope& env) {
             return detail::parse_payload_as<command::LeaveHub>(env, "Invalid HUB_LEAVE payload");
         case Envelope::HUB_REMOVE:
             return detail::parse_payload_as<command::RemoveHub>(env, "Invalid HUB_REMOVE payload");
-        case Envelope::HUB_RENAME:
-            return detail::parse_payload_as<command::RenameHub>(env, "Invalid HUB_RENAME payload");
         case Envelope::HUB_UPDATE:
             return detail::parse_payload_as<command::UpdateHub>(env, "Invalid HUB_UPDATE payload");
         case Envelope::CHANNEL_CREATE:
             return detail::parse_payload_as<command::CreateChannel>(
                 env, "Invalid CHANNEL_CREATE payload");
-        case Envelope::CHANNEL_RENAME:
+        case Envelope::CHANNEL_UPDATE:
             return detail::parse_payload_as<command::UpdateChannel>(
-                env, "Invalid CHANNEL_RENAME payload");
+                env, "Invalid CHANNEL_UPDATE payload");
         case Envelope::CHANNEL_REMOVE:
             return detail::parse_payload_as<command::RemoveChannel>(
                 env, "Invalid CHANNEL_REMOVE payload");
@@ -128,17 +126,15 @@ inline ParsedPayloadResult parse_inbound_payload(const Envelope& env) {
         case Envelope::HUB_CREATED:
         case Envelope::HUB_MEMBER_JOINED:
         case Envelope::HUB_MEMBER_LEFT:
-        case Envelope::HUB_REMOVED:
+        case Envelope::HUB_UPDATED:
         case Envelope::HUB_JOIN_CODE_CREATED:
-        case Envelope::HUB_RENAMED:
-        case Envelope::HUB_AVATAR_CHANGED:
+        case Envelope::HUB_ALREADY_MEMBER:
         case Envelope::USER_PROFILE_UPDATED:
-        case Envelope::CHANNEL_CREATED:
-        case Envelope::CHANNEL_RENAMED:
-        case Envelope::CHANNEL_REMOVED:
+        case Envelope::CHANNEL_UPDATED:
         case Envelope::VOICE_TOKEN_ISSUED:
         case Envelope::VOICE_CHANNEL_PARTICIPANTS:
-        case Envelope::VOICE_CHANNEL_PRESENCE:
+        case Envelope::VOICE_ACTIVITY_EVENT:
+        case Envelope::VOICE_STATE_EVENT:
         case Envelope::VOICE_SELF_STATUS:
         case Envelope::VOICE_SELF_REVOKED:
         case Envelope::AUTH_OK:

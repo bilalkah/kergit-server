@@ -2,6 +2,7 @@ FROM ubuntu:24.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG BAZELISK_VERSION=1.21.0
+ARG BAZEL_VERSION=8.5.1
 
 # Toolchain & deps
 RUN apt-get update && apt-get upgrade -y && \
@@ -36,6 +37,9 @@ RUN arch=$(uname -m) && \
     chmod +x /usr/local/bin/bazelisk && \
     ln -s /usr/local/bin/bazelisk /usr/local/bin/bazel
 
+RUN mkdir -p /root/.cache/bazelisk && \
+    BAZELISK_HOME=/root/.cache/bazelisk USE_BAZEL_VERSION=${BAZEL_VERSION} bazel --version
+
 RUN mkdir -p /root/.ccache /root/workspace
 
 ENV LANG=en_US.UTF-8 \
@@ -46,7 +50,8 @@ ENV LANG=en_US.UTF-8 \
     CXX=/usr/lib/ccache/g++
 
 # Keep Bazel from reusing any stale auto-config (safe default)
-ENV BAZELISK_HOME=/root/.cache/bazelisk
+ENV BAZELISK_HOME=/root/.cache/bazelisk \
+    USE_BAZEL_VERSION=${BAZEL_VERSION}
 
 # Workspace & git safety
 WORKDIR /root/workspace

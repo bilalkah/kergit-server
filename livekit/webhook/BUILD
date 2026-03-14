@@ -5,9 +5,11 @@ cc_library(
     hdrs = ["LivekitWebhookServer.h","LivekitEvent.h"],
     srcs = ["LivekitWebhookServer.cpp"],
     copts = ["-std=gnu++23"],
+    linkopts = ["-lcrypto"],
     deps = [
         "@uwebsockets",
         "@nlohmann_json",
+        "@jwt-cpp//:jwt-cpp",
         "//domains/ids:domain_ids",
         "//utils:loggable",
     ],

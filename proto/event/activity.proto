@@ -8,20 +8,15 @@ package sercom.protocol.event;
  * ============================
  */
 
-// Server → Client
+/*
+ * Issued to a client after joining a voice channel.
+ * Contains everything needed to connect to the LiveKit server.
+ */
 message VoiceTokenIssued {
-  // LiveKit access token (JWT)
-  string token = 1;
-
-  // LiveKit server URL (without protocol)
-  string livekit_url = 2;
-
-  // Expiration in seconds (informational)
-  uint64 expires_in = 3;
-
-  // E2EE shared key (base64-encoded, 32 bytes)
-  // All participants in the same channel use this key
-  string e2ee_key = 4;
+    string token = 1;
+    string livekit_url = 2;
+    uint64 expires_in = 3;
+    string e2ee_key = 4;
 }
 
 /*
@@ -31,9 +26,9 @@ message VoiceTokenIssued {
  */
 
 enum VoiceChannelActivityState {
-  ACTIVITY_UNSPECIFIED = 0;
-  ACTIVITY_JOINED = 1;
-  ACTIVITY_LEFT = 2;
+    ACTIVITY_UNSPECIFIED = 0;
+    ACTIVITY_JOINED = 1;
+    ACTIVITY_LEFT = 2;
 }
 
 /*
@@ -42,13 +37,21 @@ enum VoiceChannelActivityState {
  * ============================
  */
 
-// Authoritative per-user voice state inside a channel.
-message VoiceParticipant {
-  string user_id = 1;
+/*
+ * Shared voice channel reference.
+ */
+message VoiceChannelRef {
+    string hub_id = 1;
+    string channel_id = 2;
+}
 
-  // Persistent state flags
-  bool muted = 2;
-  bool deafened = 3;
+/*
+ * Authoritative per-user voice state inside a channel.
+ */
+message VoiceParticipantState {
+    string user_id = 1;
+    bool muted = 2;
+    bool deafened = 3;
 }
 
 /*
@@ -57,46 +60,38 @@ message VoiceParticipant {
  * ============================
  *
  * Full authoritative snapshot of a voice channel.
- * Sent:
- *   - On bootstrap for the active channel
- *   - On resync after reconnect
+ * Sent on bootstrap and on resync after reconnect.
  */
 message VoiceChannelParticipants {
-  string channel_id = 1;
-
-  repeated VoiceParticipant participants = 2;
+    VoiceChannelRef channel = 1;
+    uint64 started_at_unix = 2;
+    repeated VoiceParticipantState participants = 3;
 }
 
 /*
  * ============================
- *  Presence Events
+ *  Voice Activity Events
  * ============================
  *
- * Sent when a user joins or leaves a channel.
- * This does NOT carry mute/deafen state.
+ * Sent when a user joins or leaves a voice channel.
+ * Does NOT carry mute/deafen state — use VoiceState for that.
  */
-message VoiceChannelPresence {
-  string channel_id = 1;
-
-  string user_id = 3;
-  VoiceChannelActivityState activity = 4;
+message VoiceActivity {
+    VoiceChannelRef channel = 1;
+    VoiceParticipantState participant = 2;
+    VoiceChannelActivityState activity = 3;
 }
 
 /*
  * ============================
- *  State Update Events
+ *  Voice State Events
  * ============================
  *
  * Sent when a participant's persistent voice state changes
  * (mute / deafen / etc).
  */
-message VoiceParticipantStateUpdate {
-  string channel_id = 1;
-
-  string user_id = 2;
-
-  bool muted = 3;
-  bool deafened = 4;
+message VoiceState {
+    VoiceParticipantState participant = 1;
 }
 
 /*
@@ -108,35 +103,9 @@ message VoiceParticipantStateUpdate {
  * current voice channel presence.
  */
 message VoiceSelfStatus {
-  // True if the user account is currently in a voice channel.
-  bool connected = 1;
-
-  // True if this session owns the LiveKit transport.
-  bool is_owner = 2;
-
-  // The voice channel the user is currently in (empty if not connected).
-  string channel_id = 3;
-
-  // Current mute state (preserved across channel switches).
-  bool muted = 4;
-
-  // Current deafen state (preserved across channel switches).
-  bool deafened = 5;
-}
-
-/*
- * ============================
- *  Voice Member State (Metadata)
- * ============================
- *
- * Complete voice state for a single participant.
- * Extensible metadata container for voice channel members.
- */
-message VoiceMemberState {
-  string user_id = 1;
-  string channel_id = 2;
-  bool muted = 3;
-  bool deafened = 4;
+    bool connected = 1;
+    bool is_owner = 2;
+    string channel_id = 3;
 }
 
 /*

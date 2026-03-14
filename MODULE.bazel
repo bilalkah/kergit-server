@@ -39,6 +39,9 @@ use_repo(redis_plus_plus_ext, "redis_plus_plus")
 hiredis_ext = use_extension("//third_party/hiredis:extension.bzl", "hiredis")
 use_repo(hiredis_ext, "hiredis")
 
+nanoid_ext = use_extension("//third_party/nanoid:extension.bzl", "nanoid")
+use_repo(nanoid_ext, "nanoid")
+
 # Bazel rules dependencies.
 bazel_dep(name = "rules_python", version = "1.7.0")
 bazel_dep(name = "rules_cc", version = "0.2.14")

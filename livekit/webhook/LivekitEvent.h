@@ -19,17 +19,31 @@ enum class LiveKitEventType : uint8_t {
 
     PARTICIPANT_JOINED,
     PARTICIPANT_LEFT,
+    PARTICIPANT_CONNECTION_ABORTED,
 };
 
 // Normalized event forwarded to the application layer
 struct LiveKitEvent {
     LiveKitEventType type = LiveKitEventType::UNKNOWN;
 
+    // Unique webhook id from LiveKit payload.
+    std::string event_id;
+
     // LiveKit room corresponds to our voice channel
     ChannelId channel_id;
 
     // User identity from LiveKit participant identity
     UserId user_id;
+
+    // Participant SID from webhook payload.
+    std::string participant_sid;
+
+    // Raw participant metadata string.
+    std::string participant_metadata;
+
+    // Session correlation data parsed from participant metadata.
+    uint64_t app_session_id = 0;
+    std::string intent_nonce;
 
     // The LiveKit node that owns the room (e.g. "ND_xxxx")
     std::string node_id;
@@ -38,7 +52,9 @@ struct LiveKitEvent {
 
     friend std::ostream& operator<<(std::ostream& os, const LiveKitEvent& e) {
         os << "LiveKitEvent{type=" << static_cast<int>(e.type)
-           << ", channel_id=" << e.channel_id.value << ", user_id=" << e.user_id.value
+           << ", event_id=" << e.event_id << ", channel_id=" << e.channel_id.value
+           << ", user_id=" << e.user_id.value << ", participant_sid=" << e.participant_sid
+           << ", app_session_id=" << e.app_session_id << ", intent_nonce=" << e.intent_nonce
            << ", node_id=" << e.node_id << ", timestamp_ms=" << e.timestamp_ms << "}";
         return os;
     }
@@ -50,6 +66,8 @@ inline LiveKitEventType parseLiveKitEvent(const std::string& event) {
     if (event == "room_finished") return LiveKitEventType::ROOM_FINISHED;
     if (event == "participant_joined") return LiveKitEventType::PARTICIPANT_JOINED;
     if (event == "participant_left") return LiveKitEventType::PARTICIPANT_LEFT;
+    if (event == "participant_connection_aborted")
+        return LiveKitEventType::PARTICIPANT_CONNECTION_ABORTED;
 
     return LiveKitEventType::UNKNOWN;
 }

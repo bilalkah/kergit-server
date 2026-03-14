@@ -4,9 +4,6 @@ load("@protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
 proto_library(
     name = "session_proto",
     srcs = ["session.proto"],
-    deps = [
-        "//proto/domain:user_proto",
-    ],
 )
 
 cc_proto_library(
@@ -50,7 +47,6 @@ cc_proto_library(
     deps = [":message_proto"],
     visibility = ["//visibility:public"],
 )
-
 
 proto_library(
     name = "hub_proto",

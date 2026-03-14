@@ -3,6 +3,7 @@ syntax = "proto3";
 package sercom.protocol.domain;
 
 import "proto/domain/channel.proto";
+import "proto/domain/user.proto";
 
 enum HubRole {
     HubRole_UNSPECIFIED = 0;
@@ -11,23 +12,44 @@ enum HubRole {
     HubRole_ADMIN = 3;
 }
 
+/*
+ * Extensible display metadata for a hub.
+ * Contains all mutable, user-facing fields beyond the hub name.
+ */
+message HubMetadata {
+    string avatar_seed = 1;
+    // Future: description, icon_url, banner, etc.
+}
+
+/*
+ * Canonical hub representation.
+ * Identity + name at top level; extensible display fields in metadata.
+ */
 message Hub {
     string id = 1;
     string name = 2;
-    string avatar_seed = 3;
+    HubMetadata metadata = 3;
 }
 
+/*
+ * Hub membership record — pure membership data.
+ * User display info (username, avatar) lives in HubState.users,
+ * looked up via user_id.
+ */
 message HubMember {
     string hub_id = 1;
     string user_id = 2;
-    bool is_online = 3;
-    HubRole role = 4;
-    string display_name = 5;
-    string avatar_seed = 6;
+    HubRole role = 3;
+    bool is_online = 4;
 }
 
+/*
+ * Complete hub snapshot used for bootstrap and join responses.
+ * Clients join members[].user_id → users[].id to resolve display info.
+ */
 message HubState {
     sercom.protocol.domain.Hub hub = 1;
-    repeated sercom.protocol.domain.Channel channels = 2;
-    repeated sercom.protocol.domain.HubMember members = 3;
+    repeated sercom.protocol.domain.HubMember members = 2;
+    repeated sercom.protocol.domain.User users = 3;
+    repeated sercom.protocol.domain.Channel channels = 4;
 }

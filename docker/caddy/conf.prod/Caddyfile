@@ -1,0 +1,141 @@
+(livekit_cors_headers) {
+  Access-Control-Allow-Origin "{http.request.header.Origin}"
+  Access-Control-Allow-Credentials "true"
+  Access-Control-Allow-Methods "GET, OPTIONS"
+  Access-Control-Allow-Headers "Authorization, Content-Type"
+  Vary "Origin"
+}
+
+(browser_origin_allowed) {
+  expression `{header.Origin} == "https://kergit.com"`
+}
+
+(frontend_security_headers) {
+  Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+  X-Frame-Options "DENY"
+  Referrer-Policy "strict-origin-when-cross-origin"
+  Permissions-Policy "geolocation=(), camera=(), microphone=(self), usb=(), payment=(), accelerometer=(), gyroscope=(), magnetometer=()"
+  Content-Security-Policy "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; frame-src 'self'; form-action 'self' https://xxinxxsxutfkqajbmlar.supabase.co; object-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://api.dicebear.com; connect-src 'self' https://xxinxxsxutfkqajbmlar.supabase.co wss://kergit.com; worker-src 'self' blob:; media-src 'self' blob:"
+}
+
+(livekit_gateway) {
+  @allowedOrigin {
+    import browser_origin_allowed
+  }
+
+  @originPresent header Origin *
+
+  handle @allowedOrigin {
+    header {
+      import livekit_cors_headers
+    }
+    reverse_proxy {args.0}
+  }
+
+  handle @originPresent {
+    respond 403
+  }
+
+  reverse_proxy {args.0}
+}
+
+kergit.com {
+
+  tls /certs/cert.pem /certs/key.pem
+
+
+  # -----------------------
+  # CORS preflight handling
+  # -----------------------
+
+  @livekitAllowedPreflight {
+    path /livekit*
+    method OPTIONS
+    import browser_origin_allowed
+  }
+
+  handle @livekitAllowedPreflight {
+    header {
+      import livekit_cors_headers
+    }
+    respond "" 204
+  }
+
+  @livekitPreflight {
+    path /livekit*
+    method OPTIONS
+  }
+  respond @livekitPreflight 403
+
+  @globalOptions method OPTIONS
+  respond @globalOptions 204
+
+
+  # -----------------------
+  # Admin protection
+  # -----------------------
+
+  @adminDenied {
+    path /admin* /admin-api* /admin-livekit-metrics*
+    not remote_ip {$ADMIN_ALLOWED_CIDR:private_ranges} 127.0.0.1/8 ::1
+  }
+  respond @adminDenied 403
+
+
+  # -----------------------
+  # Admin services
+  # -----------------------
+
+  handle_path /admin-api* {
+    reverse_proxy {$ADMIN_CONTROL_TARGET:kergit-ubuntu-server:8081}
+  }
+
+  handle_path /admin-livekit-metrics/node-1* {
+    rewrite * /metrics
+    reverse_proxy {$ADMIN_LIVEKIT_NODE1_METRICS_TARGET:livekit-node1:6789}
+  }
+
+  handle_path /admin-livekit-metrics/node-2* {
+    rewrite * /metrics
+    reverse_proxy {$ADMIN_LIVEKIT_NODE2_METRICS_TARGET:livekit-node2:6790}
+  }
+
+  handle /admin* {
+    reverse_proxy {$ADMIN_APP_TARGET:web-admin-container:3001}
+  }
+
+
+  # -----------------------
+  # Realtime services
+  # -----------------------
+
+  handle_path /livekit-node-1* {
+    import livekit_gateway livekit-node1:7880
+  }
+
+  handle_path /livekit-node-2* {
+    import livekit_gateway livekit-node2:7890
+  }
+
+  handle_path /ws* {
+    reverse_proxy kergit-ubuntu-server:9001 {
+      header_up Host {host}
+      header_up X-Forwarded-For {remote}
+      header_up X-Forwarded-Proto {scheme}
+      header_up Origin {http.request.header.Origin}
+      header_up X-Forwarded-Origin {http.request.header.Origin}
+    }
+  }
+
+
+  # -----------------------
+  # Web frontend
+  # -----------------------
+
+  handle {
+    reverse_proxy web-app-container:3000
+    header {
+      import frontend_security_headers
+    }
+  }
+}

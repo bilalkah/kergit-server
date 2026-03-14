@@ -20,27 +20,43 @@ std::string LiveKitTokenService::mint_participant_token(const ParticipantTokenRe
     video["canSubscribe"] = picojson::value(req.can_subscribe);
     video["canPublishData"] = picojson::value(true);
 
+    picojson::object metadata;
+    metadata["node_id"] = picojson::value(req.node_id);
+    metadata["app_session_id"] = picojson::value(std::to_string(req.app_session_id));
+    metadata["intent_nonce"] = picojson::value(req.intent_nonce);
+    const std::string metadata_json = picojson::value(metadata).serialize();
+
     return jwt::create()
         .set_issuer(api_key_)
         .set_subject(req.identity.value)
         .set_issued_at(now)
         .set_expires_at(exp)
-        .set_payload_claim("metadata", picojson::value(req.node_id))
+        .set_payload_claim("metadata", picojson::value(metadata_json))
         .set_payload_claim("video", jwt::claim(picojson::value(video)))
         .sign(jwt::algorithm::hs256{api_secret_});
 }
 
-std::string LiveKitTokenService::mint_admin_token(std::chrono::seconds ttl) const {
+std::string LiveKitTokenService::mint_admin_token(const AdminTokenRequest& req) const {
     const auto now = std::chrono::system_clock::now();
-    const auto exp = now + ttl;
+    const auto exp = now + req.ttl;
 
     picojson::object video;
-    video["roomAdmin"] = picojson::value(true);
-    video["roomCreate"] = picojson::value(true);
-    video["roomList"] = picojson::value(true);
+    if (req.room.has_value()) {
+        video["room"] = picojson::value(req.room->value);
+    }
+    if (req.room_admin) {
+        video["roomAdmin"] = picojson::value(true);
+    }
+    if (req.room_create) {
+        video["roomCreate"] = picojson::value(true);
+    }
+    if (req.room_list) {
+        video["roomList"] = picojson::value(true);
+    }
 
     return jwt::create()
         .set_issuer(api_key_)
+        .set_subject("server-admin")
         .set_issued_at(now)
         .set_expires_at(exp)
         .set_payload_claim("video", jwt::claim(picojson::value(video)))

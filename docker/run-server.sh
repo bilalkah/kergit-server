@@ -28,14 +28,29 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 COMPOSE_FILE="$REPO_ROOT/docker/docker-compose.yml"
 PROJECT_NAME="${COMPOSE_PROJECT_NAME:-sercom}"
-DEV_CONTAINER="sercom-dev-ubuntu"
+DEV_CONTAINER="kergit-ubuntu-server"
 BAZEL_CONFIG="vanilla"
+CADDY_CONF_DIR="conf.dev"
+LIVEKIT_CONF_SUBDIR="dev"
 
 if [ "$PROD" -eq 1 ]; then
   BAZEL_CONFIG="vanilla_opt"
+  CADDY_CONF_DIR="conf.prod"
+  LIVEKIT_CONF_SUBDIR="prod"
+fi
+
+export CADDY_CONF_DIR
+export LIVEKIT_CONF_SUBDIR
+
+LIVEKIT_CONF_PATH="$REPO_ROOT/livekit/conf/$LIVEKIT_CONF_SUBDIR"
+if [ ! -d "$LIVEKIT_CONF_PATH" ]; then
+  echo "❌ LiveKit config directory not found: $LIVEKIT_CONF_PATH"
+  exit 1
 fi
 
 if [ "$SERVER_ONLY" -eq 0 ]; then
+  echo "▶ Using Caddy config dir: docker/caddy/$CADDY_CONF_DIR (Caddyfile)"
+  echo "▶ Using LiveKit config dir: livekit/conf/$LIVEKIT_CONF_SUBDIR"
   echo "▶ Starting Redis..."
   docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d redis
 

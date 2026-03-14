@@ -1,13 +1,6 @@
 allowed_origins:
   - https://localhost
   - https://localhost:443
-  - https://127.0.0.1
-  - https://127.0.0.1:443
-  - http://localhost:443
-  - http://127.0.0.1:443
-  - http://localhost:3000
-  - http://127.0.0.1:3000
-  - https://7f6540pm-443.euw.devtunnels.ms/
   - https://kergit.com
 
 trusted_proxy_cidrs:

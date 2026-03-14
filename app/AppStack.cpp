@@ -87,7 +87,10 @@ void AppStack::init_services() {
         auto livekit_secret = utils::EnvLoader::get_env("LIVEKIT_API_SECRET", "");
 
         voice_service_ = std::make_unique<services::voice::VoiceService>(
-            livekit_key, livekit_secret, persistence_gateway_->voice_state());
+            livekit_key, livekit_secret, persistence_gateway_->voice_state(), *redis_client_,
+            *session_manager_, *subscription_manager_, *channel_service_, *out_queue_);
+
+        webhook_server_.set_signing_credentials(livekit_key, livekit_secret);
 
         webhook_server_.set_callback([this](const livekit::webhook::LiveKitEvent& event) {
             voice_service_->on_livekit_event(event);

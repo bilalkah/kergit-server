@@ -2,6 +2,7 @@
 
 #include "app/commands/utils.h"
 #include "app/dispatcher/CommandContext.h"
+#include "app/managers/subscription/Topic.h"
 #include "domains/Hub.h"
 #include "utils/Metrics.h"
 
@@ -45,13 +46,8 @@ CommandResult UpdateMemberRoleCommand::execute(CommandContext& ctx, const Comman
         return std::unexpected(CommandError{3, "hub_id, user_id and role are required"});
     }
 
-    auto hub_id_opt = parse_wire_id<HubId>(hub_raw);
-    auto target_id_opt = parse_wire_id<UserId>(user_raw);
-    if (!hub_id_opt || !target_id_opt) {
-        return std::unexpected(CommandError{4, "Invalid hub or user identifier"});
-    }
-    const HubId hub_id = hub_id_opt.value();
-    const UserId target_id = target_id_opt.value();
+    const HubId hub_id{hub_raw};
+    const UserId target_id{user_raw};
 
     auto new_role_opt = parse_role(role_raw);
     if (!new_role_opt.has_value()) {

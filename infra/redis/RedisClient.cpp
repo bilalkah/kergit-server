@@ -20,6 +20,15 @@ void RedisClient::setex(const std::string& key, std::chrono::seconds ttl,
     redis_->setex(key, ttl, value);
 }
 
+bool RedisClient::setnxex(const std::string& key, std::chrono::seconds ttl,
+                          const std::string& value) {
+    if (!redis_->setnx(key, value)) {
+        return false;
+    }
+    redis_->expire(key, ttl.count());
+    return true;
+}
+
 std::optional<std::string> RedisClient::get(const std::string& key) {
     auto val = redis_->get(key);
     if (val) return *val;

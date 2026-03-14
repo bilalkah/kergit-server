@@ -3,16 +3,15 @@
 #include "app/commands/utils.h"
 #include "app/dispatcher/CommandContext.h"
 #include "app/managers/subscription/Topic.h"
-#include "app/proto_builders/EnvelopeBuilders.h"
 #include "domains/Message.h"
 #include "proto/command/message.pb.h"
 #include "proto/domain/message.pb.h"
+#include "proto/domain/user.pb.h"
 #include "proto/envelope.pb.h"
 #include "proto/event/error.pb.h"
 #include "proto/event/message.pb.h"
-#include "utils/EventLogger.h"
 
-#include <chrono>
+#include <cassert>
 #include <string_view>
 #include <vector>
 
@@ -21,135 +20,107 @@ namespace app {
 namespace {
 constexpr std::size_t kMaxMessageLength = 4096;
 
-uint64_t to_epoch_ms(const std::chrono::system_clock::time_point& tp) {
-    if (tp.time_since_epoch().count() == 0) return 0;
-    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(tp.time_since_epoch()).count();
-    return ms > 0 ? static_cast<uint64_t>(ms) : 0;
-}
+std::string make_message_created(CommandContext& ctx, const ChannelId& channel_id,
+                                 const Message& message) {
+    sercom::protocol::event::MessageCreated created;
+    created.set_channel_id(channel_id.value);
 
-sercom::protocol::domain::Message to_proto_message(CommandContext& ctx, const Message& msg) {
-    sercom::protocol::domain::Message out;
-    out.set_id(msg.id.value);
-    out.set_author_id(msg.sender_id.value);
-    out.set_content(msg.text);
-    out.set_created_at_ms(to_epoch_ms(msg.sent_at));
-    return out;
+    auto* proto_message = created.mutable_message();
+    proto_message->set_id(message.id.value);
+    proto_message->set_author_id(message.sender_id.value);
+    proto_message->set_content(message.text);
+    proto_message->set_created_at_ms(to_epoch_ms(message.sent_at));
+
+    auto author_opt = ctx.user_service.getUser(message.sender_id);
+    if (author_opt.has_value()) {
+        auto* author = proto_message->mutable_author();
+        author->set_id(author_opt->id.value);
+        author->mutable_metadata()->set_username(author_opt->username);
+        author->mutable_metadata()->set_avatar_seed(author_opt->avatar_seed);
+    }
+
+    sercom::protocol::Envelope out_env;
+    out_env.set_version(1);
+    out_env.set_type(sercom::protocol::Envelope::MESSAGE_CREATED);
+    created.SerializeToString(out_env.mutable_payload());
+    return out_env.SerializeAsString();
 }
 
 }  // namespace
 
 std::vector<net::outbound::OutgoingMessage> SendMessageCommand::execute(CommandContext& ctx,
                                                                         const queue::Event& evt) {
-    const auto* event = std::get_if<queue::MessageEvent>(&evt);
-    if (!event) {
-        return {};
-    }
+    std::vector<net::outbound::OutgoingMessage> out;
+    assert(std::holds_alternative<queue::MessageEvent>(evt));
+    const auto& event = std::get<queue::MessageEvent>(evt);
 
-    const auto& env = event->payload.env;
-    if (env.type() != sercom::protocol::Envelope::MESSAGE_SEND) {
-        return {};
-    }
+    const auto& env = event.payload.env;
+    assert(env.type() == sercom::protocol::Envelope::MESSAGE_SEND);
 
-    const auto& cmd = require_parsed<sercom::protocol::command::SendMessage>(*event);
+    const auto& cmd = require_parsed<sercom::protocol::command::SendMessage>(event);
 
-    auto user_exp = ctx.session_manager.sessionOfConnection(event->conn_id);
+    auto user_exp = ctx.session_manager.sessionOfConnection(event.conn_id);
     if (!user_exp.has_value()) {
-        return single_outgoing(make_command_error(
-            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_UNAUTHORIZED,
-            "Authenticate first"));
+        out.emplace_back(make_drop_connection(event.conn_id,
+                                              sercom::protocol::event::CommandErrorCode_FORBIDDEN,
+                                              "Authenticate before sending messages"));
+        return out;
     }
     const UserId user_id = user_exp.value();
 
-    if (cmd.content().empty()) {
-        return single_outgoing(make_command_error(
-            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
-            "Message content cannot be empty"));
-    }
-    if (cmd.content().size() > kMaxMessageLength) {
-        return single_outgoing(make_command_error(
-            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
-            "Message exceeds maximum length"));
+    if (cmd.content().empty() || cmd.content().size() > kMaxMessageLength) {
+        out.emplace_back(make_command_error(
+            event.conn_id, env.type(), sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
+            "Message content must be between 1 and " + std::to_string(kMaxMessageLength) +
+                " characters"));
+        return out;
     }
 
-    auto channel_id_opt = parse_wire_id<ChannelId>(cmd.channel_id());
-    if (!channel_id_opt.has_value()) {
-        return single_outgoing(make_command_error(
-            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_NOT_FOUND,
-            "Channel not found"));
-    }
-
-    auto channel_opt = ctx.channel_service.getChannel(*channel_id_opt);
+    const ChannelId ch_id{cmd.channel_id()};
+    auto channel_opt = ctx.channel_service.getChannel(ch_id);
     if (!channel_opt) {
-        return single_outgoing(make_command_error(
-            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_NOT_FOUND,
-            "Channel not found"));
+        out.emplace_back(make_command_error(event.conn_id, env.type(),
+                                            sercom::protocol::event::CommandErrorCode_NOT_FOUND,
+                                            "Channel not found"));
+        return out;
     }
     const HubId hub_id = channel_opt->hub_id;
 
     if (!ctx.hub_service.isHubMember(hub_id, user_id)) {
-        return single_outgoing(make_command_error(
-            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_FORBIDDEN,
-            "Join the hub before sending messages"));
+        out.emplace_back(make_command_error(
+            event.conn_id, env.type(), sercom::protocol::event::CommandErrorCode_FORBIDDEN,
+            "Must be a member of the channel's hub to send messages"));
+        return out;
     }
 
-    if (!connection_has_channel_subscription(ctx.subscription_manager, event->conn_id, hub_id,
-                                             *channel_id_opt)) {
-        return single_outgoing(make_command_error(
-            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
-            "Channel is not active"));
-    }
-
-    // Time the DB/message save operation
-    auto db_start = std::chrono::steady_clock::now();
-    auto saved_exp = ctx.channel_service.sendMessage(*channel_id_opt, user_id, cmd.content());
-    auto db_end = std::chrono::steady_clock::now();
-    auto db_duration_ms =
-        std::chrono::duration_cast<std::chrono::milliseconds>(db_end - db_start).count();
+    auto saved_exp = ctx.channel_service.sendMessage(ch_id, user_id, cmd.content());
 
     if (!saved_exp.has_value()) {
         if (saved_exp.error() == services::ChannelService::MessageError::QueueFull) {
-            return single_outgoing(make_command_error(
-                event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_RATE_LIMITED,
-                "Server is busy, try again"));
+            out.emplace_back(make_command_error(
+                event.conn_id, env.type(), sercom::protocol::event::CommandErrorCode_RATE_LIMITED,
+                "Message queue is full, try again later"));
+        } else {
+            out.emplace_back(make_command_error(
+                event.conn_id, env.type(), sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
+                "Failed to send message"));
         }
-        return single_outgoing(make_command_error(
-            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
-            "Failed to send message"));
+        return out;
     }
     Message saved = std::move(saved_exp.value());
 
-    // Log message sent event with DB timing
-    utils::EventLogger::instance().message_sent(user_id.value, channel_id_opt->value,
-                                                db_duration_ms);
-
-    sercom::protocol::event::MessageCreated created;
-    created.set_channel_id(channel_id_opt->value);
-    *created.mutable_message() = to_proto_message(ctx, saved);
-
-    std::string bytes =
-        proto_builders::serialize_envelope(sercom::protocol::Envelope::MESSAGE_CREATED, created);
+    std::string bytes = make_message_created(ctx, ch_id, saved);
 
     std::vector<GlobalConnId> conns;
-    utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(
-        1, std::memory_order_relaxed);
-    auto subs =
-        ctx.subscription_manager.getSubscribers(Topic::ChannelTopic(hub_id, *channel_id_opt));
-    if (subs) {
-        for (const auto& conn : *subs) {
-            conns.push_back(conn);
-        }
+    auto subs = ctx.subscription_manager.getSubscribers(Topic::ChannelTopic(hub_id, ch_id));
+    conns.reserve(subs->size());
+    for (const auto& sub : *subs) {
+        conns.push_back(sub);
     }
+    out.emplace_back(
+        make_outgoing_message(net::outbound::Target::many(std::move(conns)), std::move(bytes)));
 
-    if (conns.empty()) {
-        return {};
-    }
-
-    return single_outgoing(net::outbound::OutgoingMessage{
-        .target = net::outbound::Target::many(std::move(conns)),
-        .action =
-            net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
-                                  net::outbound::SendPayload{
-                                      .payload = net::outbound::Payload{std::move(bytes), true}}}});
+    return out;
 }
 
 }  // namespace app

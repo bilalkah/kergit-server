@@ -1,18 +1,25 @@
 #ifndef APP_VOICE_VOICESERVICE_H_
 #define APP_VOICE_VOICESERVICE_H_
 
+#include "app/managers/session/SessionManager.h"
+#include "app/managers/subscription/SubscriptionManager.h"
+#include "app/services/channel/ChannelService.h"
 #include "app/services/voice/VoiceSessionManager.h"
 #include "domains/ids/Ids.h"
 #include "infra/persistence/repositories/VoiceStateRepository.h"
+#include "infra/redis/RedisClient.h"
 #include "livekit/crypto/E2EEKeyManager.h"
 #include "livekit/routing/LivekitNodeRegistry.h"
 #include "livekit/token/LiveKitTokenService.h"
 #include "livekit/webhook/LivekitEvent.h"
-#include "proto/event/activity.pb.h"
+#include "net/outbound/IOutBoundSink.h"
 
 #include <chrono>
+#include <cstdint>
 #include <mutex>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 
 namespace app::services::voice {
@@ -20,74 +27,152 @@ namespace app::services::voice {
 /**
  * VoiceService
  *
- * Owns all LiveKit infrastructure (node registry, JWT tokens, E2EE keys)
- * and voice session state (VoiceSessionManager).
+ * Command path responsibilities:
+ *  - validate/takeover control helpers (verified kick)
+ *  - issue tokens with app-session metadata
+ *  - stage Redis pending intents
  *
- * Commands call join_voice / leave_voice.
- * Webhooks call on_livekit_event which updates VoiceSessionManager.
+ * Webhook path responsibilities (authoritative truth):
+ *  - dedup + intent/session correlation
+ *  - mutate VoiceSessionManager
+ *  - persist DB state
+ *  - fanout participants/activity/self-status
  */
 class VoiceService {
    public:
+    struct JoinVoiceToken {
+        std::string token;
+        std::string livekit_url;
+        uint64_t expires_in = 0;
+        std::string e2ee_key;
+    };
+
+    enum class PresenceState : uint8_t {
+        Joined,
+        Left,
+    };
+
+    struct PendingJoinIntent {
+        SessionId session_id = 0;
+        std::string intent_nonce;
+
+        ChannelId to_channel;
+        ChannelId from_channel;
+        bool has_from_channel = false;
+
+        bool muted = false;
+        bool deafened = false;
+
+        bool old_leave_seen = false;
+        bool new_join_seen = false;
+
+        uint64_t expires_at_unix = 0;
+    };
+
     VoiceService(std::string api_key, std::string api_secret,
-                 VoiceStateRepository& voice_state_repo);
+                 VoiceStateRepository& voice_state_repo, infra::redis::RedisClient& redis,
+                 SessionManager& session_manager, SubscriptionManager& subscription_manager,
+                 app::services::ChannelService& channel_service,
+                 net::outbound::IOutboundSink& outbound_sink);
 
     /// Issue a LiveKit token + E2EE key for a user joining a voice channel.
-    /// Returns a fully populated VoiceTokenIssued message (url, token, key).
-    sercom::protocol::event::VoiceTokenIssued join_voice(const ChannelId& channel,
-                                                         const UserId& user);
+    JoinVoiceToken join_voice(const ChannelId& channel, const UserId& user,
+                              SessionId app_session_id,
+                              std::string_view intent_nonce);
+
+    /// Stage pending join/switch intent for webhook correlation.
+    bool stage_pending_join_intent(const UserId& user, const PendingJoinIntent& intent,
+                                   uint64_t expires_in_seconds);
+    void clear_pending_join_intent(const UserId& user);
+
+    /// Admin action: remove-authoritative kick with fallback participant diagnostics.
+    bool verified_kick_user(const ChannelId& channel, const UserId& target);
+
+    /// Admin action: best-effort kick.
+    bool kick_user(const ChannelId& channel, const UserId& target);
 
     /// Called when the last participant leaves a channel.
-    /// Cleans up the E2EE key and releases the node binding.
+    /// Only clears E2EE material.
     void on_channel_empty(const ChannelId& channel);
 
-    /// Admin action: eject a participant from the LiveKit room.
-    bool kick_user(const ChannelId& channel, const UserId& target);
+    /// Final room/node/channel cleanup path.
+    void on_channel_finish(const ChannelId& channel);
 
     /// Called for each incoming LiveKit webhook event.
     void on_livekit_event(const livekit::webhook::LiveKitEvent& event);
 
     /// Called once during bootstrap to recover voice state after a server restart.
-    /// Loads mute/deafen preferences from DB, clears DB, then kicks all LiveKit
-    /// participants so they reconnect with fresh tokens and E2EE keys.
     void recover_from_restart();
 
-    /// Mark that the next participant_left webhook for this user likely belongs
-    /// to the replaced owner session during takeover.
-    void mark_takeover(const UserId& user);
-
-    /// Mark that a ROOM_FINISHED webhook for this channel should be ignored
-    /// because a takeover is in progress and the new session hasn't connected yet.
+    /// Mark that ROOM_FINISHED for this channel should be ignored during takeover race windows.
     void mark_channel_takeover(const ChannelId& channel);
 
-    /// Persist voice join: applies any pending recovery preferences, then upserts to DB.
-    void persist_voice_join(const UserId& user, const ChannelId& channel);
+    /// Persist voice join upsert.
+    void persist_voice_join(const UserId& user, const ChannelId& channel, bool muted,
+                            bool deafened);
 
-    /// Persist voice leave: removes the user's row from DB.
+    /// Persist voice leave.
     void persist_voice_leave(const UserId& user);
 
-    /// Persist mute/deafen state change to DB.
-    void persist_mute_state(const UserId& user, bool muted, bool deafened);
+    /// Returns voice channel start unix time (seconds). 0 means inactive/unknown.
+    uint64_t channel_started_at_unix(const ChannelId& channel) const;
 
-    /// Access the voice session state.
+    /// Access voice session state.
     VoiceSessionManager& sessions() { return sessions_; }
     const VoiceSessionManager& sessions() const { return sessions_; }
 
+    /// Utility for command-path nonce generation.
+    std::string generate_intent_nonce() const;
+
    private:
-    bool consume_takeover_left_guard(const UserId& user);
     bool consume_channel_takeover_guard(const ChannelId& channel);
-    ParticipantState consume_pending_preferences(const UserId& user);
+    bool mark_webhook_event_seen(const std::string& event_id);
+
+    std::optional<PendingJoinIntent> read_pending_join_intent(const UserId& user) const;
+    bool update_pending_join_intent(const UserId& user, const PendingJoinIntent& intent);
+
+    void handle_participant_joined(const livekit::webhook::LiveKitEvent& event);
+    void handle_participant_left(const livekit::webhook::LiveKitEvent& event);
+
+    void publish_participants(const HubId& hub, const ChannelId& channel,
+                              uint64_t started_at_unix);
+    void publish_presence(const HubId& hub, const ChannelId& channel, const UserId& user,
+                          PresenceState state, bool muted, bool deafened);
+    void publish_voice_state(const HubId& hub, const UserId& user, bool muted, bool deafened);
+    void publish_self_status(const UserId& user, bool connected,
+                             const std::optional<SessionId>& owner_session_id,
+                             const std::optional<ChannelId>& channel,
+                             std::optional<SessionId> only_session_id = std::nullopt);
+
+    void set_channel_started_at_unix(const ChannelId& channel, uint64_t started_at_unix);
+    void clear_channel_started_at_unix(const ChannelId& channel);
+    uint64_t read_channel_started_at_unix(const ChannelId& channel) const;
+
+    // Webhook-only fanout. Guarded at runtime; calls outside LiveKit event dispatch are rejected.
+    void emit(net::outbound::OutgoingMessage msg);
+
+    static std::string pending_join_key(const UserId& user);
+    static std::string webhook_seen_key(const std::string& event_id);
 
     VoiceStateRepository& voice_state_repo_;
+    infra::redis::RedisClient& redis_;
+    SessionManager& session_manager_;
+    SubscriptionManager& subscription_manager_;
+    app::services::ChannelService& channel_service_;
+    net::outbound::IOutboundSink& outbound_sink_;
+
     livekit::LiveKitTokenService token_service_;
     livekit::LivekitNodeRegistry nodes_;
     livekit::E2EEKeyManager e2ee_keys_;
     VoiceSessionManager sessions_;
+
     std::mutex takeover_guard_mutex_;
-    std::unordered_map<UserId, std::chrono::steady_clock::time_point> takeover_left_guard_;
     std::unordered_map<ChannelId, std::chrono::steady_clock::time_point> channel_takeover_guard_;
-    std::unordered_map<UserId, ParticipantState> pending_preferences_;
+    mutable std::mutex channel_started_mutex_;
+    std::unordered_map<ChannelId, uint64_t> channel_started_at_unix_;
 
     static constexpr std::chrono::seconds kTakeoverGuardTtl{45};
+    static constexpr std::chrono::seconds kWebhookDedupTtl{24 * 60 * 60};
 };
 
 }  // namespace app::services::voice

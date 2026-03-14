@@ -2,11 +2,12 @@ syntax = "proto3";
 
 package sercom.protocol.event;
 
+import "proto/domain/user.proto";
+
 /*
- * User profile updated.
+ * User profile was updated.
+ * Fanout to the user's own connections and all hub co-members.
  */
 message UserProfileUpdated {
-  string user_id = 1;
-  string username = 2;
-  string avatar_seed = 3;
+    sercom.protocol.domain.User user = 1;
 }

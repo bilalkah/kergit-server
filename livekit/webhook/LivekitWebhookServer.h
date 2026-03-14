@@ -19,6 +19,8 @@ struct Config {
     std::string host{"0.0.0.0"};
     uint16_t port{8080};
     std::string path{"/webhook"};
+    std::string api_key{};
+    std::string api_secret{};
 };
 
 class LivekitWebhookServer : public utils::Loggable {
@@ -28,6 +30,7 @@ class LivekitWebhookServer : public utils::Loggable {
     ~LivekitWebhookServer();
 
     void set_callback(EventCallback cb) { callback_ = std::move(cb); }
+    void set_signing_credentials(std::string api_key, std::string api_secret);
     void start();
     void stop();
 
@@ -42,7 +45,8 @@ class LivekitWebhookServer : public utils::Loggable {
     std::atomic<us_listen_socket_t*> listen_socket_{nullptr};
 
     void run();
-    void handle_body(std::string_view body);
+    bool verify_webhook_signature(std::string_view body, std::string_view auth_header) const;
+    void handle_body(std::string_view body, std::string_view auth_header);
 };
 
 }  // namespace livekit::webhook

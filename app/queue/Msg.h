@@ -57,10 +57,9 @@ inline EventPriority classify_event(const Event& evt) {
                     // Membership truth must remain high priority under overload.
                     case sercom::protocol::Envelope::VOICE_ACTIVITY:
                         return EventPriority::Low;
-                    // Voice membership / presence updates are authoritative.
+                    // Voice membership updates are authoritative.
                     case sercom::protocol::Envelope::VOICE_JOIN:
                     case sercom::protocol::Envelope::VOICE_CHANNEL_PARTICIPANTS:
-                    case sercom::protocol::Envelope::VOICE_CHANNEL_PRESENCE:
                         return EventPriority::High;
                     default:
                         return EventPriority::High;

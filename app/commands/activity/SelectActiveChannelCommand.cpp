@@ -7,6 +7,7 @@
 #include "proto/envelope.pb.h"
 #include "proto/event/error.pb.h"
 
+#include <cassert>
 #include <string_view>
 #include <vector>
 
@@ -14,56 +15,57 @@ namespace app {
 
 std::vector<net::outbound::OutgoingMessage> SelectActiveChannelCommand::execute(
     CommandContext& ctx, const queue::Event& evt) {
-    const auto* event = std::get_if<queue::MessageEvent>(&evt);
-    if (!event) {
-        return {};
-    }
+    std::vector<net::outbound::OutgoingMessage> out;
 
+    assert(std::holds_alternative<queue::MessageEvent>(evt));
+    const auto* event = &std::get<queue::MessageEvent>(evt);
     const auto& env = event->payload.env;
-    if (env.type() != sercom::protocol::Envelope::ACTIVE_CHANNEL) {
-        return {make_drop_connection(event->conn_id,
-                                     sercom::protocol::event::CommandErrorCode_INVALID_FORMAT,
-                                     "Invalid ACTIVE_CHANNEL envelope type")};
-    }
+    assert(env.type() == sercom::protocol::Envelope::ACTIVE_CHANNEL);
 
     const auto& cmd = require_parsed<sercom::protocol::command::SelectActiveChannel>(*event);
 
     auto user_exp = ctx.session_manager.sessionOfConnection(event->conn_id);
     if (!user_exp.has_value()) {
-        return {make_drop_connection(event->conn_id,
-                                     sercom::protocol::event::CommandErrorCode_UNAUTHORIZED,
-                                     "Authenticate first")};
-    }
-    const UserId user_id = user_exp.value();
-
-    auto channel_id_opt = parse_wire_id<ChannelId>(cmd.channel_id());
-    if (!channel_id_opt.has_value()) {
-        return single_outgoing(make_command_error(
-            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_NOT_FOUND,
-            "Channel not found"));
+        out.emplace_back(make_drop_connection(
+            event->conn_id, sercom::protocol::event::CommandErrorCode_UNAUTHORIZED,
+            "Unauthorized: No session associated with this connection"));
+        return out;
     }
 
-    auto channel_opt = ctx.channel_service.getChannel(*channel_id_opt);
+    const ChannelId channel_id{cmd.channel_id()};
+    const HubId hub_id{cmd.hub_id()};
+
+    auto channel_opt = ctx.channel_service.getChannel(channel_id);
     if (!channel_opt.has_value()) {
-        return single_outgoing(make_command_error(
-            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_NOT_FOUND,
-            "Channel not found"));
+        out.emplace_back(make_command_error(event->conn_id, env.type(),
+                                            sercom::protocol::event::CommandErrorCode_NOT_FOUND,
+                                            "Channel not found"));
+        return out;
     }
-    const HubId hub_id = channel_opt->hub_id;
 
+    if (channel_opt->hub_id != hub_id) {
+        out.emplace_back(make_command_error(event->conn_id, env.type(),
+                                            sercom::protocol::event::CommandErrorCode_NOT_FOUND,
+                                            "Channel not found"));
+        return out;
+    }
+
+    const UserId user_id = user_exp.value();
     if (!ctx.hub_service.isHubMember(hub_id, user_id)) {
-        return single_outgoing(make_command_error(
-            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_FORBIDDEN,
-            "Join the hub before selecting a channel"));
+        out.emplace_back(make_command_error(event->conn_id, env.type(),
+                                            sercom::protocol::event::CommandErrorCode_FORBIDDEN,
+                                            "Join the hub before selecting a channel"));
+        return out;
     }
 
-    unsubscribe_connection_from_channel_topics(ctx.subscription_manager, event->conn_id);
+    ctx.subscription_manager.unsubscribeConnection(event->conn_id,
+                                                   Topic::ChannelTopic(hub_id, channel_id));
 
     ctx.subscription_manager.subscribeConnection(event->conn_id,
-                                                 Topic::ChannelTopic(hub_id, *channel_id_opt));
-    ctx.session_manager.joinTextChannel(user_id, hub_id);
+                                                 Topic::ChannelTopic(hub_id, channel_id));
+    ctx.session_manager.joinTextChannel(user_id, hub_id, channel_id);
 
-    return {};
+    return out;
 }
 
 }  // namespace app

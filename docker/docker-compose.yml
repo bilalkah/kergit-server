@@ -29,7 +29,7 @@ services:
 
   ubuntu-dev:
     build: .
-    container_name: sercom-dev-ubuntu
+    container_name: kergit-ubuntu-server
     volumes:
       - ../:/root/workspace:cached
       - ccache:/root/.ccache
@@ -66,7 +66,7 @@ services:
       - "7881:7881"
       - "50000-50100:50000-50100/udp"
     volumes:
-      - ../livekit/conf/lan_node1.yaml:/config/livekit.yaml:ro
+      - ../livekit/conf/${LIVEKIT_CONF_SUBDIR:-dev}/lan_node1.yaml:/config/livekit.yaml:ro
     restart: unless-stopped
     depends_on:
       - redis
@@ -80,7 +80,7 @@ services:
       - "7891:7891"
       - "50101-50200:50101-50200/udp"
     volumes:
-      - ../livekit/conf/lan_node2.yaml:/config/livekit.yaml:ro
+      - ../livekit/conf/${LIVEKIT_CONF_SUBDIR:-dev}/lan_node2.yaml:/config/livekit.yaml:ro
     restart: unless-stopped
     depends_on:
       - redis
@@ -90,18 +90,18 @@ services:
     image: caddy:2
     container_name: livekit-caddy
     ports:
+      - "80:80"
       - "443:443"
-      - "443:443/udp"
     environment:
       - ADMIN_ALLOWED_CIDR=${ADMIN_ALLOWED_CIDR:-private_ranges}
       - ADMIN_APP_TARGET=${ADMIN_APP_TARGET:-host.docker.internal:3001}
-      - ADMIN_CONTROL_TARGET=${ADMIN_CONTROL_TARGET:-sercom-dev-ubuntu:8081}
+      - ADMIN_CONTROL_TARGET=${ADMIN_CONTROL_TARGET:-kergit-ubuntu-server:8081}
       - ADMIN_LIVEKIT_NODE1_METRICS_TARGET=${ADMIN_LIVEKIT_NODE1_METRICS_TARGET:-livekit-node1:6789}
       - ADMIN_LIVEKIT_NODE2_METRICS_TARGET=${ADMIN_LIVEKIT_NODE2_METRICS_TARGET:-livekit-node2:6790}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - ./caddy/conf:/etc/caddy
+      - ./caddy/${CADDY_CONF_DIR:-conf.dev}:/etc/caddy:ro
       - ./caddy/data:/data
       - ../certs:/certs:ro
     restart: unless-stopped

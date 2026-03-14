@@ -3,69 +3,63 @@
 #include "app/commands/utils.h"
 #include "app/dispatcher/CommandContext.h"
 #include "app/managers/subscription/Topic.h"
-#include "app/proto_builders/EnvelopeBuilders.h"
 #include "domains/Hub.h"
 #include "proto/command/hub.pb.h"
 #include "proto/envelope.pb.h"
 #include "proto/event/error.pb.h"
 #include "proto/event/hub.pb.h"
 
+#include <cassert>
 #include <vector>
 
 namespace app {
 
 std::vector<net::outbound::OutgoingMessage> LeaveHubCommand::execute(CommandContext& ctx,
                                                                      const queue::Event& evt) {
-    const auto* event = std::get_if<queue::MessageEvent>(&evt);
-    if (!event) {
-        return {};
-    }
-
+    std::vector<net::outbound::OutgoingMessage> out;
+    assert(std::holds_alternative<queue::MessageEvent>(evt));
+    const auto* event = &std::get<queue::MessageEvent>(evt);
     const auto& env = event->payload.env;
-    if (env.type() != sercom::protocol::Envelope::HUB_LEAVE) {
-        return {};
-    }
+    assert(env.type() == sercom::protocol::Envelope::HUB_LEAVE);
 
     const auto& cmd = require_parsed<sercom::protocol::command::LeaveHub>(*event);
 
     auto user_exp = ctx.session_manager.sessionOfConnection(event->conn_id);
     if (!user_exp.has_value()) {
-        return single_outgoing(make_command_error(
+        out.emplace_back(make_command_error(
             event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_UNAUTHORIZED,
             "Authenticate first"));
+        return out;
     }
+    
     const UserId user_id = user_exp.value();
-
-    auto hub_id_opt = parse_wire_id<HubId>(cmd.hub_id());
-    if (!hub_id_opt.has_value()) {
-        return single_outgoing(make_command_error(
-            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_NOT_FOUND,
-            "Hub not found"));
-    }
-    const HubId hub_id = hub_id_opt.value();
-
+    const HubId hub_id{cmd.hub_id()};
     auto role = ctx.hub_service.getMembershipRole(hub_id, user_id);
     if (!role) {
-        return single_outgoing(make_command_error(
+        out.emplace_back(make_command_error(
             event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_FORBIDDEN,
             "Join the hub before leaving it"));
+        return out;
     }
     if (*role == Role::OWNER) {
-        return single_outgoing(make_command_error(
+        out.emplace_back(make_command_error(
             event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_FORBIDDEN,
             "Owners must transfer ownership before leaving"));
+        return out;
     }
 
     try {
         ctx.hub_service.removeMember(hub_id, user_id);
     } catch (const std::exception& ex) {
-        return single_outgoing(make_command_error(
+        out.emplace_back(make_command_error(
             event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
             ex.what()));
+        return out;
     } catch (...) {
-        return single_outgoing(make_command_error(
+        out.emplace_back(make_command_error(
             event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
             "Failed to leave hub"));
+        return out;
     }
 
     const auto channels = ctx.channel_service.getHubChannels(hub_id);
@@ -105,15 +99,19 @@ std::vector<net::outbound::OutgoingMessage> LeaveHubCommand::execute(CommandCont
     left.set_hub_id(hub_id.value);
     left.set_user_id(user_id.value);
 
-    std::string bytes =
-        proto_builders::serialize_envelope(sercom::protocol::Envelope::HUB_MEMBER_LEFT, left);
+    sercom::protocol::Envelope out_env;
+    out_env.set_version(1);
+    out_env.set_type(sercom::protocol::Envelope::HUB_MEMBER_LEFT);
+    left.SerializeToString(out_env.mutable_payload());
+    std::string bytes = out_env.SerializeAsString();
 
-    return single_outgoing(net::outbound::OutgoingMessage{
+    out.emplace_back(net::outbound::OutgoingMessage{
         .target = net::outbound::Target::many(std::move(conns)),
         .action =
             net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
                                   net::outbound::SendPayload{
                                       .payload = net::outbound::Payload{std::move(bytes), true}}}});
+    return out;
 }
 
 }  // namespace app
