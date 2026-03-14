@@ -26,37 +26,28 @@ std::vector<net::outbound::OutgoingMessage> BootstrapCommand::execute(CommandCon
 
     const UserId user_id = event->user_id;
     if (user_id.value.empty()) {
-        out.emplace_back(net::outbound::OutgoingMessage{
-            .target = net::outbound::Target::one(event->conn_id),
-            .action = net::outbound::Action{
-                std::in_place_type<net::outbound::DropConnection>,
-                static_cast<int>(
-                    sercom::protocol::event::CommandErrorCode::CommandErrorCode_UNAUTHORIZED),
-                "missing_user_id"}});
+        out.emplace_back(make_drop_connection(
+            event->conn_id,
+            sercom::protocol::event::CommandErrorCode::CommandErrorCode_UNAUTHORIZED,
+            "Authenticate first"));
         return out;
     }
 
     auto db_user = ctx.user_service.getUser(user_id);
     if (!db_user) {
-        out.emplace_back(net::outbound::OutgoingMessage{
-            .target = net::outbound::Target::one(event->conn_id),
-            .action = net::outbound::Action{
-                std::in_place_type<net::outbound::DropConnection>,
-                static_cast<int>(
-                    sercom::protocol::event::CommandErrorCode::CommandErrorCode_UNAUTHORIZED),
-                "User not found"}});
+        out.emplace_back(make_drop_connection(
+            event->conn_id,
+            sercom::protocol::event::CommandErrorCode::CommandErrorCode_UNAUTHORIZED,
+            "User not found"));
         return out;
     }
 
     auto session_id_exp = ctx.session_manager.sessionIdOfConnection(event->conn_id);
     if (!session_id_exp.has_value()) {
-        out.emplace_back(net::outbound::OutgoingMessage{
-            .target = net::outbound::Target::one(event->conn_id),
-            .action = net::outbound::Action{
-                std::in_place_type<net::outbound::DropConnection>,
-                static_cast<int>(
-                    sercom::protocol::event::CommandErrorCode::CommandErrorCode_UNAUTHORIZED),
-                "missing_internal_session_id"}});
+        out.emplace_back(make_drop_connection(
+            event->conn_id,
+            sercom::protocol::event::CommandErrorCode::CommandErrorCode_UNAUTHORIZED,
+            "Session not found"));
         return out;
     }
     const SessionId session_id = session_id_exp.value();
@@ -88,7 +79,8 @@ std::vector<net::outbound::OutgoingMessage> BootstrapCommand::execute(CommandCon
         hub_state->mutable_hub()->mutable_metadata()->set_avatar_seed(hub.avatar_seed);
 
         const auto snapshot = ctx.hub_service.getOrBuildSnapshot(hub.id);
-        for (const auto& channel : snapshot.channels) {
+        const auto channels = ctx.channel_service.getHubChannels(hub.id);
+        for (const auto& channel : channels) {
             auto* ch = hub_state->add_channels();
             ch->set_id(channel.id.value);
             ch->set_hub_id(hub.id.value);
@@ -119,7 +111,7 @@ std::vector<net::outbound::OutgoingMessage> BootstrapCommand::execute(CommandCon
             }
         }
 
-        for (const auto& channel : snapshot.channels) {
+        for (const auto& channel : channels) {
             if (channel.type != ChannelType::VOICE) continue;
             const auto participants =
                 ctx.voice_service.sessions().participants_in_channel(channel.id);
@@ -128,7 +120,8 @@ std::vector<net::outbound::OutgoingMessage> BootstrapCommand::execute(CommandCon
             auto* voice_snapshot = bootstrap.add_voice_channels();
             voice_snapshot->mutable_channel()->set_hub_id(hub.id.value);
             voice_snapshot->mutable_channel()->set_channel_id(channel.id.value);
-            voice_snapshot->set_started_at_unix(ctx.voice_service.channel_started_at_unix(channel.id));
+            voice_snapshot->set_started_at_unix(
+                ctx.voice_service.channel_started_at_unix(channel.id));
             for (const auto& participant : participants) {
                 auto* out_participant = voice_snapshot->add_participants();
                 out_participant->set_user_id(participant.user_id.value);
@@ -155,14 +148,10 @@ std::vector<net::outbound::OutgoingMessage> BootstrapCommand::execute(CommandCon
             }
 
             if (!targets.empty()) {
-                std::string bytes = ctx.hub_notifier.memberOnline(hub.id, user_id);
+                std::string bytes = make_member_presence(hub.id, user_id, true);
 
-                out.emplace_back();
-                auto& msg = out.back();
-                msg.priority = net::outbound::OutboundPriority::High;
-                msg.target = net::outbound::Target::many(std::move(targets));
-                msg.action.emplace<net::outbound::SendPayload>(net::outbound::SendPayload{
-                    .payload = net::outbound::Payload{std::move(bytes), true}});
+                out.emplace_back(make_outgoing_message(
+                    net::outbound::Target::many(std::move(targets)), std::move(bytes)));
             }
         }
     }
@@ -174,12 +163,8 @@ std::vector<net::outbound::OutgoingMessage> BootstrapCommand::execute(CommandCon
     bootstrap.SerializeToString(bootstrap_env.mutable_payload());
     std::string out_bytes = bootstrap_env.SerializeAsString();
 
-    out.emplace_back();
-    auto& msg = out.back();
-    msg.target = net::outbound::Target::one(event->conn_id);
-    msg.priority = net::outbound::OutboundPriority::High;
-    msg.action.emplace<net::outbound::SendPayload>(
-        net::outbound::SendPayload{.payload = net::outbound::Payload{std::move(out_bytes), true}});
+    out.emplace_back(
+        make_outgoing_message(net::outbound::Target::one(event->conn_id), std::move(out_bytes)));
 
     sercom::protocol::event::VoiceSelfStatus self_status;
     const auto voice_channel = ctx.voice_service.sessions().user_channel(user_id);
@@ -198,13 +183,8 @@ std::vector<net::outbound::OutgoingMessage> BootstrapCommand::execute(CommandCon
     self_status_env.set_type(sercom::protocol::Envelope::VOICE_SELF_STATUS);
     self_status.SerializeToString(self_status_env.mutable_payload());
     std::string self_status_bytes = self_status_env.SerializeAsString();
-    out.push_back(net::outbound::OutgoingMessage{
-        .target = net::outbound::Target::one(event->conn_id),
-        .action = net::outbound::Action{
-            std::in_place_type<net::outbound::SendPayload>,
-            net::outbound::SendPayload{
-                .payload = net::outbound::Payload{std::move(self_status_bytes), true}}}});
-    out.back().priority = net::outbound::OutboundPriority::High;
+    out.emplace_back(make_outgoing_message(net::outbound::Target::one(event->conn_id),
+                                           std::move(self_status_bytes)));
     return out;
 }
 

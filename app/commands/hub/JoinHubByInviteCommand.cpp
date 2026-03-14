@@ -93,25 +93,11 @@ std::vector<net::outbound::OutgoingMessage> JoinHubByInviteCommand::execute(
     ctx.subscription_manager.subscribeConnection(event->conn_id, Topic::HubTopic(hub_id));
 
     if (already_member) {
-        sercom::protocol::event::HubAlreadyMember already;
-        auto* member = already.mutable_self_member();
-        member->set_hub_id(hub_id.value);
-        member->set_user_id(user_id.value);
-        member->set_is_online(true);
-        member->set_role(to_proto_hub_role(ctx.hub_service.getMembershipRole(hub_id, user_id)));
+        std::string already_bytes = make_hub_already_member(
+            hub_id, user_id, ctx.hub_service.getMembershipRole(hub_id, user_id).value_or(Role::USER),
+            true);
 
-        sercom::protocol::Envelope already_env;
-        already_env.set_version(1);
-        already_env.set_type(sercom::protocol::Envelope::HUB_ALREADY_MEMBER);
-        already.SerializeToString(already_env.mutable_payload());
-        std::string already_bytes = already_env.SerializeAsString();
-
-        out.emplace_back(net::outbound::OutgoingMessage{
-            .target = net::outbound::Target::one(event->conn_id),
-            .action = net::outbound::Action{
-                std::in_place_type<net::outbound::SendPayload>,
-                net::outbound::SendPayload{
-                    .payload = net::outbound::Payload{std::move(already_bytes), true}}}});
+        out.emplace_back(make_outgoing_message(net::outbound::Target::one(event->conn_id), std::move(already_bytes)));
         return out;
     }
 
@@ -165,11 +151,7 @@ std::vector<net::outbound::OutgoingMessage> JoinHubByInviteCommand::execute(
     bootstrap.SerializeToString(joined_env.mutable_payload());
     std::string joined_bytes = joined_env.SerializeAsString();
 
-    out.emplace_back();
-    auto& joined_msg = out.back();
-    joined_msg.target = net::outbound::Target::one(event->conn_id);
-    joined_msg.action.emplace<net::outbound::SendPayload>(net::outbound::SendPayload{
-        .payload = net::outbound::Payload{std::move(joined_bytes), true}});
+    out.emplace_back(make_outgoing_message(net::outbound::Target::one(event->conn_id), std::move(joined_bytes)));
 
     if (!already_member) {
         utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(
@@ -188,16 +170,12 @@ std::vector<net::outbound::OutgoingMessage> JoinHubByInviteCommand::execute(
                 if (auto user = ctx.user_service.getUser(user_id)) {
                     avatar = user->avatar_seed;
                 }
-                std::string bytes = ctx.hub_notifier.memberJoined(
+                std::string bytes = make_member_join(
                     hub_id, user_id,
                     ctx.hub_service.getMembershipRole(hub_id, user_id).value_or(Role::USER),
                     display, avatar, true);
 
-                out.emplace_back();
-                auto& member_msg = out.back();
-                member_msg.target = net::outbound::Target::many(std::move(conns));
-                member_msg.action.emplace<net::outbound::SendPayload>(net::outbound::SendPayload{
-                    .payload = net::outbound::Payload{std::move(bytes), true}});
+                out.emplace_back(make_outgoing_message(net::outbound::Target::many(std::move(conns)), std::move(bytes)));
             }
         }
     }

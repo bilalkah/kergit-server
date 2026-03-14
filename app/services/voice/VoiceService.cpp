@@ -1,5 +1,6 @@
 #include "app/services/voice/VoiceService.h"
 
+#include "app/commands/utils.h"
 #include "app/managers/subscription/Topic.h"
 #include "livekit/cli/LivekitClient.h"
 #include "proto/envelope.pb.h"
@@ -131,14 +132,6 @@ std::string make_voice_self_status_disconnected() {
     std::string bytes;
     env.SerializeToString(&bytes);
     return bytes;
-}
-
-net::outbound::OutgoingMessage make_outgoing(net::outbound::Target target, std::string bytes) {
-    return net::outbound::OutgoingMessage{
-        .target = std::move(target),
-        .action = net::outbound::Action{
-            std::in_place_type<net::outbound::SendPayload>,
-            net::outbound::SendPayload{.payload = net::outbound::Payload{std::move(bytes), true}}}};
 }
 
 bool contains_participant(const std::vector<livekit::cli::ParticipantInfo>& participants,
@@ -509,9 +502,9 @@ void VoiceService::publish_participants(const HubId& hub, const ChannelId& chann
 
     auto participants = sessions_.participants_in_channel(channel);
     std::vector<GlobalConnId> conns{subs->begin(), subs->end()};
-    auto msg = make_outgoing(net::outbound::Target::many(std::move(conns)),
-                             make_voice_channel_participants(hub, channel, participants,
-                                                             started_at_unix));
+    auto msg = ::app::make_outgoing_message(
+        net::outbound::Target::many(std::move(conns)),
+        make_voice_channel_participants(hub, channel, participants, started_at_unix));
     emit(std::move(msg));
 }
 
@@ -523,9 +516,10 @@ void VoiceService::publish_presence(const HubId& hub, const ChannelId& channel, 
     if (!subs || subs->empty()) return;
 
     std::vector<GlobalConnId> conns{subs->begin(), subs->end()};
-    auto msg = make_outgoing(net::outbound::Target::many(std::move(conns)),
-                             make_voice_activity(hub.value, channel.value, user.value, muted,
-                                                 deafened, to_proto_presence_state(state)));
+    auto msg = ::app::make_outgoing_message(
+        net::outbound::Target::many(std::move(conns)),
+        make_voice_activity(hub.value, channel.value, user.value, muted, deafened,
+                            to_proto_presence_state(state)));
     emit(std::move(msg));
 }
 
@@ -537,8 +531,8 @@ void VoiceService::publish_voice_state(const HubId& hub, const UserId& user, boo
     if (!subs || subs->empty()) return;
 
     std::vector<GlobalConnId> conns{subs->begin(), subs->end()};
-    auto msg = make_outgoing(net::outbound::Target::many(std::move(conns)),
-                             make_voice_state(user.value, muted, deafened));
+    auto msg = ::app::make_outgoing_message(net::outbound::Target::many(std::move(conns)),
+                                            make_voice_state(user.value, muted, deafened));
     emit(std::move(msg));
 }
 
@@ -563,7 +557,8 @@ void VoiceService::publish_self_status(const UserId& user, bool connected,
         }
 
         auto msg =
-            make_outgoing(net::outbound::Target::many(std::move(session_conns)), std::move(bytes));
+            ::app::make_outgoing_message(net::outbound::Target::many(std::move(session_conns)),
+                                         std::move(bytes));
         emit(std::move(msg));
     }
 }

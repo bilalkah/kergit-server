@@ -18,43 +18,47 @@ std::optional<Channel> ChannelService::getChannel(const ChannelId& channelId) {
     if (hub_service_) {
         if (auto hit = hub_service_->tryGetSnapshotChannel(channelId)) {
             const auto& [hub_id, ch] = *hit;
-            // utils::log_line(utils::LogLevel::INFO,
-            //                 "channel_snapshot hit channel_id=" + channelId.value +
-            //                     " hub_id=" + hub_id.value);
-            Channel channel{ch.name, ch.id, hub_id, ch.type};
+
+            std::string channel_name;
+            if (auto cached = cache_->get(channelId)) {
+                channel_name = cached->name;
+            } else if (auto from_repo = repo_.getChannel(channelId)) {
+                channel_name = from_repo->name;
+            } else {
+                return std::nullopt;
+            }
+
+            Channel channel{std::move(channel_name), ch.id, hub_id, ch.type};
             cache_->put(channel);
             return channel;
         }
 
-        // utils::log_line(utils::LogLevel::INFO,
-        //                 "channel_snapshot miss channel_id=" + channelId.value + " build=true");
-
-        // No snapshot yet; use cached hub_id if available to build the snapshot.
         auto cachedChannel = cache_->get(channelId);
         if (cachedChannel) {
             const auto snapshot = hub_service_->getOrBuildSnapshot(cachedChannel->hub_id);
             for (const auto& ch : snapshot.channels) {
                 if (ch.id == channelId) {
-                    Channel channel{ch.name, ch.id, snapshot.id, ch.type};
+                    Channel channel{cachedChannel->name, ch.id, snapshot.id, ch.type};
                     cache_->put(channel);
                     return channel;
                 }
             }
-            return std::nullopt;
         }
 
-        // Snapshot requires hub_id; fall back to DB lookup to discover owning hub.
         auto channelOpt = repo_.getChannel(channelId);
         if (!channelOpt) return std::nullopt;
         const auto snapshot = hub_service_->getOrBuildSnapshot(channelOpt->hub_id);
         for (const auto& ch : snapshot.channels) {
             if (ch.id == channelId) {
-                Channel channel{ch.name, ch.id, snapshot.id, ch.type};
+                Channel channel{channelOpt->name, ch.id, snapshot.id, ch.type};
                 cache_->put(channel);
                 return channel;
             }
         }
-        return std::nullopt;
+
+        // Snapshot may lag on corner races; return repository result as fallback.
+        cache_->put(*channelOpt);
+        return channelOpt;
     }
 
     // utils::log_line(utils::LogLevel::INFO,
@@ -72,32 +76,13 @@ std::optional<Channel> ChannelService::getChannel(const ChannelId& channelId) {
 }
 
 std::vector<Channel> ChannelService::getHubChannels(const HubId& hubId) {
-    if (hub_service_) {
-        if (auto cached = hub_service_->tryGetSnapshot(hubId)) {
-            // utils::log_line(utils::LogLevel::INFO,
-            //                 "channel_snapshot hit hub_id=" + hubId.value);
-            std::vector<Channel> chans;
-            chans.reserve(cached->channels.size());
-            for (const auto& ch : cached->channels) {
-                chans.emplace_back(ch.name, ch.id, hubId, ch.type);
-            }
-            return chans;
-        }
-        // utils::log_line(utils::LogLevel::INFO,
-        //                 "channel_snapshot miss hub_id=" + hubId.value + " build=true");
-        const auto snapshot = hub_service_->getOrBuildSnapshot(hubId);
-        std::vector<Channel> chans;
-        chans.reserve(snapshot.channels.size());
-        for (const auto& ch : snapshot.channels) {
-            chans.emplace_back(ch.name, ch.id, hubId, ch.type);
-        }
-        return chans;
+    // Channel names are mutable and intentionally not cached in HubSnapshot.
+    // Always read current names from repository for channel listings.
+    auto channels = repo_.getHubChannels(hubId);
+    for (const auto& channel : channels) {
+        cache_->put(channel);
     }
-
-    // utils::log_line(utils::LogLevel::INFO,
-    //                 "channel_snapshot fallback hub_id=" + hubId.value + " source=db");
-    // No HubService wired; fall back to DB read for hub channels.
-    return repo_.getHubChannels(hubId);
+    return channels;
 }
 
 ChannelId ChannelService::createChannel(const HubId& hubId, const std::string& name,

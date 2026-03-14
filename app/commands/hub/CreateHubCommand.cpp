@@ -6,14 +6,12 @@
 #include "domains/Hub.h"
 #include "proto/command/hub.pb.h"
 #include "proto/domain/channel.pb.h"
-#include "proto/domain/hub.pb.h"
-#include "proto/envelope.pb.h"
 #include "proto/event/error.pb.h"
-#include "proto/event/hub.pb.h"
 
 #include <algorithm>
 #include <cassert>
 #include <cctype>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -69,41 +67,23 @@ std::vector<net::outbound::OutgoingMessage> CreateHubCommand::execute(CommandCon
 
     ctx.subscription_manager.subscribeConnection(event->conn_id, Topic::HubTopic(hub_id));
 
-    sercom::protocol::event::HubCreated created;
-    created.mutable_hub()->set_id(hub_id.value);
-    created.mutable_hub()->set_name(name);
+    std::string avatar_seed;
     if (auto hub = ctx.hub_service.getHub(hub_id)) {
-        created.mutable_hub()->mutable_metadata()->set_avatar_seed(hub->avatar_seed);
+        avatar_seed = hub->avatar_seed;
     }
 
-    auto* self = created.mutable_self_member();
-    self->set_hub_id(hub_id.value);
-    self->set_user_id(user_id.value);
-    self->set_is_online(true);
-    self->set_role(to_proto_hub_role(ctx.hub_service.getMembershipRole(hub_id, user_id)));
-
+    std::optional<Channel> default_channel;
     const auto channels = ctx.channel_service.getHubChannels(hub_id);
     if (!channels.empty()) {
-        const auto& channel = channels.front();
-        auto* ch = created.mutable_channel();
-        ch->set_id(channel.id.value);
-        ch->set_hub_id(hub_id.value);
-        ch->set_type(to_proto_channel_type(channel.type));
-        ch->mutable_metadata()->set_name(channel.name);
+        default_channel = channels.front();
     }
 
-    sercom::protocol::Envelope out_env;
-    out_env.set_version(1);
-    out_env.set_type(sercom::protocol::Envelope::HUB_CREATED);
-    created.SerializeToString(out_env.mutable_payload());
-    std::string bytes = out_env.SerializeAsString();
+    const auto self_role = ctx.hub_service.getMembershipRole(hub_id, user_id).value_or(Role::USER);
+    std::string bytes =
+        make_hub_create(hub_id, name, avatar_seed, user_id, self_role, true,
+                                 default_channel);
 
-    out.emplace_back(net::outbound::OutgoingMessage{
-        .target = net::outbound::Target::one(event->conn_id),
-        .action =
-            net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
-                                  net::outbound::SendPayload{
-                                      .payload = net::outbound::Payload{std::move(bytes), true}}}});
+    out.emplace_back(make_outgoing_message(net::outbound::Target::one(event->conn_id), std::move(bytes)));
     return out;
 }
 

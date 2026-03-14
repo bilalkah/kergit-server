@@ -76,7 +76,7 @@ std::vector<net::outbound::OutgoingMessage> DeleteHubCommand::execute(CommandCon
         conns.push_back(conn);
     }
 
-    std::string bytes = ctx.hub_notifier.hubRemoved(hub_id);
+    std::string bytes = make_hub_remove(hub_id);
 
     ctx.subscription_manager.removeAllForTopic(Topic::HubTopic(hub_id));
     for (const auto& ch : channels) {

@@ -7,9 +7,7 @@
 // include services headers
 #include "app/services/auth/AuthService.h"
 #include "app/services/channel/ChannelService.h"
-#include "app/services/hub/HubNotifier.h"
 #include "app/services/hub/HubService.h"
-#include "app/services/hub/SnapshotBuilder.h"
 #include "app/services/invite/InviteService.h"
 #include "app/services/presence/PresenceService.h"
 #include "app/services/user/UserService.h"
@@ -25,8 +23,6 @@ struct CommandContext {
     services::AuthService& auth_service;
     services::ChannelService& channel_service;
     services::HubService& hub_service;
-    services::HubNotifier& hub_notifier;
-    services::HubSnapshotBuilder& hub_snapshot_builder;
     services::voice::VoiceService& voice_service;
     services::UserService& user_service;
     services::PresenceService& presence_manager;

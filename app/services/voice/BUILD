@@ -12,6 +12,7 @@ cc_library(
     ],
     copts = ["-std=gnu++23"],
     deps = [
+        "//app/commands:utils",
         "//domains/ids:domain_ids",
         "//infra/persistence:persistence_gateway_lib",
         "//infra/redis:redis_client",

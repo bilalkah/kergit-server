@@ -69,7 +69,7 @@ std::vector<net::outbound::OutgoingMessage> RemoveChannelCommand::execute(Comman
 
     ctx.subscription_manager.removeAllForTopic(Topic::ChannelTopic(hub_id, channel.id));
 
-    std::string bytes = ctx.hub_notifier.channelRemoved(hub_id, channel.id);
+    std::string bytes = make_channel_remove(hub_id, channel.id);
 
     utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(
         1, std::memory_order_relaxed);
@@ -87,12 +87,7 @@ std::vector<net::outbound::OutgoingMessage> RemoveChannelCommand::execute(Comman
         return {};
     }
 
-    out.emplace_back(net::outbound::OutgoingMessage{
-        .target = net::outbound::Target::many(std::move(conns)),
-        .action =
-            net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
-                                  net::outbound::SendPayload{
-                                      .payload = net::outbound::Payload{std::move(bytes), true}}}});
+    out.emplace_back(make_outgoing_message(net::outbound::Target::many(std::move(conns)), std::move(bytes)));
     return out;
 }
 

@@ -27,9 +27,9 @@ std::vector<net::outbound::OutgoingMessage> CreateChannelCommand::execute(Comman
 
     auto user_exp = ctx.session_manager.sessionOfConnection(event->conn_id);
     if (!user_exp.has_value()) {
-        out.emplace_back(make_command_error(
-            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_UNAUTHORIZED,
-            "Authenticate first"));
+        out.emplace_back(make_command_error(event->conn_id, env.type(),
+                                            sercom::protocol::event::CommandErrorCode_UNAUTHORIZED,
+                                            "Authenticate first"));
         return out;
     }
     const UserId user_id = user_exp.value();
@@ -46,17 +46,17 @@ std::vector<net::outbound::OutgoingMessage> CreateChannelCommand::execute(Comman
     }
 
     if (!ctx.hub_service.isHubMember(hub_id, user_id)) {
-        out.emplace_back(make_command_error(
-            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_FORBIDDEN,
-            "Join the hub before creating channels"));
+        out.emplace_back(make_command_error(event->conn_id, env.type(),
+                                            sercom::protocol::event::CommandErrorCode_FORBIDDEN,
+                                            "Join the hub before creating channels"));
         return out;
     }
 
     auto role = ctx.hub_service.getMembershipRole(hub_id, user_id);
     if (!role || (*role != Role::OWNER && *role != Role::ADMIN)) {
-        out.emplace_back(make_command_error(
-            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_FORBIDDEN,
-            "Only admins/owners can create channels"));
+        out.emplace_back(make_command_error(event->conn_id, env.type(),
+                                            sercom::protocol::event::CommandErrorCode_FORBIDDEN,
+                                            "Only admins/owners can create channels"));
         return out;
     }
 
@@ -91,7 +91,7 @@ std::vector<net::outbound::OutgoingMessage> CreateChannelCommand::execute(Comman
     }
 
     Channel created_channel{name, created, hub_id, channel_type};
-    std::string bytes = ctx.hub_notifier.channelCreated(hub_id, created_channel);
+    std::string bytes = make_channel_create(hub_id, created_channel);
 
     utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(
         1, std::memory_order_relaxed);
@@ -109,12 +109,8 @@ std::vector<net::outbound::OutgoingMessage> CreateChannelCommand::execute(Comman
         return {};
     }
 
-    out.emplace_back(net::outbound::OutgoingMessage{
-        .target = net::outbound::Target::many(std::move(conns)),
-        .action =
-            net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
-                                  net::outbound::SendPayload{
-                                      .payload = net::outbound::Payload{std::move(bytes), true}}}});
+    out.emplace_back(
+        make_outgoing_message(net::outbound::Target::many(std::move(conns)), std::move(bytes)));
     return out;
 }
 

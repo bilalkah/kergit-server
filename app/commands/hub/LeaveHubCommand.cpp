@@ -26,25 +26,25 @@ std::vector<net::outbound::OutgoingMessage> LeaveHubCommand::execute(CommandCont
 
     auto user_exp = ctx.session_manager.sessionOfConnection(event->conn_id);
     if (!user_exp.has_value()) {
-        out.emplace_back(make_command_error(
-            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_UNAUTHORIZED,
-            "Authenticate first"));
+        out.emplace_back(make_command_error(event->conn_id, env.type(),
+                                            sercom::protocol::event::CommandErrorCode_UNAUTHORIZED,
+                                            "Authenticate first"));
         return out;
     }
-    
+
     const UserId user_id = user_exp.value();
     const HubId hub_id{cmd.hub_id()};
     auto role = ctx.hub_service.getMembershipRole(hub_id, user_id);
     if (!role) {
-        out.emplace_back(make_command_error(
-            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_FORBIDDEN,
-            "Join the hub before leaving it"));
+        out.emplace_back(make_command_error(event->conn_id, env.type(),
+                                            sercom::protocol::event::CommandErrorCode_FORBIDDEN,
+                                            "Join the hub before leaving it"));
         return out;
     }
     if (*role == Role::OWNER) {
-        out.emplace_back(make_command_error(
-            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_FORBIDDEN,
-            "Owners must transfer ownership before leaving"));
+        out.emplace_back(make_command_error(event->conn_id, env.type(),
+                                            sercom::protocol::event::CommandErrorCode_FORBIDDEN,
+                                            "Owners must transfer ownership before leaving"));
         return out;
     }
 
@@ -105,12 +105,8 @@ std::vector<net::outbound::OutgoingMessage> LeaveHubCommand::execute(CommandCont
     left.SerializeToString(out_env.mutable_payload());
     std::string bytes = out_env.SerializeAsString();
 
-    out.emplace_back(net::outbound::OutgoingMessage{
-        .target = net::outbound::Target::many(std::move(conns)),
-        .action =
-            net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
-                                  net::outbound::SendPayload{
-                                      .payload = net::outbound::Payload{std::move(bytes), true}}}});
+    out.emplace_back(
+        make_outgoing_message(net::outbound::Target::many(std::move(conns)), std::move(bytes)));
     return out;
 }
 
