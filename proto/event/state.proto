@@ -17,7 +17,6 @@ message StateSync {
 
 message HubSync {
     sercom.protocol.domain.Hub hub = 1;
-    uint64 rev = 2;
     repeated MemberState members = 3;
     repeated UserState users = 4;
     repeated ChannelState channels = 5;
@@ -26,17 +25,14 @@ message HubSync {
 
 message MemberState {
     sercom.protocol.domain.HubMember member = 1;
-    uint64 rev = 2;
 }
 
 message UserState {
     sercom.protocol.domain.User user = 1;
-    uint64 rev = 2;
 }
 
 message ChannelState {
     sercom.protocol.domain.Channel channel = 1;
-    uint64 rev = 2;
 
     // Channel snapshot does not include messages.
     // Message history is delivered via explicit message requests.
@@ -45,25 +41,23 @@ message ChannelState {
 
 message MessageState {
     sercom.protocol.domain.Message message = 1;
-    uint64 rev = 2;
 }
 
 message VoiceParticipantState {
     string user_id = 1;
     bool muted = 2;
     bool deafened = 3;
-    uint64 rev = 4;
 }
 
 message VoiceChannelState {
-    uint64 rev = 1;
     uint64 started_at_unix = 2;
     repeated VoiceParticipantState participants = 3;
 }
 
 /*
  * Authoritative state delta stream.
- * No delta-level id/time fields: idempotency is entity-level via rev.
+ * No delta-level id/time fields.
+ * Idempotency is identity-based (entity ids, message ids, participant user_id).
  */
 message StateDelta {
     repeated HubDelta hubs = 1;
@@ -94,16 +88,13 @@ message HubOp {
 
 message HubUpsert {
     sercom.protocol.domain.Hub hub = 1;
-    uint64 rev = 2;
 }
 
 message HubRemove {
-    uint64 rev = 1;
 }
 
 message HubJoinCodeSet {
     string join_code = 1;
-    uint64 rev = 2;
 }
 
 message MemberOp {
@@ -119,7 +110,6 @@ message MemberUpsert {
 
 message MemberRemove {
     string user_id = 1;
-    uint64 rev = 2;
 }
 
 message UserOp {
@@ -135,7 +125,6 @@ message UserUpsert {
 
 message UserRemove {
     string user_id = 1;
-    uint64 rev = 2;
 }
 
 message ChannelOp {
@@ -147,11 +136,9 @@ message ChannelOp {
 
 message ChannelUpsert {
     sercom.protocol.domain.Channel channel = 1;
-    uint64 rev = 2;
 }
 
 message ChannelRemove {
-    uint64 rev = 1;
 }
 
 message MessageOp {
@@ -168,7 +155,6 @@ message MessageAppend {
 
 message MessageRemove {
     string message_id = 1;
-    uint64 rev = 2;
 }
 
 message MessageBatch {
@@ -182,7 +168,6 @@ message MessageBatch {
     Direction direction = 1;
     repeated MessageState states = 2;
     bool exhausted_before = 3;
-    uint64 rev = 4;
 }
 
 message VoiceOp {
@@ -199,10 +184,8 @@ message VoiceSnapshot {
 
 message VoiceParticipantUpsert {
     VoiceParticipantState participant = 1;
-    uint64 rev = 2;
 }
 
 message VoiceParticipantRemove {
     string user_id = 1;
-    uint64 rev = 2;
 }

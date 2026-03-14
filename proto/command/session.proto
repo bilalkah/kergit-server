@@ -24,8 +24,16 @@ message Authenticate {
 // ---------------------------------
 
 /*
- * Client intent: request an authoritative sync.
- * If hub_ids is empty, server returns a full StateSync.
+ * Client intent: request an authoritative state resync.
+ *
+ * Client should send this when:
+ * - reconnecting after a transport break where deltas may have been missed,
+ * - receiving a delta that references an unknown hub/channel/member/user,
+ * - local store invariants fail (for example dangling refs after apply).
+ *
+ * Scope:
+ * - hub_ids empty: server returns full StateSync.
+ * - hub_ids provided: server returns scoped StateSync for those hubs.
  */
 message RequestStateSync {
     repeated string hub_ids = 1;
