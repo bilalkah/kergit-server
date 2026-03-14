@@ -2,17 +2,13 @@ syntax = "proto3";
 
 package sercom.protocol.domain;
 
-import "proto/domain/user.proto";
-
 /*
- * A chat message with embedded author metadata.
- * The author snapshot is captured at send time so display info
- * survives even if the author later leaves the hub.
+ * Canonical chat message.
+ * Author profile is resolved from user entities using author_id.
  */
 message Message {
     string id = 1;
     string author_id = 2;
     string content = 3;
     uint64 created_at_ms = 4;
-    sercom.protocol.domain.User author = 5;
 }

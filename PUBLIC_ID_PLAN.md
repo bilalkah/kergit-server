@@ -127,8 +127,8 @@ In the same commands, when building response protos, translate internal → publ
   - `make_voice_activity()` — add `PublicIdMapper&` param, translate hub_id, channel_id, user_id
   - All other helper functions that set IDs on protos
 
-### 4.2 HubNotifier
-- **File**: `app/services/hub/HubNotifier.h`, `app/services/hub/HubNotifier.cpp`
+### 4.2 HubUtils
+- **File**: `app/services/hub/HubUtils.h`, `app/services/hub/HubUtils.cpp`
 - Add `PublicIdMapper&` constructor param
 - Translate IDs in: `hubUpdated`, `hubRemoved`, `memberJoined`, `memberLeft`, `memberOnline`, `memberOffline`, `channelCreated`, `channelUpdated`, `channelRemoved`
 

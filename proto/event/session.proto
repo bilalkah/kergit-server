@@ -2,24 +2,5 @@ syntax = "proto3";
 
 package sercom.protocol.event;
 
-import "proto/domain/user.proto";
-import "proto/domain/hub.proto";
-import "proto/event/activity.proto";
-
-
 // Sent when authentication succeeds.
-// Client should wait for this before showing the main UI.
-// -----------------------------------
-message AuthOk {
-    // Future-proofing: can add user info, permissions, etc.
-}
-// -----------------------------------
-
-// Sent as part of the Connection Bootstrap.
-// -----------------------------------
-message SessionBootstrap {
-    sercom.protocol.domain.User self = 1;
-    repeated sercom.protocol.domain.HubState hubs = 2;
-    repeated sercom.protocol.event.VoiceChannelParticipants voice_channels = 3;
-}
-// -----------------------------------
+message AuthOk {}

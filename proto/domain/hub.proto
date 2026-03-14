@@ -2,9 +2,6 @@ syntax = "proto3";
 
 package sercom.protocol.domain;
 
-import "proto/domain/channel.proto";
-import "proto/domain/user.proto";
-
 enum HubRole {
     HubRole_UNSPECIFIED = 0;
     HubRole_MEMBER = 1;
@@ -32,24 +29,11 @@ message Hub {
 }
 
 /*
- * Hub membership record — pure membership data.
- * User display info (username, avatar) lives in HubState.users,
- * looked up via user_id.
+ * Hub membership record.
+ * Hub scope is inherited from the surrounding sync/delta context.
  */
 message HubMember {
-    string hub_id = 1;
     string user_id = 2;
     HubRole role = 3;
     bool is_online = 4;
-}
-
-/*
- * Complete hub snapshot used for bootstrap and join responses.
- * Clients join members[].user_id → users[].id to resolve display info.
- */
-message HubState {
-    sercom.protocol.domain.Hub hub = 1;
-    repeated sercom.protocol.domain.HubMember members = 2;
-    repeated sercom.protocol.domain.User users = 3;
-    repeated sercom.protocol.domain.Channel channels = 4;
 }

@@ -14,6 +14,18 @@ cc_proto_library(
 )
 
 proto_library(
+    name = "ref_proto",
+    srcs = ["ref.proto"],
+    visibility = ["//visibility:public"],
+)
+
+cc_proto_library(
+    name = "ref_cc_proto",
+    deps = [":ref_proto"],
+    visibility = ["//visibility:public"],
+)
+
+proto_library(
     name = "channel_proto",
     srcs = ["channel.proto"],
     visibility = ["//visibility:public"],
@@ -28,10 +40,6 @@ cc_proto_library(
 proto_library(
     name = "hub_proto",
     srcs = ["hub.proto"],
-    deps = [
-        ":channel_proto",
-        ":user_proto",
-    ],
     visibility = ["//visibility:public"],
 )
 
@@ -44,7 +52,6 @@ cc_proto_library(
 proto_library(
     name = "message_proto",
     srcs = ["message.proto"],
-    deps = [":user_proto"],
     visibility = ["//visibility:public"],
 )
 

@@ -19,11 +19,10 @@ message ChannelMetadata {
 
 /*
  * Canonical channel representation.
- * Structural/identity fields at top level; mutable display fields in metadata.
+ * Parent hub scope is carried by surrounding context, not this entity.
  */
 message Channel {
     string id = 1;
-    string hub_id = 2;
     ChannelType type = 3;
     ChannelMetadata metadata = 4;
 }

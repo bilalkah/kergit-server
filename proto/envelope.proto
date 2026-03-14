@@ -13,37 +13,30 @@ message Envelope {
         PING = 10;
         PONG = 11;
 
-        // Session
-        SESSION_BOOTSTRAP = 20;
-        AUTH = 21;
-        AUTH_OK = 22;
+        // Session / state sync
+        AUTH = 20;
+        AUTH_OK = 21;
+        REQUEST_STATE_SYNC = 22;
+        STATE_SYNC = 23;
+        STATE_DELTA = 24;
+        RT_SIGNAL = 25;
 
-        // Presence (client → server & server → client)
-        PRESENCE = 30;
-        TYPING = 31;
-        ACTIVE_CHANNEL = 32;
-
-        // Voice commands (client → server)
+        // Activity commands (client -> server)
+        TYPING = 30;
+        ACTIVE_CHANNEL = 31;
         VOICE_JOIN = 33;
-        VOICE_CHANNEL_PARTICIPANTS = 34;
         VOICE_ACTIVITY = 35;
 
-        // Voice events (server → client)
-        VOICE_ACTIVITY_EVENT = 36;
+        // Voice control events (server -> client)
+        VOICE_TOKEN_ISSUED = 36;
         VOICE_SELF_STATUS = 37;
         VOICE_SELF_REVOKED = 38;
-        VOICE_STATE_EVENT = 39;
 
-        // Message commands (client → server)
+        // Message commands (client -> server)
         MESSAGE_SEND = 40;
-        MESSAGE_FETCH_LATEST = 41;
         MESSAGE_FETCH_BEFORE = 42;
 
-        // Message events (server → client)
-        MESSAGE_CREATED = 43;
-        MESSAGE_BATCH = 44;
-
-        // Hub commands (client → server)
+        // Hub commands (client -> server)
         HUB_CREATE = 50;
         HUB_JOIN = 51;
         HUB_CREATE_JOIN_CODE = 52;
@@ -51,32 +44,15 @@ message Envelope {
         HUB_REMOVE = 54;
         HUB_UPDATE = 56;
 
-        // Hub events (server → client)
-        HUB_CREATED = 60;
-        HUB_MEMBER_JOINED = 61;
-        HUB_JOIN_CODE_CREATED = 62;
-        HUB_MEMBER_LEFT = 63;
-        HUB_UPDATED = 68;
-        HUB_ALREADY_MEMBER = 66;
-
-        // User commands (client → server)
+        // User commands (client -> server)
         USER_UPDATE = 70;
 
-        // User events (server → client)
-        USER_PROFILE_UPDATED = 71;
-
-        // Channel commands (client → server)
+        // Channel commands (client -> server)
         CHANNEL_CREATE = 80;
         CHANNEL_UPDATE = 81;
         CHANNEL_REMOVE = 85;
-
-        // Channel events (server → client)
-        CHANNEL_UPDATED = 87;
-        VOICE_TOKEN_ISSUED = 84;
     }
 
     Type type = 3;
-
-
     bytes payload = 100;
 }

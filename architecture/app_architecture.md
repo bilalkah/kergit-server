@@ -21,8 +21,7 @@ flowchart TB
     USER[UserService]
     CHAN[ChannelService]
     HUB[HubService]
-    NOTIF[HubNotifier]
-    SNAP[HubSnapshotBuilder]
+    HUTIL[HubUtils]
     LK[LiveKitTokenService]
 
     PG[PersistenceGateway]
@@ -39,8 +38,7 @@ flowchart TB
     AS --> USER
     AS --> CHAN
     AS --> HUB
-    AS --> NOTIF
-    AS --> SNAP
+    AS --> HUTIL
     AS --> LK
     AS --> PG
 
@@ -183,6 +181,5 @@ Current services in `AppStack`:
 - `UserService`
 - `ChannelService`
 - `HubService`
-- `HubNotifier`
-- `HubSnapshotBuilder` (legacy JSON helper, still constructed)
+- `HubUtils`
 - `LiveKitTokenService` (token + per-channel E2EE key lifecycle)

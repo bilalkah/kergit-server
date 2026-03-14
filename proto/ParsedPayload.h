@@ -3,12 +3,12 @@
 
 #include "proto/command/activity.pb.h"
 #include "proto/command/channel.pb.h"
+#include "proto/command/heartbeat.pb.h"
 #include "proto/command/hub.pb.h"
 #include "proto/command/message.pb.h"
 #include "proto/command/session.pb.h"
 #include "proto/command/user.pb.h"
 #include "proto/envelope.pb.h"
-#include "proto/system/heartbeat.pb.h"
 
 #include <string>
 #include <string_view>
@@ -17,16 +17,17 @@
 
 namespace sercom::protocol {
 
-using ParsedPayload = std::variant<std::monostate, command::Authenticate, command::Typing,
-                                   command::SelectActiveChannel, command::JoinVoiceChannelRequest,
+using ParsedPayload = std::variant<std::monostate, command::Authenticate,
+                                   command::RequestStateSync, command::Typing,
+                                   command::SelectActiveChannel,
+                                   command::JoinVoiceChannelRequest,
                                    command::VoiceChannelActivity, command::SendMessage,
-                                   command::FetchLatestMessages, command::FetchMessagesBefore,
-                                   command::CreateHub, command::JoinHub,
-                                   command::CreateHubJoinCode, command::LeaveHub,
-                                   command::RemoveHub, command::UpdateHub,
-                                   command::CreateChannel,
+                                   command::FetchMessagesBefore, command::CreateHub,
+                                   command::JoinHub, command::CreateHubJoinCode,
+                                   command::LeaveHub, command::RemoveHub,
+                                   command::UpdateHub, command::CreateChannel,
                                    command::UpdateChannel, command::RemoveChannel,
-                                   command::UpdateUser, system::Ping>;
+                                   command::UpdateUser, command::Ping>;
 
 class ParsedPayloadResult {
    public:
@@ -67,9 +68,12 @@ inline ParsedPayloadResult parse_inbound_payload(const Envelope& env) {
 
     switch (env.type()) {
         case Envelope::PING:
-            return detail::parse_payload_as<system::Ping>(env, "Invalid PING payload");
+            return detail::parse_payload_as<command::Ping>(env, "Invalid PING payload");
         case Envelope::AUTH:
             return detail::parse_payload_as<command::Authenticate>(env, "Invalid AUTH payload");
+        case Envelope::REQUEST_STATE_SYNC:
+            return detail::parse_payload_as<command::RequestStateSync>(
+                env, "Invalid REQUEST_STATE_SYNC payload");
         case Envelope::TYPING:
             return detail::parse_payload_as<command::Typing>(env, "Invalid TYPING payload");
         case Envelope::ACTIVE_CHANNEL:
@@ -82,10 +86,8 @@ inline ParsedPayloadResult parse_inbound_payload(const Envelope& env) {
             return detail::parse_payload_as<command::VoiceChannelActivity>(
                 env, "Invalid VOICE_ACTIVITY payload");
         case Envelope::MESSAGE_SEND:
-            return detail::parse_payload_as<command::SendMessage>(env, "Invalid MESSAGE_SEND payload");
-        case Envelope::MESSAGE_FETCH_LATEST:
-            return detail::parse_payload_as<command::FetchLatestMessages>(
-                env, "Invalid MESSAGE_FETCH_LATEST payload");
+            return detail::parse_payload_as<command::SendMessage>(env,
+                                                                  "Invalid MESSAGE_SEND payload");
         case Envelope::MESSAGE_FETCH_BEFORE:
             return detail::parse_payload_as<command::FetchMessagesBefore>(
                 env, "Invalid MESSAGE_FETCH_BEFORE payload");
@@ -119,25 +121,13 @@ inline ParsedPayloadResult parse_inbound_payload(const Envelope& env) {
 
         case Envelope::CommandError:
         case Envelope::PONG:
-        case Envelope::SESSION_BOOTSTRAP:
-        case Envelope::PRESENCE:
-        case Envelope::MESSAGE_CREATED:
-        case Envelope::MESSAGE_BATCH:
-        case Envelope::HUB_CREATED:
-        case Envelope::HUB_MEMBER_JOINED:
-        case Envelope::HUB_MEMBER_LEFT:
-        case Envelope::HUB_UPDATED:
-        case Envelope::HUB_JOIN_CODE_CREATED:
-        case Envelope::HUB_ALREADY_MEMBER:
-        case Envelope::USER_PROFILE_UPDATED:
-        case Envelope::CHANNEL_UPDATED:
+        case Envelope::AUTH_OK:
+        case Envelope::STATE_SYNC:
+        case Envelope::STATE_DELTA:
+        case Envelope::RT_SIGNAL:
         case Envelope::VOICE_TOKEN_ISSUED:
-        case Envelope::VOICE_CHANNEL_PARTICIPANTS:
-        case Envelope::VOICE_ACTIVITY_EVENT:
-        case Envelope::VOICE_STATE_EVENT:
         case Envelope::VOICE_SELF_STATUS:
         case Envelope::VOICE_SELF_REVOKED:
-        case Envelope::AUTH_OK:
             return ParsedPayloadResult("Server-only message type");
 
         default:
