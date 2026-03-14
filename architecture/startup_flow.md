@@ -18,7 +18,7 @@ flowchart TB
     CADDY --> DEV[docker compose up -d ubuntu-dev]
     DEV --> ADMIN[Start admin Nuxt container (:3001)]
     ADMIN --> WEB[Start web Nuxt container (:3000)]
-    WEB --> BAZEL[docker exec sercom-dev-ubuntu\nbazel run //server:fake_discord]
+    WEB --> BAZEL[docker exec kergit-ubuntu-server\nbazel run //server:fake_discord]
     BAZEL --> MAIN[server/main.cpp]
 ```
 
@@ -38,7 +38,7 @@ From `docker/run-server.sh`:
 Important:
 - Script uses `exec docker exec -it ... bazel run ...`, so it stays attached to the server process.
 
-## Caddy Routing (`docker/Caddyfile`)
+## Caddy Routing (`docker/caddy/conf.dev/Caddyfile` / `docker/caddy/conf.prod/Caddyfile`)
 
 ```mermaid
 flowchart LR

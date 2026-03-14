@@ -6,12 +6,14 @@ bool VoiceSessionManager::join(const ChannelId& channel, const UserId& user,
                                const SessionId& session) {
     std::lock_guard lock(mutex_);
 
-    // Preserve mute/deafen state when switching channels.
+    // Preserve mute/deafen only when the same app session switches channels.
     ParticipantState carry_state{};
     if (auto it = user_to_channel_.find(user); it != user_to_channel_.end()) {
         auto& old_participants = channels_[it->second.channel];
-        if (auto pit = old_participants.find(user); pit != old_participants.end()) {
-            carry_state = pit->second;
+        if (it->second.owner_session == session) {
+            if (auto pit = old_participants.find(user); pit != old_participants.end()) {
+                carry_state = pit->second;
+            }
         }
         old_participants.erase(user);
         if (old_participants.empty()) {

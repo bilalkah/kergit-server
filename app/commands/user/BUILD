@@ -10,7 +10,6 @@ cc_library(
         "//app/commands:i_command",
         "//app/dispatcher:command_context",
         "//app/managers/subscription:topic",
-        "//app/proto_builders",
         "//proto:envelope_cc_proto",
         "//proto/command:user_cc_proto",
         "//proto/event:error_cc_proto",

@@ -7,27 +7,21 @@ import "proto/domain/channel.proto";
 /*
  * Create a channel inside a hub.
  * Only OWNER / ADMIN.
- * Hub_id is required to know which hub to create the channel in.
  */
 message CreateChannel {
-  string hub_id = 1;
-  string name = 2;
-  sercom.protocol.domain.ChannelType type = 3;
-}
-
-message ChannelChange {
-  oneof change {
-    string name = 1;
-  }
+    string hub_id = 1;
+    string name = 2;
+    sercom.protocol.domain.ChannelType type = 3;
 }
 
 /*
  * Update channel settings.
+ * Only set the fields you want to change — unset fields are left unchanged.
  * Only OWNER / ADMIN.
  */
 message UpdateChannel {
-  string channel_id = 1;
-  repeated ChannelChange changes = 2;
+    string channel_id = 1;
+    optional string name = 2;
 }
 
 /*
@@ -35,5 +29,5 @@ message UpdateChannel {
  * Only OWNER.
  */
 message RemoveChannel {
-  string channel_id = 1;
+    string channel_id = 1;
 }

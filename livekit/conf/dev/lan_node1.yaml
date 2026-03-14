@@ -10,9 +10,8 @@ rtc:
   tcp_port: 7881
   allow_tcp_fallback: true
 
-  enable_loopback_candidate: false
-  use_external_ip: true
-  node_ip: 31.40.204.123
+  enable_loopback_candidate: true
+  use_external_ip: false
 
   packet_buffer_size_audio: 100
 
@@ -34,7 +33,7 @@ webhook:
   api_key: dev
   # list of URLs to be notified of room events
   urls:
-    - http://sercom-dev-ubuntu:8080/webhook
+    - http://kergit-ubuntu-server:8080/webhook
 
 logging:
   level: debug

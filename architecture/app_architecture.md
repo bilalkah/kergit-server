@@ -163,11 +163,12 @@ Overflow policy:
 
 ## Voice Signaling Contract
 
-`JoinVoiceChannelCommand` handles states:
-- `STATE_REQUEST_JOIN`: mint LiveKit token + E2EE key, emit `VOICE_TOKEN_ISSUED`
-- `STATE_JOIN`: apply session voice membership, broadcast participants/presence
-- `STATE_REQUEST_LEAVE`: accepted as pre-leave signal (no broadcast)
-- `STATE_LEAVE`: clear session voice membership, broadcast participants/presence
+`JoinVoiceChannelCommand` is join/switch intent only:
+- validates hub/channel/session
+- handles takeover/switch kick policy
+- writes pending join intent
+- mints token and emits `VOICE_TOKEN_ISSUED`
+- authoritative join/leave mutation + fanout happens on webhook handlers
 
 `VoiceChannelActivityCommand`:
 - Handles mute/unmute/deafen/undeafen

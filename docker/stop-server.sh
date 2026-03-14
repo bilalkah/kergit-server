@@ -13,7 +13,7 @@ echo "[+] Stopping and removing server containers..."
 docker compose -p "$PROJECT_NAME" -f "$REPO_ROOT/docker/docker-compose.yml" down
 
 echo "[+] Ensuring stray LiveKit containers are stopped..."
-for name in livekit-node1 livekit-node2 livekit-caddy livekit-redis sercom-dev-ubuntu sercom-dev-macos; do
+for name in livekit-node1 livekit-node2 livekit-caddy livekit-redis kergit-ubuntu-server sercom-dev-macos; do
   if docker ps -a --format '{{.Names}}' | grep -q "^${name}$"; then
     docker rm -f "$name" >/dev/null 2>&1 || true
   fi

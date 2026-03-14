@@ -120,11 +120,12 @@ void SessionManager::removeConnection(const GlobalConnId& conn) {
     }
 }
 
-void SessionManager::joinTextChannel(const UserId& session, const HubId& hub) {
+void SessionManager::joinTextChannel(const UserId& session, const HubId& hub, const ChannelId& channel) {
     std::unique_lock lock(mutex_);
     auto it = sessions_.find(session);
     if (it == sessions_.end()) return;
     it->second.current_hub = hub;
+    it->second.current_channel = channel;
 }
 
 void SessionManager::leaveTextChannel(const UserId& session) {

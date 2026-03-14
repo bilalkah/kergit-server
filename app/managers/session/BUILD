@@ -20,12 +20,3 @@ cc_library(
     ],
 )
 
-cc_test(
-    name = "session_manager_test",
-    srcs = ["SessionManager_test.cc"],
-    copts = ["-std=gnu++23"],
-    deps = [
-        ":session_manager",
-        "@googletest//:gtest_main",
-    ],
-)

@@ -1,5 +1,5 @@
-#ifndef APP_COMMANDS_SYSTEM_DISCONNECTIONCOMMAND_H
-#define APP_COMMANDS_SYSTEM_DISCONNECTIONCOMMAND_H
+#ifndef APP_COMMANDS_SESSION_DISCONNECTIONCOMMAND_H
+#define APP_COMMANDS_SESSION_DISCONNECTIONCOMMAND_H
 
 #include "app/commands/ICommand.h"
 #include "app/dispatcher/CommandContext.h"
@@ -14,4 +14,4 @@ class DisconnectionCommand : public ICommand {
 
 }  // namespace app
 
-#endif  // APP_COMMANDS_SYSTEM_DISCONNECTIONCOMMAND_H
+#endif  // APP_COMMANDS_SESSION_DISCONNECTIONCOMMAND_H

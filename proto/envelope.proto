@@ -9,56 +9,70 @@ message Envelope {
         UNKNOWN = 0;
         CommandError = 1;
 
+        // System
         PING = 10;
         PONG = 11;
 
+        // Session
         SESSION_BOOTSTRAP = 20;
         AUTH = 21;
         AUTH_OK = 22;
 
+        // Presence (client → server & server → client)
         PRESENCE = 30;
         TYPING = 31;
         ACTIVE_CHANNEL = 32;
+
+        // Voice commands (client → server)
         VOICE_JOIN = 33;
         VOICE_CHANNEL_PARTICIPANTS = 34;
         VOICE_ACTIVITY = 35;
-        VOICE_CHANNEL_PRESENCE = 36;
+
+        // Voice events (server → client)
+        VOICE_ACTIVITY_EVENT = 36;
         VOICE_SELF_STATUS = 37;
         VOICE_SELF_REVOKED = 38;
+        VOICE_STATE_EVENT = 39;
 
+        // Message commands (client → server)
         MESSAGE_SEND = 40;
         MESSAGE_FETCH_LATEST = 41;
         MESSAGE_FETCH_BEFORE = 42;
 
+        // Message events (server → client)
         MESSAGE_CREATED = 43;
         MESSAGE_BATCH = 44;
 
+        // Hub commands (client → server)
         HUB_CREATE = 50;
         HUB_JOIN = 51;
         HUB_CREATE_JOIN_CODE = 52;
         HUB_LEAVE = 53;
         HUB_REMOVE = 54;
-        HUB_RENAME = 55;
         HUB_UPDATE = 56;
-        CHANNEL_CREATE = 80;
-        CHANNEL_RENAME = 81;
-        CHANNEL_REMOVE = 85;
 
+        // Hub events (server → client)
         HUB_CREATED = 60;
         HUB_MEMBER_JOINED = 61;
         HUB_JOIN_CODE_CREATED = 62;
         HUB_MEMBER_LEFT = 63;
-        HUB_REMOVED = 64;
-        HUB_RENAMED = 65;
+        HUB_UPDATED = 68;
         HUB_ALREADY_MEMBER = 66;
-        HUB_AVATAR_CHANGED = 67;
-        CHANNEL_CREATED = 82;
-        CHANNEL_RENAMED = 83;
-        CHANNEL_REMOVED = 86;
-        VOICE_TOKEN_ISSUED = 84;
 
+        // User commands (client → server)
         USER_UPDATE = 70;
+
+        // User events (server → client)
         USER_PROFILE_UPDATED = 71;
+
+        // Channel commands (client → server)
+        CHANNEL_CREATE = 80;
+        CHANNEL_UPDATE = 81;
+        CHANNEL_REMOVE = 85;
+
+        // Channel events (server → client)
+        CHANNEL_UPDATED = 87;
+        VOICE_TOKEN_ISSUED = 84;
     }
 
     Type type = 3;

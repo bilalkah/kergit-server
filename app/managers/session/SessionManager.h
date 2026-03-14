@@ -38,7 +38,7 @@ class SessionManager final {
     void removeConnection(const GlobalConnId& conn);
 
     // ---- active operations ----
-    void joinTextChannel(const UserId& session, const HubId& hub);
+    void joinTextChannel(const UserId& session, const HubId& hub, const ChannelId& channel);
     void leaveTextChannel(const UserId& session);
 
     // ---- queries ----

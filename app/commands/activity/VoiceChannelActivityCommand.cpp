@@ -3,72 +3,111 @@
 #include "app/commands/utils.h"
 #include "app/dispatcher/CommandContext.h"
 #include "app/managers/subscription/Topic.h"
-#include "app/proto_builders/EnvelopeBuilders.h"
 #include "domains/Channel.h"
 #include "proto/command/activity.pb.h"
 #include "proto/envelope.pb.h"
 #include "proto/event/activity.pb.h"
 #include "proto/event/error.pb.h"
 
+#include <cassert>
+#include <string_view>
 #include <vector>
 
 namespace app {
+namespace {
+
+std::string make_voice_state(std::string_view user_id, bool muted, bool deafened) {
+    sercom::protocol::event::VoiceState voice_state;
+    voice_state.mutable_participant()->set_user_id(user_id.data(), user_id.size());
+    voice_state.mutable_participant()->set_muted(muted);
+    voice_state.mutable_participant()->set_deafened(deafened);
+
+    sercom::protocol::Envelope env;
+    env.set_version(1);
+    env.set_type(sercom::protocol::Envelope::VOICE_STATE_EVENT);
+    voice_state.SerializeToString(env.mutable_payload());
+
+    std::string bytes;
+    env.SerializeToString(&bytes);
+    return bytes;
+}
+
+std::string make_voice_self_status_connected(bool is_owner, const ChannelId& channel) {
+    sercom::protocol::event::VoiceSelfStatus self_status;
+    self_status.set_connected(true);
+    self_status.set_is_owner(is_owner);
+    self_status.set_channel_id(channel.value);
+
+    sercom::protocol::Envelope env;
+    env.set_version(1);
+    env.set_type(sercom::protocol::Envelope::VOICE_SELF_STATUS);
+    self_status.SerializeToString(env.mutable_payload());
+
+    std::string bytes;
+    env.SerializeToString(&bytes);
+    return bytes;
+}
+
+}  // namespace
 
 std::vector<net::outbound::OutgoingMessage> VoiceChannelActivityCommand::execute(
     CommandContext& ctx, const queue::Event& evt) {
-    const auto* event = std::get_if<queue::MessageEvent>(&evt);
-    if (!event) return {};
-
+    std::vector<net::outbound::OutgoingMessage> out;
+    assert(std::holds_alternative<queue::MessageEvent>(evt));
+    const auto* event = &std::get<queue::MessageEvent>(evt);
     const auto& env = event->payload.env;
-    if (env.type() != sercom::protocol::Envelope::VOICE_ACTIVITY) {
-        return {make_drop_connection(event->conn_id,
-                                     sercom::protocol::event::CommandErrorCode_INVALID_FORMAT,
-                                     "Invalid VOICE_ACTIVITY envelope type")};
-    }
+    assert(env.type() == sercom::protocol::Envelope::VOICE_ACTIVITY);
 
     const auto& cmd = require_parsed<sercom::protocol::command::VoiceChannelActivity>(*event);
 
     auto user_exp = ctx.session_manager.sessionOfConnection(event->conn_id);
     if (!user_exp.has_value()) {
-        return {make_drop_connection(event->conn_id,
-                                     sercom::protocol::event::CommandErrorCode_UNAUTHORIZED,
-                                     "Authenticate first")};
+        out.emplace_back(make_drop_connection(event->conn_id,
+                                              sercom::protocol::event::CommandErrorCode_UNAUTHORIZED,
+                                              "Authenticate first"));
+        return out;
     }
     const UserId user_id = user_exp.value();
 
     auto requester_session_id_exp = ctx.session_manager.sessionIdOfConnection(event->conn_id);
     if (!requester_session_id_exp.has_value()) {
-        return {make_drop_connection(event->conn_id,
-                                     sercom::protocol::event::CommandErrorCode_UNAUTHORIZED,
-                                     "Runtime session missing")};
+        out.emplace_back(make_drop_connection(event->conn_id,
+                                              sercom::protocol::event::CommandErrorCode_UNAUTHORIZED,
+                                              "Runtime session missing"));
+        return out;
     }
     const SessionId requester_session_id = requester_session_id_exp.value();
 
-    auto channel_id_opt = parse_wire_id<ChannelId>(cmd.channel_id());
-    if (!channel_id_opt.has_value()) {
-        return single_outgoing(make_command_error(
+    const ChannelId channel_id{cmd.channel_id()};
+    const HubId hub_id{cmd.hub_id()};
+
+    auto channel_opt = ctx.channel_service.getChannel(channel_id);
+    if (!channel_opt) {
+        out.emplace_back(make_command_error(
             event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_NOT_FOUND,
             "Channel not found"));
+        return out;
     }
 
-    auto channel_opt = ctx.channel_service.getChannel(*channel_id_opt);
-    if (!channel_opt) {
-        return single_outgoing(make_command_error(
+    if (channel_opt->hub_id != hub_id) {
+        out.emplace_back(make_command_error(
             event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_NOT_FOUND,
             "Channel not found"));
+        return out;
     }
-    const HubId hub_id = channel_opt->hub_id;
 
     if (channel_opt->type != ChannelType::VOICE) {
-        return single_outgoing(make_command_error(
+        out.emplace_back(make_command_error(
             event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
             "Channel is not a voice channel"));
+        return out;
     }
 
     if (!ctx.hub_service.isHubMember(hub_id, user_id)) {
-        return single_outgoing(make_command_error(
+        out.emplace_back(make_command_error(
             event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_FORBIDDEN,
             "Join the hub before updating voice state"));
+        return out;
     }
 
     auto& voice_sessions = ctx.voice_service.sessions();
@@ -76,116 +115,105 @@ std::vector<net::outbound::OutgoingMessage> VoiceChannelActivityCommand::execute
     const auto owner_session = voice_sessions.user_session(user_id);
 
     if (!current_channel.has_value()) {
-        return single_outgoing(make_command_error(
+        out.emplace_back(make_command_error(
             event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
             "Join a voice channel first"));
+        return out;
     }
 
     if (owner_session.has_value() && *owner_session != requester_session_id) {
-        return single_outgoing(make_command_error(
+        out.emplace_back(make_command_error(
             event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_FORBIDDEN,
             "Voice is connected from another session"));
+        return out;
     }
 
-    if (*current_channel != *channel_id_opt) {
-        return single_outgoing(make_command_error(
+    if (*current_channel != channel_id) {
+        out.emplace_back(make_command_error(
             event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
             "Voice activity must target the active voice channel"));
+        return out;
+    }
+
+    bool current_muted = false;
+    bool current_deafened = false;
+    bool has_current_state = false;
+    for (const auto& p : voice_sessions.participants_in_channel(channel_id)) {
+        if (p.user_id == user_id) {
+            current_muted = p.muted;
+            current_deafened = p.deafened;
+            has_current_state = true;
+            break;
+        }
+    }
+    if (!has_current_state) return {};
+
+    // Command carries the full desired voice state. Deafening always implies muted.
+    const bool desired_deafened = cmd.is_deafened();
+    const bool desired_muted = cmd.is_muted() || desired_deafened;
+
+    if (current_muted == desired_muted && current_deafened == desired_deafened) {
+        return {};
     }
 
     bool changed = false;
-    auto state = cmd.state();
-    if (state == sercom::protocol::command::VoiceChannelActivity::STATE_MUTE) {
-        changed = voice_sessions.set_muted(user_id, true);
-    } else if (state == sercom::protocol::command::VoiceChannelActivity::STATE_UNMUTE) {
-        changed = voice_sessions.set_muted(user_id, false);
-    } else if (state == sercom::protocol::command::VoiceChannelActivity::STATE_DEAFEN) {
-        changed = voice_sessions.set_deafened(user_id, true);
-    } else if (state == sercom::protocol::command::VoiceChannelActivity::STATE_UNDEAFEN) {
-        changed = voice_sessions.set_deafened(user_id, false);
-    } else {
-        return single_outgoing(make_command_error(
-            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
-            "Voice activity state is unspecified"));
+    if (current_deafened != desired_deafened) {
+        changed = voice_sessions.set_deafened(user_id, desired_deafened) || changed;
+    }
+
+    // set_deafened() also mutates mute, so re-read before applying desired mute.
+    current_muted = false;
+    current_deafened = false;
+    has_current_state = false;
+    for (const auto& p : voice_sessions.participants_in_channel(channel_id)) {
+        if (p.user_id == user_id) {
+            current_muted = p.muted;
+            current_deafened = p.deafened;
+            has_current_state = true;
+            break;
+        }
+    }
+    if (!has_current_state) return {};
+
+    if (current_muted != desired_muted) {
+        changed = voice_sessions.set_muted(user_id, desired_muted) || changed;
     }
 
     if (!changed) return {};
 
-    // Persist mute/deafen state to DB.
-    {
-        bool final_muted = false, final_deafened = false;
-        for (const auto& p : voice_sessions.participants_in_channel(*channel_id_opt)) {
-            if (p.user_id == user_id) {
-                final_muted = p.muted;
-                final_deafened = p.deafened;
-                break;
-            }
-        }
-        ctx.voice_service.persist_mute_state(user_id, final_muted, final_deafened);
-    }
-
-    std::vector<net::outbound::OutgoingMessage> out;
-
-    // Broadcast updated participants to all hub subscribers.
-    utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(
-        1, std::memory_order_relaxed);
-    auto subs = ctx.subscription_manager.getSubscribers(Topic::HubTopic(hub_id));
-    if (subs && !subs->empty()) {
-        std::vector<GlobalConnId> conns(subs->begin(), subs->end());
-
-        sercom::protocol::event::VoiceChannelParticipants participants;
-        participants.set_channel_id(channel_id_opt->value);
-        for (const auto& p : voice_sessions.participants_in_channel(*channel_id_opt)) {
-            auto* out_p = participants.add_participants();
-            out_p->set_user_id(p.user_id.value);
-            out_p->set_muted(p.muted);
-            out_p->set_deafened(p.deafened);
-        }
-
-        std::string bytes = proto_builders::serialize_envelope(
-            sercom::protocol::Envelope::VOICE_CHANNEL_PARTICIPANTS, participants);
-
-        out.push_back(net::outbound::OutgoingMessage{
-            .priority = net::outbound::OutboundPriority::Low,
-            .target = net::outbound::Target::many(std::move(conns)),
-            .action =
-                net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
-                                      net::outbound::SendPayload{.payload = net::outbound::Payload{
-                                                                     std::move(bytes), true}}}});
-    }
-
-    // Send VoiceSelfStatus to all of the user's sessions so mute/deafen state stays in sync.
-    bool self_muted = false;
-    bool self_deafened = false;
-    for (const auto& p : voice_sessions.participants_in_channel(*channel_id_opt)) {
+    bool final_muted = false;
+    bool final_deafened = false;
+    for (const auto& p : voice_sessions.participants_in_channel(channel_id)) {
         if (p.user_id == user_id) {
-            self_muted = p.muted;
-            self_deafened = p.deafened;
+            final_muted = p.muted;
+            final_deafened = p.deafened;
             break;
         }
     }
 
+    // Hub-wide mute/deafen delta.
+    utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(1,
+                                                                           std::memory_order_relaxed);
+    auto subs = ctx.subscription_manager.getSubscribers(Topic::HubTopic(hub_id));
+    if (subs && !subs->empty()) {
+        std::vector<GlobalConnId> conns{subs->begin(), subs->end()};
+        auto voice_state_msg =
+            make_outgoing_message(net::outbound::Target::many(std::move(conns)),
+                                  make_voice_state(user_id.value, final_muted, final_deafened));
+        out.emplace_back(std::move(voice_state_msg));
+    }
+
+    // Voice ownership/connection state for all of user's sessions.
     for (const auto& session_id : ctx.session_manager.getUserSessionIds(user_id)) {
         auto session_conns = ctx.session_manager.getSessionIdConnections(session_id);
         if (session_conns.empty()) continue;
 
-        sercom::protocol::event::VoiceSelfStatus self_status;
-        self_status.set_connected(true);
-        self_status.set_is_owner(owner_session.has_value() && *owner_session == session_id);
-        self_status.set_channel_id(channel_id_opt->value);
-        self_status.set_muted(self_muted);
-        self_status.set_deafened(self_deafened);
-
-        out.push_back(net::outbound::OutgoingMessage{
-            .priority = net::outbound::OutboundPriority::Low,
-            .target = net::outbound::Target::many(std::move(session_conns)),
-            .action = net::outbound::Action{
-                std::in_place_type<net::outbound::SendPayload>,
-                net::outbound::SendPayload{
-                    .payload = net::outbound::Payload{
-                        proto_builders::serialize_envelope(
-                            sercom::protocol::Envelope::VOICE_SELF_STATUS, self_status),
-                        true}}}});
+        auto self_status_msg = make_outgoing_message(
+            net::outbound::Target::many(std::move(session_conns)),
+            make_voice_self_status_connected(owner_session.has_value() &&
+                                                 *owner_session == session_id,
+                                             channel_id));
+        out.emplace_back(std::move(self_status_msg));
     }
 
     return out;

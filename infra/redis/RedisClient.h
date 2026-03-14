@@ -21,6 +21,7 @@ class RedisClient {
     RedisClient& operator=(const RedisClient&) = delete;
 
     void setex(const std::string& key, std::chrono::seconds ttl, const std::string& value);
+    bool setnxex(const std::string& key, std::chrono::seconds ttl, const std::string& value);
     std::optional<std::string> get(const std::string& key);
     void del(const std::string& key);
     std::optional<std::chrono::seconds> ttl(const std::string& key);

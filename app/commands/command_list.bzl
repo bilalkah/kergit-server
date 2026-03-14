@@ -3,7 +3,7 @@
 COMMAND_LIST = [
     "//app/commands/session:bootstrap_command",
     "//app/commands/session:authenticate_command",
-    "//app/commands/system:disconnection_command",
+    "//app/commands/session:disconnection_command",
     "//app/commands/activity:select_active_channel_command",
     "//app/commands/activity:typing_command",
     "//app/commands/activity:join_voice_channel_command",
@@ -16,7 +16,6 @@ COMMAND_LIST = [
     "//app/commands/hub:create_hub_join_code_command",
     "//app/commands/hub:leave_hub_command",
     "//app/commands/hub:remove_hub_command",
-    "//app/commands/hub:rename_hub_command",
     "//app/commands/hub:update_hub_command",
     "//app/commands/user:update_user_command",
     "//app/commands/channel:create_channel_command",

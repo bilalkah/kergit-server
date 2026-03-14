@@ -2,74 +2,70 @@
 
 #include "app/commands/utils.h"
 #include "app/dispatcher/CommandContext.h"
-#include "app/proto_builders/EnvelopeBuilders.h"
 #include "domains/Hub.h"
 #include "proto/command/hub.pb.h"
 #include "proto/envelope.pb.h"
 #include "proto/event/error.pb.h"
 #include "proto/event/hub.pb.h"
 
+#include <cassert>
 #include <string>
 #include <vector>
 
 namespace app {
 
+std::string make_hub_join_code_created(const HubId& hub_id, std::string join_code) {
+    sercom::protocol::event::HubJoinCodeCreated created;
+    created.set_hub_id(hub_id.value);
+    created.set_join_code(std::move(join_code));
+
+    sercom::protocol::Envelope out_env;
+    out_env.set_version(1);
+    out_env.set_type(sercom::protocol::Envelope::HUB_JOIN_CODE_CREATED);
+    created.SerializeToString(out_env.mutable_payload());
+    return out_env.SerializeAsString();
+}
+
 std::vector<net::outbound::OutgoingMessage> GetHubInviteCommand::execute(CommandContext& ctx,
                                                                          const queue::Event& evt) {
-    const auto* event = std::get_if<queue::MessageEvent>(&evt);
-    if (!event) {
-        return {};
-    }
-
+    std::vector<net::outbound::OutgoingMessage> out;
+    assert(std::holds_alternative<queue::MessageEvent>(evt));
+    const auto* event = &std::get<queue::MessageEvent>(evt);
     const auto& env = event->payload.env;
-    if (env.type() != sercom::protocol::Envelope::HUB_CREATE_JOIN_CODE) {
-        return {};
-    }
+    assert(env.type() == sercom::protocol::Envelope::HUB_CREATE_JOIN_CODE);
 
     const auto& cmd = require_parsed<sercom::protocol::command::CreateHubJoinCode>(*event);
 
     auto user_exp = ctx.session_manager.sessionOfConnection(event->conn_id);
     if (!user_exp.has_value()) {
-        return single_outgoing(make_command_error(
-            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_UNAUTHORIZED,
-            "Authenticate first"));
+        out.emplace_back(make_drop_connection(event->conn_id,
+                                              sercom::protocol::event::CommandErrorCode_FORBIDDEN,
+                                              "Authenticate before sending messages"));
+        return out;
     }
+    
     const UserId user_id = user_exp.value();
-
-    auto hub_id_opt = parse_wire_id<HubId>(cmd.hub_id());
-    if (!hub_id_opt.has_value()) {
-        return single_outgoing(make_command_error(
-            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_NOT_FOUND,
-            "Hub not found"));
-    }
-    const HubId hub_id = hub_id_opt.value();
-
+    const HubId hub_id{cmd.hub_id()};
     if (!ctx.hub_service.isHubMember(hub_id, user_id)) {
-        return single_outgoing(make_command_error(
-            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_FORBIDDEN,
-            "Join the hub before requesting a join code"));
+        out.emplace_back(make_command_error(event->conn_id, env.type(),
+                                            sercom::protocol::event::CommandErrorCode_FORBIDDEN,
+                                            "Join the hub before requesting a join code"));
+        return out;
     }
 
     auto role = ctx.hub_service.getMembershipRole(hub_id, user_id);
     if (!role.has_value() || (*role != Role::OWNER && *role != Role::ADMIN)) {
-        return single_outgoing(make_command_error(
-            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_FORBIDDEN,
-            "Only owners or admins can create join codes"));
+        out.emplace_back(make_command_error(event->conn_id, env.type(),
+                                            sercom::protocol::event::CommandErrorCode_FORBIDDEN,
+                                            "Only owners or admins can create join codes"));
+        return out;
     }
 
-    sercom::protocol::event::HubJoinCodeCreated created;
-    created.set_hub_id(hub_id.value);
-    created.set_join_code(ctx.invite_service.createInvite(hub_id));
+    std::string bytes = make_hub_join_code_created(hub_id, ctx.invite_service.createInvite(hub_id));
 
-    std::string bytes = proto_builders::serialize_envelope(
-        sercom::protocol::Envelope::HUB_JOIN_CODE_CREATED, created);
-
-    return single_outgoing(net::outbound::OutgoingMessage{
-        .target = net::outbound::Target::one(event->conn_id),
-        .action =
-            net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
-                                  net::outbound::SendPayload{
-                                      .payload = net::outbound::Payload{std::move(bytes), true}}}});
+    out.emplace_back(
+        make_outgoing_message(net::outbound::Target::one(event->conn_id), std::move(bytes)));
+    return out;
 }
 
 }  // namespace app

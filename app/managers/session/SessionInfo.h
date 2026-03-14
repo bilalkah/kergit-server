@@ -8,11 +8,9 @@
 namespace app {
 
 struct SessionInfo {
-    // application-level identifiers
-    std::unordered_set<HubId> snapshotted_hubs;
-
     // current context
     std::optional<HubId> current_hub;
+    std::optional<ChannelId> current_channel;
 };
 
 }  // namespace app

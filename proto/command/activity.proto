@@ -9,6 +9,7 @@ package sercom.protocol.command;
  */
 message SelectActiveChannel {
   string channel_id = 1;
+  string hub_id = 2;
 }
 
 /*
@@ -21,47 +22,25 @@ message SelectActiveChannel {
  * - active_channel == channel_id
  */
 message Typing {
-  enum State {
-    STATE_UNSPECIFIED = 0;
-    STATE_STARTED = 1;
-    STATE_STOPPED = 2;
-  }
-
   string channel_id = 1;
-  State state = 2;
+  string hub_id = 2;
+  bool is_typing = 3;
 }
 
 
-message VoiceChannelMembership {
-  enum State {
-    STATE_UNSPECIFIED = 0;
-
-    // Client wants to join (or switch to) a voice channel.
-    // Server issues a token and handles takeover automatically.
-    STATE_JOIN = 1;
-
-    // Client wants to leave the current voice channel.
-    STATE_LEAVE = 2;
-  }
-
+message JoinVoiceChannelRequest {
   // Target voice channel
   string channel_id = 1;
+  string hub_id = 2;
 
-  State state = 2;
+  // Preferred initial voice state for this join intent.
+  bool prefer_muted = 3;
+  bool prefer_deafened = 4;
 }
 
 message VoiceChannelActivity {
-  enum State {
-    STATE_UNSPECIFIED = 0;
-
-    // Mute the microphone only. This does not affect the user's ability to hear others.
-    STATE_MUTE = 1;
-    STATE_UNMUTE = 2;
-
-    // Deafen the user. This mutes the microphone and prevents the user from hearing others.
-    STATE_DEAFEN = 3;
-    STATE_UNDEAFEN = 4;
-  }
   string channel_id = 1;
-  State state = 2;
+  string hub_id = 2;
+  bool is_muted = 3;
+  bool is_deafened = 4;
 }

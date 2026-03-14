@@ -8,15 +8,13 @@ import "proto/domain/user.proto";
 
 /*
  * Hub is created.
- * This is a special case since we need to include the hub details in 
- * the event for clients to know about the new hub.
- * To be sent only to the creator.
- * Includes the creator as the first HubMember.
+ * Sent only to the creator.
+ * Includes the creator as the first HubMember and the default channel.
  */
 message HubCreated {
-  sercom.protocol.domain.Hub hub = 1;
-  sercom.protocol.domain.HubMember self_member = 2;
-  sercom.protocol.domain.Channel channel = 3;
+    sercom.protocol.domain.Hub hub = 1;
+    sercom.protocol.domain.HubMember self_member = 2;
+    sercom.protocol.domain.Channel channel = 3;
 }
 
 /*
@@ -24,25 +22,18 @@ message HubCreated {
  * Fanout to all members.
  */
 message HubMemberJoined {
-  sercom.protocol.domain.HubMember member = 1;
-  sercom.protocol.domain.User user = 2;
+    sercom.protocol.domain.HubMember member = 1;
+    sercom.protocol.domain.User user = 2;
 }
 
 /*
  * A user left a hub.
  * Fanout to all members.
+ * Client already has user display info from HubState — user_id is sufficient.
  */
 message HubMemberLeft {
-  string hub_id = 1;
-  string user_id = 2;
-}
-
-/*
- * Hub was removed.
- * Fanout to all members.
- */
-message HubRemoved {
-  string hub_id = 1;
+    string hub_id = 1;
+    string user_id = 2;
 }
 
 /*
@@ -50,32 +41,38 @@ message HubRemoved {
  * Sent only to requester.
  */
 message HubJoinCodeCreated {
-  string hub_id = 1;
-  string join_code = 2;
+    string hub_id = 1;
+    string join_code = 2;
 }
 
 /*
- * Hub was renamed.
- * Fanout to all members.
+ * Action type for hub lifecycle events.
  */
-message HubRenamed {
-  string hub_id = 1;
-  string name = 2;
+enum HubAction {
+    HUB_ACTION_UNSPECIFIED = 0;
+    HUB_ACTION_UPDATED = 1;
+    HUB_ACTION_REMOVED = 2;
 }
 
 /*
- * Hub avatar updated.
- * Fanout to all members.
+ * Unified hub mutation event.
+ * Replaces the former HubRenamed / HubAvatarChanged / HubRemoved.
+ *
+ * For UPDATED: hub carries the full Hub object with current state.
+ * For REMOVED: hub carries only the id (other fields are default).
+ *
+ * Fanout to all hub members.
  */
-message HubAvatarChanged {
-  string hub_id = 1;
-  string avatar_seed = 2;
+message HubUpdated {
+    string hub_id = 1;
+    HubAction action = 2;
+    sercom.protocol.domain.Hub hub = 3;
 }
 
 /*
  * Already member of hub.
- * Sent only to requester.
+ * Sent only to requester when they try to join a hub they are already in.
  */
 message HubAlreadyMember {
-  sercom.protocol.domain.HubMember self_member = 1;
+    sercom.protocol.domain.HubMember self_member = 1;
 }

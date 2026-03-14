@@ -53,8 +53,7 @@ cc_library(
     copts = ["-std=gnu++23"],
     visibility = ["//app:__subpackages__"],
     deps = [
-        "//app/converters:proto_converters",
-        "//app/proto_builders",
+        "//app/commands:i_command",
         "//domains:channel_domain",
         "//domains:hub_domain",
         "//domains/ids:domain_ids",

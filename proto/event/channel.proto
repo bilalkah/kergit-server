@@ -5,35 +5,26 @@ package sercom.protocol.event;
 import "proto/domain/channel.proto";
 
 /*
- * Channel is created. 
- * We need to include hub_id for clients to know which 
- * hub this channel belongs to.
- * 
- * To be used to fanout to hub members.
+ * Action type for channel lifecycle events.
  */
-message ChannelCreated {
-  string hub_id = 1;
-  sercom.protocol.domain.Channel channel = 2;
+enum ChannelAction {
+    CHANNEL_ACTION_UNSPECIFIED = 0;
+    CHANNEL_ACTION_CREATED = 1;
+    CHANNEL_ACTION_UPDATED = 2;
+    CHANNEL_ACTION_REMOVED = 3;
 }
 
 /*
- * Channel is renamed.
- * We dont need to include hub_id since the client
- * already know which hub this channel belongs to.
+ * Unified channel lifecycle event.
+ * Replaces the former ChannelCreated / ChannelRenamed / ChannelRemoved.
  *
- * To be used to fanout to hub members.
- */
-message ChannelRenamed {
-  sercom.protocol.domain.Channel channel = 2;
-}
-
-/*
- * Channel is removed.
- * We dont need to include hub_id since the client
- * already know which hub this channel belongs to.
+ * For CREATED / UPDATED: channel carries the full Channel object.
+ * For REMOVED: channel carries only the id (other fields are default).
  *
- * To be used to fanout to hub members.
+ * Fanout to all hub members.
  */
-message ChannelRemoved {
-  string channel_id = 1;
+message ChannelUpdated {
+    string hub_id = 1;
+    ChannelAction action = 2;
+    sercom.protocol.domain.Channel channel = 3;
 }

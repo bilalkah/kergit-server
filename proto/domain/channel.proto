@@ -8,8 +8,22 @@ enum ChannelType {
     ChannelType_VOICE = 2;
 }
 
+/*
+ * Extensible display metadata for a channel.
+ * Contains all mutable, user-facing fields.
+ */
+message ChannelMetadata {
+    string name = 1;
+    // Future: topic, description, icon, etc.
+}
+
+/*
+ * Canonical channel representation.
+ * Structural/identity fields at top level; mutable display fields in metadata.
+ */
 message Channel {
     string id = 1;
-    string name = 2;
+    string hub_id = 2;
     ChannelType type = 3;
+    ChannelMetadata metadata = 4;
 }

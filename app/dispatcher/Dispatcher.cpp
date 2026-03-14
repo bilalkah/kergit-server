@@ -1,8 +1,6 @@
 #include "app/dispatcher/Dispatcher.h"
 
 #include "app/commands/channel/CreateChannelCommand.h"
-// #include "app/commands/channel/DeleteChannelCommand.h"
-// #include "app/commands/channel/JoinChannelCommand.h"
 #include "app/commands/channel/RemoveChannelCommand.h"
 #include "app/commands/channel/RenameChannelCommand.h"
 #include "app/commands/hub/CreateHubCommand.h"
@@ -10,7 +8,6 @@
 #include "app/commands/hub/GetHubInviteCommand.h"
 #include "app/commands/hub/JoinHubByInviteCommand.h"
 #include "app/commands/hub/LeaveHubCommand.h"
-#include "app/commands/hub/RenameHubCommand.h"
 #include "app/commands/hub/UpdateHubCommand.h"
 // #include "app/commands/member/UpdateMemberRoleCommand.h"
 #include "app/commands/activity/JoinVoiceChannelCommand.h"
@@ -23,7 +20,7 @@
 // #include "app/commands/profile/UpdateProfileCommand.h"
 #include "app/commands/session/AuthenticateCommand.h"
 #include "app/commands/session/BootstrapCommand.h"
-#include "app/commands/system/DisconnectionCommand.h"
+#include "app/commands/session/DisconnectionCommand.h"
 #include "app/commands/user/UpdateUserCommand.h"
 
 namespace app {
@@ -83,12 +80,11 @@ void Dispatcher::register_all() {
         std::make_unique<GetHubInviteCommand>();
     map_proto_[sercom::protocol::Envelope_Type_HUB_LEAVE] = std::make_unique<LeaveHubCommand>();
     map_proto_[sercom::protocol::Envelope_Type_HUB_REMOVE] = std::make_unique<DeleteHubCommand>();
-    map_proto_[sercom::protocol::Envelope_Type_HUB_RENAME] = std::make_unique<RenameHubCommand>();
     map_proto_[sercom::protocol::Envelope_Type_HUB_UPDATE] = std::make_unique<UpdateHubCommand>();
     map_proto_[sercom::protocol::Envelope_Type_USER_UPDATE] = std::make_unique<UpdateUserCommand>();
     map_proto_[sercom::protocol::Envelope_Type_CHANNEL_CREATE] =
         std::make_unique<CreateChannelCommand>();
-    map_proto_[sercom::protocol::Envelope_Type_CHANNEL_RENAME] =
+    map_proto_[sercom::protocol::Envelope_Type_CHANNEL_UPDATE] =
         std::make_unique<RenameChannelCommand>();
     map_proto_[sercom::protocol::Envelope_Type_CHANNEL_REMOVE] =
         std::make_unique<RemoveChannelCommand>();

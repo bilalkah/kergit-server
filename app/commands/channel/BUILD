@@ -8,7 +8,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//app/commands:i_command",
-        "//app/converters:proto_converters",
         "//app/dispatcher:command_context",
         "//app/managers/subscription:topic",
         "//domains:channel_domain",
@@ -28,7 +27,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//app/commands:i_command",
-        "//app/converters:proto_converters",
         "//app/dispatcher:command_context",
         "//app/managers/subscription:topic",
         "//domains:channel_domain",

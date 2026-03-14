@@ -1,12 +1,12 @@
 #include "app/commands/session/AuthenticateCommand.h"
 
 #include "app/commands/utils.h"
-#include "app/proto_builders/EnvelopeBuilders.h"
 #include "proto/command/session.pb.h"
 #include "proto/envelope.pb.h"
 #include "proto/event/error.pb.h"
 #include "proto/event/session.pb.h"
 
+#include <cassert>
 #include <chrono>
 #include <optional>
 
@@ -14,26 +14,30 @@ namespace app {
 
 namespace {
 
-net::outbound::OutgoingMessage make_auth_ok(const GlobalConnId& conn) {
+net::outbound::OutgoingMessage make_auth_ok(net::outbound::Target target) {
     sercom::protocol::event::AuthOk auth_ok;
-    std::string bytes =
-        proto_builders::serialize_envelope(sercom::protocol::Envelope::AUTH_OK, auth_ok);
+    sercom::protocol::Envelope env;
+    env.set_version(1);
+    env.set_type(sercom::protocol::Envelope::AUTH_OK);
+    auth_ok.SerializeToString(env.mutable_payload());
+    std::string bytes = env.SerializeAsString();
 
-    return net::outbound::OutgoingMessage{
-        .target = net::outbound::Target::one(conn),
-        .action = net::outbound::Action{
-            std::in_place_type<net::outbound::SendPayload>,
-            net::outbound::SendPayload{.payload = net::outbound::Payload{std::move(bytes), true}}}};
+    return make_outgoing_message(std::move(target), std::move(bytes));
 }
 
-net::outbound::OutgoingMessage make_auth_failed(const GlobalConnId& conn) {
+net::outbound::OutgoingMessage make_auth_update(net::outbound::Target target,
+                                                const net::connection::AuthState auth_state,
+                                                std::optional<UserId> u_id = std::nullopt,
+                                                int64_t expires_at_unix = 0) {
     return net::outbound::OutgoingMessage{
-        .target = net::outbound::Target::one(conn),
+        .target = std::move(target),
         .action = net::outbound::Action{
             std::in_place_type<net::outbound::UpdateAuthState>,
-            net::outbound::UpdateAuthState{.state = net::outbound::kAuthStateFailed,
-                                           .expires_at = std::chrono::system_clock::time_point{},
-                                           .user_id = std::nullopt}}};
+            net::outbound::UpdateAuthState{
+                .state = auth_state,
+                .expires_at =
+                    std::chrono::system_clock::time_point{std::chrono::seconds{expires_at_unix}},
+                .user_id = std::move(u_id)}}};
 }
 
 }  // namespace
@@ -41,65 +45,38 @@ net::outbound::OutgoingMessage make_auth_failed(const GlobalConnId& conn) {
 std::vector<net::outbound::OutgoingMessage> AuthenticateCommand::execute(CommandContext& ctx,
                                                                          const queue::Event& evt) {
     std::vector<net::outbound::OutgoingMessage> result;
-    const auto* event = std::get_if<queue::MessageEvent>(&evt);
-    if (!event) {
-        return {};
-    }
+    assert(std::holds_alternative<queue::MessageEvent>(evt));
+    const auto& event = std::get<queue::MessageEvent>(evt);
 
-    const auto& env = event->payload.env;
-    if (env.type() != sercom::protocol::Envelope::AUTH) {
-        return {};
-    }
+    const auto& env = event.payload.env;
+    assert(env.type() == sercom::protocol::Envelope::AUTH);
 
-    const auto& auth = require_parsed<sercom::protocol::command::Authenticate>(*event);
+    const auto& auth = require_parsed<sercom::protocol::command::Authenticate>(event);
 
     // 4. Validate command fields
     if (auth.type() != sercom::protocol::command::AuthType_REAUTH &&
         auth.type() != sercom::protocol::command::AuthType_AUTH) {
-        result.emplace_back(make_auth_failed(event->conn_id));
-        result.emplace_back(net::outbound::OutgoingMessage{
-            .target = net::outbound::Target::one(event->conn_id),
-            .action = net::outbound::Action{
-                std::in_place_type<net::outbound::DropConnection>,
-                static_cast<int>(
-                    sercom::protocol::event::CommandErrorCode::CommandErrorCode_INVALID_ARGUMENT),
-                "Unsupported auth type"}});
+        result.emplace_back(
+            make_auth_update(net::outbound::Target::one(event.conn_id), net::outbound::kAuthStateFailed));
         return result;
     }
 
     if (auth.provider() != sercom::protocol::command::AuthProvider_SUPABASE) {
-        result.emplace_back(make_auth_failed(event->conn_id));
-        result.emplace_back(net::outbound::OutgoingMessage{
-            .target = net::outbound::Target::one(event->conn_id),
-            .action = net::outbound::Action{
-                std::in_place_type<net::outbound::DropConnection>,
-                static_cast<int>(
-                    sercom::protocol::event::CommandErrorCode::CommandErrorCode_INVALID_ARGUMENT),
-                "Unsupported auth provider"}});
+        result.emplace_back(
+            make_auth_update(net::outbound::Target::one(event.conn_id), net::outbound::kAuthStateFailed));
         return result;
     }
 
     if (auth.token().empty()) {
-        result.emplace_back(make_auth_failed(event->conn_id));
-        result.emplace_back(net::outbound::OutgoingMessage{
-            .target = net::outbound::Target::one(event->conn_id),
-            .action = net::outbound::Action{
-                std::in_place_type<net::outbound::DropConnection>,
-                static_cast<int>(
-                    sercom::protocol::event::CommandErrorCode::CommandErrorCode_INVALID_ARGUMENT),
-                "Token is required"}});
+        result.emplace_back(
+            make_auth_update(net::outbound::Target::one(event.conn_id), net::outbound::kAuthStateFailed));
         return result;
     }
 
     auto auth_result = ctx.auth_service.authenticate(auth.token());
     if (!auth_result.has_value()) {
-        result.emplace_back(make_auth_failed(event->conn_id));
-        result.emplace_back(net::outbound::OutgoingMessage{
-            .target = net::outbound::Target::one(event->conn_id),
-            .action = net::outbound::Action{
-                std::in_place_type<net::outbound::DropConnection>,
-                static_cast<int>(sercom::protocol::event::CommandErrorCode_UNAUTHORIZED),
-                "Authentication failed"}});
+        result.emplace_back(
+            make_auth_update(net::outbound::Target::one(event.conn_id), net::outbound::kAuthStateFailed));
         return result;
     }
 
@@ -107,52 +84,35 @@ std::vector<net::outbound::OutgoingMessage> AuthenticateCommand::execute(Command
     const UserId user_id{claims.id};
 
     // If the connection is already authenticated, this is a re-auth.
-    auto existing = ctx.session_manager.sessionOfConnection(event->conn_id);
+    auto existing = ctx.session_manager.sessionOfConnection(event.conn_id);
     if (existing) {
         if (existing->value != claims.id) {
-            result.emplace_back(make_auth_failed(event->conn_id));
-            result.emplace_back(net::outbound::OutgoingMessage{
-                .target = net::outbound::Target::one(event->conn_id),
-                .action = net::outbound::Action{
-                    std::in_place_type<net::outbound::DropConnection>,
-                    static_cast<int>(sercom::protocol::event::CommandErrorCode_FORBIDDEN),
-                    "Auth user mismatch"}});
+            result.emplace_back(
+                make_auth_update(net::outbound::Target::one(event.conn_id), net::outbound::kAuthStateFailed));
             return result;
         }
-        result.emplace_back(net::outbound::OutgoingMessage{
-            .target = net::outbound::Target::one(event->conn_id),
-            .action = net::outbound::Action{
-                std::in_place_type<net::outbound::UpdateAuthState>,
-                net::outbound::UpdateAuthState{
-                    .state = net::outbound::kAuthStateAuthenticated,
-                    .expires_at =
-                        std::chrono::system_clock::time_point{std::chrono::seconds{claims.exp}},
-                    .user_id = user_id}}});
-        result.emplace_back(make_auth_ok(event->conn_id));
+        result.emplace_back(make_auth_update(net::outbound::Target::one(event.conn_id),
+                                             net::outbound::kAuthStateAuthenticated, user_id,
+                                             claims.exp));
+        result.emplace_back(make_auth_ok(net::outbound::Target::one(event.conn_id)));
         return result;
     }
 
-    auto attach_result = ctx.session_manager.attachConnection(event->conn_id, user_id);
+    auto attach_result = ctx.session_manager.attachConnection(event.conn_id, user_id);
     if (!attach_result.has_value()) {
-        result.emplace_back(make_command_error(event->conn_id, env.type(), attach_result.error(),
+        result.emplace_back(make_command_error(event.conn_id, env.type(), attach_result.error(),
                                                "Session limit exceeded"));
         return result;
     }
 
-    result.emplace_back(net::outbound::OutgoingMessage{
-        .target = net::outbound::Target::one(event->conn_id),
-        .action = net::outbound::Action{
-            std::in_place_type<net::outbound::UpdateAuthState>,
-            net::outbound::UpdateAuthState{
-                .state = net::outbound::kAuthStateAuthenticated,
-                .expires_at =
-                    std::chrono::system_clock::time_point{std::chrono::seconds{claims.exp}},
-                .user_id = user_id}}});
+    result.emplace_back(make_auth_update(net::outbound::Target::one(event.conn_id),
+                                         net::outbound::kAuthStateAuthenticated, user_id,
+                                         claims.exp));
 
-    result.emplace_back(make_auth_ok(event->conn_id));
+    result.emplace_back(make_auth_ok(net::outbound::Target::one(event.conn_id)));
 
     queue::ConnectionEvent bootstrap_event;
-    bootstrap_event.conn_id = event->conn_id;
+    bootstrap_event.conn_id = event.conn_id;
     bootstrap_event.user_id = user_id;
     ctx.event_sink.push(std::move(bootstrap_event));
 

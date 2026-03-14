@@ -32,7 +32,10 @@ std::string LivekitClient::PostJson(const std::string& endpoint, const std::stri
 
 std::vector<ParticipantInfo> LivekitClient::ListParticipants(const ChannelId& room) {
     json req{{"room", room.value}};
-    const std::string token = token_service_.mint_admin_token();
+    livekit::LiveKitTokenService::AdminTokenRequest token_req;
+    token_req.room = room;
+    token_req.room_admin = true;
+    const std::string token = token_service_.mint_admin_token(token_req);
 
     auto res = PostJson("/twirp/livekit.RoomService/ListParticipants", req.dump(), token);
     json data = json::parse(res);
@@ -54,7 +57,10 @@ std::vector<ParticipantInfo> LivekitClient::ListParticipants(const ChannelId& ro
 bool LivekitClient::RemoveParticipant(const ChannelId& room, const UserId& identity) {
     try {
         json req{{"room", room.value}, {"identity", identity.value}};
-        const std::string token = token_service_.mint_admin_token();
+        livekit::LiveKitTokenService::AdminTokenRequest token_req;
+        token_req.room = room;
+        token_req.room_admin = true;
+        const std::string token = token_service_.mint_admin_token(token_req);
         PostJson("/twirp/livekit.RoomService/RemoveParticipant", req.dump(), token);
         return true;
     } catch (...) {
@@ -63,20 +69,26 @@ bool LivekitClient::RemoveParticipant(const ChannelId& room, const UserId& ident
 }
 
 void LivekitClient::CreateRoom(const std::string& name, const std::string& metadata) {
-    const std::string token = token_service_.mint_admin_token();
+    livekit::LiveKitTokenService::AdminTokenRequest token_req;
+    token_req.room_create = true;
+    const std::string token = token_service_.mint_admin_token(token_req);
     json req{{"name", name}, {"emptyTimeout", 60}};
     if (!metadata.empty()) req["metadata"] = metadata;
     PostJson("/twirp/livekit.RoomService/CreateRoom", req.dump(), token);
 }
 
 void LivekitClient::DeleteRoom(const std::string& name) {
-    const std::string token = token_service_.mint_admin_token();
+    livekit::LiveKitTokenService::AdminTokenRequest token_req;
+    token_req.room_create = true;
+    const std::string token = token_service_.mint_admin_token(token_req);
     json req{{"room", name}};
     PostJson("/twirp/livekit.RoomService/DeleteRoom", req.dump(), token);
 }
 
 std::vector<ChannelId> LivekitClient::ListRooms() {
-    const std::string token = token_service_.mint_admin_token();
+    livekit::LiveKitTokenService::AdminTokenRequest token_req;
+    token_req.room_list = true;
+    const std::string token = token_service_.mint_admin_token(token_req);
     const auto res = PostJson("/twirp/livekit.RoomService/ListRooms", "{}", token);
     const auto data = json::parse(res);
 

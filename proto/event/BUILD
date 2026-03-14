@@ -2,10 +2,20 @@ load("@protobuf//bazel:cc_proto_library.bzl", "cc_proto_library")
 load("@protobuf//bazel:proto_library.bzl", "proto_library")
 
 proto_library(
+    name = "activity_proto",
+    srcs = ["activity.proto"],
+)
+
+cc_proto_library(
+    name = "activity_cc_proto",
+    visibility = ["//visibility:public"],
+    deps = [":activity_proto"],
+)
+
+proto_library(
     name = "session_proto",
     srcs = ["session.proto"],
     deps = [
-        "//proto/domain:channel_proto",
         "//proto/domain:hub_proto",
         "//proto/domain:user_proto",
         ":activity_proto",
@@ -21,10 +31,6 @@ cc_proto_library(
 proto_library(
     name = "presence_proto",
     srcs = ["presence.proto"],
-    deps = [
-        "//proto/domain:hub_proto",
-        ":hub_proto",
-    ],
 )
 
 cc_proto_library(
@@ -61,7 +67,6 @@ cc_proto_library(
     deps = [":message_proto"],
 )
 
-
 proto_library(
     name = "hub_proto",
     srcs = ["hub.proto"],
@@ -95,21 +100,13 @@ cc_proto_library(
 proto_library(
     name = "user_proto",
     srcs = ["user.proto"],
+    deps = [
+        "//proto/domain:user_proto",
+    ],
 )
 
 cc_proto_library(
     name = "user_cc_proto",
     visibility = ["//visibility:public"],
     deps = [":user_proto"],
-)
-
-proto_library(
-    name = "activity_proto",
-    srcs = ["activity.proto"],
-)
-
-cc_proto_library(
-    name = "activity_cc_proto",
-    visibility = ["//visibility:public"],
-    deps = [":activity_proto"],
 )
