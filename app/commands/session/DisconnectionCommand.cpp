@@ -11,19 +11,6 @@
 
 namespace app {
 
-namespace {
-
-net::outbound::OutgoingMessage make_broadcast(std::vector<GlobalConnId> conns, std::string bytes) {
-    return net::outbound::OutgoingMessage{
-        .priority = net::outbound::OutboundPriority::Low,
-        .target = net::outbound::Target::many(std::move(conns)),
-        .action = net::outbound::Action{
-            std::in_place_type<net::outbound::SendPayload>,
-            net::outbound::SendPayload{.payload = net::outbound::Payload{std::move(bytes), true}}}};
-}
-
-}  // namespace
-
 std::vector<net::outbound::OutgoingMessage> DisconnectionCommand::execute(CommandContext& ctx,
                                                                           const queue::Event& evt) {
     std::vector<net::outbound::OutgoingMessage> out;
@@ -82,8 +69,9 @@ std::vector<net::outbound::OutgoingMessage> DisconnectionCommand::execute(Comman
 
             std::vector<GlobalConnId> recipients(recipient_set.begin(), recipient_set.end());
             if (!recipients.empty()) {
-                auto payload = ctx.hub_notifier.memberOffline(hub_id, user_id);
-                out.push_back(make_broadcast(std::move(recipients), std::move(payload)));
+                auto payload = make_member_presence(hub_id, user_id, false);
+                out.emplace_back(make_outgoing_message(
+                    net::outbound::Target::many(std::move(recipients)), std::move(payload)));
             }
         }
     }

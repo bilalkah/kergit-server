@@ -119,7 +119,7 @@ HubSnapshot HubService::buildSnapshot(const HubId& hubId) {
     const auto channels = channel_repo_.getHubChannels(hubId);
     snapshot.channels.reserve(channels.size());
     for (const auto& channel : channels) {
-        snapshot.channels.push_back(HubSnapshotChannel{channel.id, channel.name, channel.type});
+        snapshot.channels.push_back(HubSnapshotChannel{channel.id, channel.type});
     }
 
     // Only cache user_id + role; user display info is fetched via UserService

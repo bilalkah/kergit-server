@@ -12,7 +12,8 @@ namespace app::services {
 
 struct HubSnapshotChannel {
     ChannelId id;
-    std::string name;
+    // Only immutable topology fields are cached here.
+    // Mutable fields like channel name are read from repository/cache.
     ChannelType type{ChannelType::CHAT};
 };
 

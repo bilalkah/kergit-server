@@ -141,14 +141,9 @@ std::vector<net::outbound::OutgoingMessage> UpdateHubCommand::execute(CommandCon
 
     // Send single HubUpdated event with full hub state
     std::string bytes =
-        ctx.hub_notifier.hubUpdated(hub_id, updated_hub->name, updated_hub->avatar_seed);
+        make_hub_update(hub_id, updated_hub->name, updated_hub->avatar_seed);
 
-    out.emplace_back(net::outbound::OutgoingMessage{
-        .target = net::outbound::Target::many(std::move(conns)),
-        .action =
-            net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
-                                  net::outbound::SendPayload{
-                                      .payload = net::outbound::Payload{std::move(bytes), true}}}});
+    out.emplace_back(make_outgoing_message(net::outbound::Target::many(std::move(conns)), std::move(bytes)));
     return out;
 }
 

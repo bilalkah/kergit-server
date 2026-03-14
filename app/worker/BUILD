@@ -11,6 +11,7 @@ cc_library(
     copts = ["-std=gnu++23"],
     visibility = ["//visibility:public"],
     deps = [
+        "//app/commands:utils",
         "//app/dispatcher",
         "//app/managers/session:session_manager",
         "//app/queue:event_queue",

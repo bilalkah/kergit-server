@@ -1,5 +1,6 @@
 #include "app/worker/WorkerPool.h"
 
+#include "app/commands/utils.h"
 #include "proto/event/error.pb.h"
 #include "utils/EventLogger.h"
 #include "utils/Metrics.h"
@@ -222,13 +223,9 @@ std::vector<net::outbound::OutgoingMessage> WorkerPool::handle_event(queue::Mess
     if (!parsed.has_value()) {
         utils::metrics::counters().payload_parse_fail_total.fetch_add(1, std::memory_order_relaxed);
         // Drop connection on invalid envelope
-        result.emplace_back(net::outbound::OutgoingMessage{
-            .target = net::outbound::Target::one(msg_evt.conn_id),
-            .action = net::outbound::Action{
-                std::in_place_type<net::outbound::DropConnection>,
-                static_cast<int>(
-                    sercom::protocol::event::CommandErrorCode::CommandErrorCode_INVALID_FORMAT),
-                "Invalid envelope: " + parsed.error()}});
+        result.emplace_back(make_drop_connection(
+            msg_evt.conn_id, sercom::protocol::event::CommandErrorCode::CommandErrorCode_INVALID_FORMAT,
+            "Invalid envelope: " + parsed.error()));
         return result;
     }
     msg_evt.payload.parsed = std::move(parsed.value());

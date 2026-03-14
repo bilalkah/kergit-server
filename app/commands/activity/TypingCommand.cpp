@@ -96,13 +96,10 @@ std::vector<net::outbound::OutgoingMessage> TypingCommand::execute(CommandContex
         return {};
     }
 
-    out.emplace_back(net::outbound::OutgoingMessage{
-        .priority = net::outbound::OutboundPriority::Low,
-        .target = net::outbound::Target::many(std::move(conns)),
-        .action =
-            net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
-                                  net::outbound::SendPayload{
-                                      .payload = net::outbound::Payload{std::move(bytes), true}}}});
+    auto msg = make_outgoing_message(net::outbound::Target::many(std::move(conns)), std::move(bytes));
+    msg.priority = net::outbound::OutboundPriority::Low;
+    out.emplace_back(std::move(msg));
+    
     return out;
 }
 

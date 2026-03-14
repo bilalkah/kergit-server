@@ -99,7 +99,7 @@ std::vector<net::outbound::OutgoingMessage> RenameChannelCommand::execute(Comman
 
     Channel renamed_channel = channel;
     renamed_channel.name = requested_name;
-    std::string bytes = ctx.hub_notifier.channelUpdated(hub_id, renamed_channel);
+    std::string bytes = make_channel_update(hub_id, renamed_channel);
 
     utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(
         1, std::memory_order_relaxed);
@@ -117,12 +117,7 @@ std::vector<net::outbound::OutgoingMessage> RenameChannelCommand::execute(Comman
         return {};
     }
 
-    out.emplace_back(net::outbound::OutgoingMessage{
-        .target = net::outbound::Target::many(std::move(conns)),
-        .action =
-            net::outbound::Action{std::in_place_type<net::outbound::SendPayload>,
-                                  net::outbound::SendPayload{
-                                      .payload = net::outbound::Payload{std::move(bytes), true}}}});
+    out.emplace_back(make_outgoing_message(net::outbound::Target::many(std::move(conns)), std::move(bytes)));
     return out;
 }
 
