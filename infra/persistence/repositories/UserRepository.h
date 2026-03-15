@@ -8,12 +8,14 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 class UserRepository {
    public:
     explicit UserRepository(DatabaseExecutor& db) : db_(db) {}
 
     std::optional<User> getUser(const UserId& userUuid);
+    std::vector<User> getUsersByIds(const std::vector<UserId>& userIds);
     std::optional<std::string> getUserDisplayName(const UserId& userUuid);
     std::pair<std::string, std::string> updateUserProfile(
         const UserId& userUuid, const std::optional<std::string>& username,

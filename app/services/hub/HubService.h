@@ -3,38 +3,52 @@
 
 #include "app/services/hub/HubCache.h"
 #include "app/services/hub/HubSnapshot.h"
-#include "infra/persistence/repositories/ChannelRepository.h"
 #include "infra/persistence/repositories/HubRepository.h"
 
 #include <memory>
 #include <optional>
 #include <shared_mutex>
 #include <unordered_map>
-#include <utility>
 #include <vector>
 
 namespace app::services {
 
-struct HubMemberSummary {
+struct HubMemberWithRole {
     UserId user_id;
-    std::string display_name;
-    std::string avatar_seed;
+    Role role{Role::USER};
+};
+
+struct HubTopology {
+    std::vector<HubMemberWithRole> members;
+    std::vector<ChannelId> channel_ids;
 };
 
 class HubService {
    public:
-    HubService(HubRepository& repo, ChannelRepository& channel_repo);
+    explicit HubService(HubRepository& repo);
 
     // ---- Reads ----
     std::optional<Hub> getHub(const HubId& hubId);
+    std::unordered_map<HubId, Hub> getHubsByIds(const std::vector<HubId>& hubIds);
+    std::optional<Channel> getChannel(const ChannelId& channelId);
+    std::unordered_map<ChannelId, Channel> getChannelsByIds(
+        const std::vector<ChannelId>& channelIds);
+    std::vector<Channel> getHubChannels(const HubId& hubId);
     std::vector<Hub> getUserHubs(const UserId& userId);
-    std::vector<HubMemberSummary> getHubMembers(const HubId& hubId);
+    void warmSnapshotsForHubs(const std::vector<Hub>& hubs);
+    HubTopology getHubTopology(const HubId& hubId);
+    std::vector<HubMemberWithRole> getHubMembersWithRoles(const HubId& hubId);
+    std::vector<ChannelId> getHubChannelIds(const HubId& hubId);
 
     bool isHubMember(const HubId& hubId, const UserId& userId);
+    std::optional<Role> resolveMembershipRole(const HubId& hubId, const UserId& userId);
     std::optional<Role> getMembershipRole(const HubId& hubId, const UserId& userId);
 
     // ---- Writes ----
-    HubId createHub(const std::string& name, const UserId& owner);
+    Hub createHub(const std::string& name, const UserId& owner);
+    ChannelId createChannel(const HubId& hubId, const std::string& name, const std::string& type);
+    bool renameChannel(const ChannelId& channelId, const std::string& newName);
+    bool deleteChannel(const ChannelId& channelId, const HubId& hubId);
     bool renameHub(const HubId& hubId, const std::string& name);
     bool updateHubAvatarSeed(const HubId& hubId, const std::string& avatar_seed);
     bool deleteHub(const HubId& hubId, const UserId& owner);
@@ -42,22 +56,21 @@ class HubService {
     void addMember(const HubId& hubId, const UserId& userId, Role role);
     void removeMember(const HubId& hubId, const UserId& userId);
 
-    HubSnapshot buildSnapshot(const HubId& hubId);
-    std::optional<HubSnapshot> tryGetSnapshot(const HubId& hubId) const;
-    std::optional<std::pair<HubId, HubSnapshotChannel>> tryGetSnapshotChannel(
-        const ChannelId& channelId) const;
-    HubSnapshot getOrBuildSnapshot(const HubId& hubId);
     void invalidateSnapshot(const HubId& hubId);
-    void invalidateSnapshotsForChannel(const ChannelId& channelId);
 
    private:
     HubRepository& repo_;
-    ChannelRepository& channel_repo_;
     std::unique_ptr<IHubCache> cache_;
-    // HubSnapshot caches whole-hub topology only (channel ids/types + member roles).
-    // Mutable fields such as channel names are intentionally not cached here.
-    mutable std::shared_mutex snapshot_mutex_;
-    std::unordered_map<HubId, HubSnapshot> snapshots_;
+
+    std::optional<HubSnapshot> loadSnapshot(const HubId& hubId);
+    std::optional<HubSnapshot> buildSnapshot(const HubId& hubId);
+    std::optional<Channel> readChannelCache(const ChannelId& channelId) const;
+    void upsertChannelCache(const Channel& channel);
+    void invalidateChannelCache(const ChannelId& channelId);
+    void invalidateHubCaches(const HubId& hubId);
+
+    mutable std::shared_mutex channel_cache_mutex_;
+    std::unordered_map<ChannelId, Channel> channel_cache_;
 };
 
 }  // namespace app::services

@@ -75,8 +75,15 @@ std::vector<net::outbound::OutgoingMessage> JoinVoiceChannelCommand::execute(
     assert(env.type() == sercom::protocol::Envelope::VOICE_JOIN);
 
     const auto& cmd = require_parsed<sercom::protocol::command::JoinVoiceChannelRequest>(*event);
-    const ChannelId channel_id{cmd.channel_id()};
-    const HubId hub_id{cmd.hub_id()};
+    const auto scope_opt = to_channel_scope(cmd.channel());
+    if (!scope_opt.has_value()) {
+        out.emplace_back(make_command_error(
+            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
+            "channel.hub_id and channel.channel_id are required"));
+        return out;
+    }
+    const ChannelId channel_id = scope_opt->channel_id;
+    const HubId hub_id = scope_opt->hub_id;
 
     auto user_exp = ctx.session_manager.sessionOfConnection(event->conn_id);
 
@@ -104,7 +111,7 @@ std::vector<net::outbound::OutgoingMessage> JoinVoiceChannelCommand::execute(
     }
     const SessionId requester_session_id = requester_session_id_exp.value();
 
-    auto channel_opt = ctx.channel_service.getChannel(channel_id);
+    auto channel_opt = ctx.hub_service.getChannel(channel_id);
     if (!channel_opt) {
         out.emplace_back(make_command_error(event->conn_id, env.type(),
                                             sercom::protocol::event::CommandErrorCode_NOT_FOUND,

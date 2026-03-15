@@ -55,7 +55,7 @@ cc_library(
     visibility = ["//net:__subpackages__"],
     deps = [
         "//proto:envelope_cc_proto",
-        "//proto/system:heartbeat_cc_proto",
+        "//proto/event:heartbeat_cc_proto",
     ],
 )
 

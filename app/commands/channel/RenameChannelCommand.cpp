@@ -8,6 +8,7 @@
 #include "proto/command/channel.pb.h"
 #include "proto/envelope.pb.h"
 #include "proto/event/error.pb.h"
+#include "proto/event/state.pb.h"
 
 #include <cassert>
 #include <optional>
@@ -35,8 +36,16 @@ std::vector<net::outbound::OutgoingMessage> RenameChannelCommand::execute(Comman
     }
     
     const UserId user_id = user_exp.value();
-    const ChannelId channel_id{cmd.channel_id()};
-    auto channel_opt = ctx.channel_service.getChannel(channel_id);
+    const auto scope_opt = to_channel_scope(cmd.channel());
+    if (!scope_opt.has_value()) {
+        out.emplace_back(make_command_error(
+            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
+            "channel.hub_id and channel.channel_id are required"));
+        return out;
+    }
+    const ChannelId channel_id = scope_opt->channel_id;
+    const HubId requested_hub_id = scope_opt->hub_id;
+    auto channel_opt = ctx.hub_service.getChannel(channel_id);
     if (!channel_opt) {
         out.emplace_back(make_command_error(
             event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_NOT_FOUND,
@@ -45,6 +54,12 @@ std::vector<net::outbound::OutgoingMessage> RenameChannelCommand::execute(Comman
     }
     const Channel channel = channel_opt.value();
     const HubId hub_id = channel.hub_id;
+    if (hub_id != requested_hub_id) {
+        out.emplace_back(make_command_error(
+            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_NOT_FOUND,
+            "Channel not found"));
+        return out;
+    }
 
     if (!cmd.has_name()) {
         out.emplace_back(make_command_error(
@@ -62,24 +77,25 @@ std::vector<net::outbound::OutgoingMessage> RenameChannelCommand::execute(Comman
         return out;
     }
 
-    if (!ctx.hub_service.isHubMember(hub_id, user_id)) {
+    auto role = ctx.hub_service.getMembershipRole(hub_id, user_id);
+    if (!role) {
         out.emplace_back(make_command_error(
             event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_FORBIDDEN,
             "Join the hub before renaming channels"));
         return out;
     }
 
-    auto role = ctx.hub_service.getMembershipRole(hub_id, user_id);
-    if (!role || (*role != Role::OWNER && *role != Role::ADMIN)) {
+    if (*role != Role::OWNER && *role != Role::ADMIN) {
         out.emplace_back(make_command_error(
             event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_FORBIDDEN,
             "Only admins/owners can rename channels"));
         return out;
     }
 
-    const auto existing = ctx.channel_service.getHubChannels(hub_id);
+    const auto channel_ids = ctx.hub_service.getHubChannelIds(hub_id);
+    const auto existing = ctx.hub_service.getChannelsByIds(channel_ids);
     const auto normalized = normalize_name_lowercase(requested_name);
-    for (const auto& ch : existing) {
+    for (const auto& [_, ch] : existing) {
         if (ch.id == channel.id) continue;
         if (normalize_name_lowercase(ch.name) == normalized) {
             out.emplace_back(
@@ -90,7 +106,7 @@ std::vector<net::outbound::OutgoingMessage> RenameChannelCommand::execute(Comman
         }
     }
 
-    if (!ctx.channel_service.renameChannel(channel.id, requested_name)) {
+    if (!ctx.hub_service.renameChannel(channel.id, requested_name)) {
         out.emplace_back(make_command_error(
             event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
             "Unable to rename channel at this time"));
@@ -99,7 +115,13 @@ std::vector<net::outbound::OutgoingMessage> RenameChannelCommand::execute(Comman
 
     Channel renamed_channel = channel;
     renamed_channel.name = requested_name;
-    std::string bytes = make_channel_update(hub_id, renamed_channel);
+    sercom::protocol::event::StateDelta delta;
+    auto* hub_delta = delta.add_hubs();
+    hub_delta->set_hub_id(hub_id.value);
+    auto* channel_delta = hub_delta->add_channels();
+    channel_delta->set_channel_id(channel.id.value);
+    auto* upsert = channel_delta->add_channel_ops()->mutable_upsert();
+    *upsert->mutable_channel() = to_proto_channel(renamed_channel);
 
     utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(
         1, std::memory_order_relaxed);
@@ -117,7 +139,8 @@ std::vector<net::outbound::OutgoingMessage> RenameChannelCommand::execute(Comman
         return {};
     }
 
-    out.emplace_back(make_outgoing_message(net::outbound::Target::many(std::move(conns)), std::move(bytes)));
+    out.emplace_back(make_outgoing_message(net::outbound::Target::many(std::move(conns)),
+                                           make_state_delta(delta)));
     return out;
 }
 

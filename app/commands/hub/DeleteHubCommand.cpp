@@ -8,7 +8,7 @@
 #include "proto/command/hub.pb.h"
 #include "proto/envelope.pb.h"
 #include "proto/event/error.pb.h"
-#include "proto/event/hub.pb.h"
+#include "proto/event/state.pb.h"
 
 #include <cassert>
 #include <vector>
@@ -35,22 +35,22 @@ std::vector<net::outbound::OutgoingMessage> DeleteHubCommand::execute(CommandCon
 
     const UserId user_id = user_exp.value();
     const HubId hub_id{cmd.hub_id()};
-    if (!ctx.hub_service.isHubMember(hub_id, user_id)) {
+    auto role = ctx.hub_service.getMembershipRole(hub_id, user_id);
+    if (!role) {
         out.emplace_back(make_command_error(event->conn_id, env.type(),
                                             sercom::protocol::event::CommandErrorCode_FORBIDDEN,
                                             "Join the hub before removing it"));
         return out;
     }
 
-    auto role = ctx.hub_service.getMembershipRole(hub_id, user_id);
-    if (!role || *role != Role::OWNER) {
+    if (*role != Role::OWNER) {
         out.emplace_back(make_command_error(event->conn_id, env.type(),
                                             sercom::protocol::event::CommandErrorCode_FORBIDDEN,
                                             "Only owners can remove hubs"));
         return out;
     }
 
-    const auto channels = ctx.channel_service.getHubChannels(hub_id);
+    const auto channel_ids = ctx.hub_service.getHubChannelIds(hub_id);
 
     try {
         if (!ctx.hub_service.deleteHub(hub_id, user_id)) {
@@ -71,19 +71,27 @@ std::vector<net::outbound::OutgoingMessage> DeleteHubCommand::execute(CommandCon
         1, std::memory_order_relaxed);
     auto subs = ctx.subscription_manager.getSubscribers(Topic::HubTopic(hub_id));
     std::vector<GlobalConnId> conns;
-    conns.reserve(subs->size());
-    for (const auto& conn : *subs) {
-        conns.push_back(conn);
+    if (subs) {
+        conns.reserve(subs->size());
+        for (const auto& conn : *subs) {
+            conns.push_back(conn);
+        }
     }
 
-    std::string bytes = make_hub_remove(hub_id);
+    sercom::protocol::event::StateDelta delta;
+    auto* hub_delta = delta.add_hubs();
+    hub_delta->set_hub_id(hub_id.value);
+    hub_delta->add_hub_ops()->mutable_remove();
 
     ctx.subscription_manager.removeAllForTopic(Topic::HubTopic(hub_id));
-    for (const auto& ch : channels) {
-        ctx.subscription_manager.removeAllForTopic(Topic::ChannelTopic(hub_id, ch.id));
+    for (const auto& channel_id : channel_ids) {
+        ctx.subscription_manager.removeAllForTopic(Topic::ChannelTopic(hub_id, channel_id));
     }
 
-    out.emplace_back(make_outgoing_message(net::outbound::Target::many(conns), std::move(bytes)));
+    if (!conns.empty()) {
+        out.emplace_back(make_outgoing_message(net::outbound::Target::many(std::move(conns)),
+                                               make_state_delta(delta)));
+    }
     return out;
 }
 

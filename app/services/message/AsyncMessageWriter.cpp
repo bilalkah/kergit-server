@@ -1,4 +1,4 @@
-#include "app/services/channel/AsyncMessageWriter.h"
+#include "app/services/message/AsyncMessageWriter.h"
 
 #include "utils/Logger.h"
 #include "utils/Metrics.h"
@@ -7,7 +7,7 @@
 
 namespace app::services {
 
-AsyncMessageWriter::AsyncMessageWriter(ChannelRepository& repo, std::size_t capacity,
+AsyncMessageWriter::AsyncMessageWriter(MessageRepository& repo, std::size_t capacity,
                                        std::size_t max_retries,
                                        std::chrono::milliseconds retry_delay)
     : repo_(repo), queue_(capacity), max_retries_(max_retries), retry_delay_(retry_delay) {}

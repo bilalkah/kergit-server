@@ -6,7 +6,7 @@
 #include "proto/command/activity.pb.h"
 #include "proto/envelope.pb.h"
 #include "proto/event/error.pb.h"
-#include "proto/event/presence.pb.h"
+#include "proto/event/realtime.pb.h"
 
 #include <cassert>
 #include <string>
@@ -15,22 +15,19 @@
 
 namespace app {
 namespace {
-inline std::string make_typing(const HubId& hub_id, const ChannelId& channel_id,
-                               const UserId& user_id, bool is_typing) {
-    sercom::protocol::event::PresenceEvent presence;
-    auto* payload = presence.mutable_typing();
-    payload->set_hub_id(hub_id.value.data(), hub_id.value.size());
-    payload->set_channel_id(channel_id.value.data(), channel_id.value.size());
-    payload->set_user_id(user_id.value.data(), user_id.value.size());
-    payload->set_is_typing(is_typing);
 
-    sercom::protocol::Envelope out_env;
-    out_env.set_version(1);
-    out_env.set_type(sercom::protocol::Envelope::PRESENCE);
-    presence.SerializeToString(out_env.mutable_payload());
-    return out_env.SerializeAsString();
+std::string make_typing_signal(const HubId& hub_id, const ChannelId& channel_id,
+                               const UserId& user_id, bool is_typing) {
+    sercom::protocol::event::RtSignal signal;
+    auto* payload = signal.mutable_typing();
+    *payload->mutable_channel() = to_proto_channel_ref(hub_id, channel_id);
+    payload->set_user_id(user_id.value);
+    payload->set_is_typing(is_typing);
+    return make_rt_signal(signal);
 }
+
 }  // namespace
+
 std::vector<net::outbound::OutgoingMessage> TypingCommand::execute(CommandContext& ctx,
                                                                    const queue::Event& evt) {
     std::vector<net::outbound::OutgoingMessage> out;
@@ -40,6 +37,15 @@ std::vector<net::outbound::OutgoingMessage> TypingCommand::execute(CommandContex
     assert(env.type() == sercom::protocol::Envelope::TYPING);
 
     const auto& cmd = require_parsed<sercom::protocol::command::Typing>(*event);
+    const auto scope_opt = to_channel_scope(cmd.channel());
+    if (!scope_opt.has_value()) {
+        out.emplace_back(make_command_error(
+            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
+            "channel.hub_id and channel.channel_id are required"));
+        return out;
+    }
+    const HubId hub_id = scope_opt->hub_id;
+    const ChannelId ch_id = scope_opt->channel_id;
 
     auto user_exp = ctx.session_manager.sessionOfConnection(event->conn_id);
     if (!user_exp.has_value()) {
@@ -50,18 +56,8 @@ std::vector<net::outbound::OutgoingMessage> TypingCommand::execute(CommandContex
     }
     const UserId user_id = user_exp.value();
 
-    const ChannelId ch_id{cmd.channel_id()};
-    const HubId hub_id{cmd.hub_id()};
-
-    auto channel_opt = ctx.channel_service.getChannel(ch_id);
-    if (!channel_opt.has_value()) {
-        out.emplace_back(make_command_error(
-            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_NOT_FOUND,
-            "Channel not found"));
-        return out;
-    }
-
-    if (channel_opt->hub_id != hub_id) {
+    auto channel_opt = ctx.hub_service.getChannel(ch_id);
+    if (!channel_opt || channel_opt->hub_id != hub_id) {
         out.emplace_back(make_command_error(
             event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_NOT_FOUND,
             "Channel not found"));
@@ -79,7 +75,7 @@ std::vector<net::outbound::OutgoingMessage> TypingCommand::execute(CommandContex
         return {};
     }
 
-    std::string bytes = make_typing(hub_id, ch_id, user_id, cmd.is_typing());
+    std::string bytes = make_typing_signal(hub_id, ch_id, user_id, cmd.is_typing());
 
     std::vector<GlobalConnId> conns;
     utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(
@@ -99,7 +95,6 @@ std::vector<net::outbound::OutgoingMessage> TypingCommand::execute(CommandContex
     auto msg = make_outgoing_message(net::outbound::Target::many(std::move(conns)), std::move(bytes));
     msg.priority = net::outbound::OutboundPriority::Low;
     out.emplace_back(std::move(msg));
-    
     return out;
 }
 

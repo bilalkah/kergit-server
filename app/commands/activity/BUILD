@@ -10,9 +10,11 @@ cc_library(
         "//app/commands:i_command",
         "//app/dispatcher:command_context",
         "//app/managers/subscription:topic",
+        "//domains:message_domain",
         "//proto:envelope_cc_proto",
         "//proto/command:activity_cc_proto",
         "//proto/event:error_cc_proto",
+        "//proto/event:state_cc_proto",
     ],
 )
 
@@ -29,7 +31,7 @@ cc_library(
         "//proto:envelope_cc_proto",
         "//proto/command:activity_cc_proto",
         "//proto/event:error_cc_proto",
-        "//proto/event:presence_cc_proto",
+        "//proto/event:realtime_cc_proto",
     ],
 )
 
@@ -43,10 +45,12 @@ cc_library(
         "//app/commands:i_command",
         "//app/dispatcher:command_context",
         "//app/managers/subscription:topic",
+        "//domains:message_domain",
         "//proto:envelope_cc_proto",
         "//proto/command:activity_cc_proto",
         "//proto/event:activity_cc_proto",
         "//proto/event:error_cc_proto",
+        "//proto/event:state_cc_proto",
     ],
 )
 
@@ -64,5 +68,6 @@ cc_library(
         "//proto/command:activity_cc_proto",
         "//proto/event:activity_cc_proto",
         "//proto/event:error_cc_proto",
+        "//proto/event:state_cc_proto",
     ],
 )

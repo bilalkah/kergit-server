@@ -1,11 +1,11 @@
-#ifndef APP_COMMANDS_MESSAGE_FETCHLATESTMESSAGESCOMMAND_H
-#define APP_COMMANDS_MESSAGE_FETCHLATESTMESSAGESCOMMAND_H
+#ifndef APP_COMMANDS_SESSION_REQUESTSTATESYNCCOMMAND_H
+#define APP_COMMANDS_SESSION_REQUESTSTATESYNCCOMMAND_H
 
 #include "app/commands/ICommand.h"
 
 namespace app {
 
-class FetchLatestMessagesCommand : public ICommand {
+class RequestStateSyncCommand : public ICommand {
    public:
     std::vector<net::outbound::OutgoingMessage> execute(CommandContext& ctx,
                                                         const queue::Event& evt) override;
@@ -13,4 +13,4 @@ class FetchLatestMessagesCommand : public ICommand {
 
 }  // namespace app
 
-#endif  // APP_COMMANDS_MESSAGE_FETCHLATESTMESSAGESCOMMAND_H
+#endif  // APP_COMMANDS_SESSION_REQUESTSTATESYNCCOMMAND_H

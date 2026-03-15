@@ -1,7 +1,31 @@
 #include "infra/persistence/repositories/UserRepository.h"
 
 #include <nlohmann/json.hpp>
+#include <sstream>
 #include <stdexcept>
+#include <vector>
+
+namespace {
+
+User parse_user_row(const pqxx::row& row) {
+    nlohmann::json meta;
+    try {
+        meta = nlohmann::json::parse(row[1].as<std::string>(), nullptr, false);
+        if (!meta.is_object()) meta = nlohmann::json::object();
+    } catch (...) {
+        meta = nlohmann::json::object();
+    }
+
+    User user;
+    user.id = UserId{row[0].as<std::string>()};
+    user.username = meta.value("username", std::string{});
+    user.full_name = meta.value("full_name", std::string{});
+    user.email = meta.value("email", std::string{});
+    user.avatar_seed = row[2].as<std::string>("");
+    return user;
+}
+
+}  // namespace
 
 std::optional<std::string> UserRepository::getUserDisplayName(const UserId& userUuid) {
     return db_.read("UserRepository.getUserDisplayName",
@@ -30,22 +54,40 @@ std::optional<User> UserRepository::getUser(const UserId& userUuid) {
             pqxx::params{userUuid.value});
         if (res.empty()) return std::nullopt;
 
-        nlohmann::json meta;
-        try {
-            meta = nlohmann::json::parse(res[0][1].as<std::string>(), nullptr, false);
-            if (!meta.is_object()) meta = nlohmann::json::object();
-        } catch (...) {
-            meta = nlohmann::json::object();
+        return parse_user_row(res[0]);
+    });
+}
+
+std::vector<User> UserRepository::getUsersByIds(const std::vector<UserId>& userIds) {
+    if (userIds.empty()) {
+        return {};
+    }
+
+    return db_.read("UserRepository.getUsersByIds", [&](pqxx::work& txn) {
+        pqxx::params params;
+
+        std::ostringstream query;
+        query << "SELECT u.id::text, COALESCE(u.raw_user_meta_data::text, '{}'), "
+                 "COALESCE(p.avatar_seed, '') "
+                 "FROM auth.users u "
+                 "LEFT JOIN public.profiles p ON p.user_id = u.id "
+                 "WHERE u.id = ANY(ARRAY[";
+        for (size_t i = 0; i < userIds.size(); ++i) {
+            if (i > 0) {
+                query << ", ";
+            }
+            query << "$" << (i + 1) << "::uuid";
+            params.append(userIds[i].value);
         }
+        query << "]::uuid[])";
 
-        User user;
-        user.id = UserId{res[0][0].as<std::string>()};
-        user.username = meta.value("username", std::string{});
-        user.full_name = meta.value("full_name", std::string{});
-        user.email = meta.value("email", std::string{});
-        user.avatar_seed = res[0][2].as<std::string>("");
-
-        return user;
+        auto res = txn.exec(query.str(), params);
+        std::vector<User> users;
+        users.reserve(res.size());
+        for (const auto& row : res) {
+            users.push_back(parse_user_row(row));
+        }
+        return users;
     });
 }
 

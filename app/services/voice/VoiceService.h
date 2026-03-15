@@ -3,7 +3,7 @@
 
 #include "app/managers/session/SessionManager.h"
 #include "app/managers/subscription/SubscriptionManager.h"
-#include "app/services/channel/ChannelService.h"
+#include "app/services/hub/HubService.h"
 #include "app/services/voice/VoiceSessionManager.h"
 #include "domains/ids/Ids.h"
 #include "infra/persistence/repositories/VoiceStateRepository.h"
@@ -47,11 +47,6 @@ class VoiceService {
         std::string e2ee_key;
     };
 
-    enum class PresenceState : uint8_t {
-        Joined,
-        Left,
-    };
-
     struct PendingJoinIntent {
         SessionId session_id = 0;
         std::string intent_nonce;
@@ -72,7 +67,7 @@ class VoiceService {
     VoiceService(std::string api_key, std::string api_secret,
                  VoiceStateRepository& voice_state_repo, infra::redis::RedisClient& redis,
                  SessionManager& session_manager, SubscriptionManager& subscription_manager,
-                 app::services::ChannelService& channel_service,
+                 app::services::HubService& hub_service,
                  net::outbound::IOutboundSink& outbound_sink);
 
     /// Issue a LiveKit token + E2EE key for a user joining a voice channel.
@@ -134,11 +129,11 @@ class VoiceService {
     void handle_participant_joined(const livekit::webhook::LiveKitEvent& event);
     void handle_participant_left(const livekit::webhook::LiveKitEvent& event);
 
-    void publish_participants(const HubId& hub, const ChannelId& channel,
-                              uint64_t started_at_unix);
-    void publish_presence(const HubId& hub, const ChannelId& channel, const UserId& user,
-                          PresenceState state, bool muted, bool deafened);
-    void publish_voice_state(const HubId& hub, const UserId& user, bool muted, bool deafened);
+    void publish_voice_snapshot(const HubId& hub, const ChannelId& channel, uint64_t started_at_unix);
+    void publish_voice_participant_upsert(const HubId& hub, const ChannelId& channel,
+                                          const UserId& user, bool muted, bool deafened);
+    void publish_voice_participant_remove(const HubId& hub, const ChannelId& channel,
+                                          const UserId& user);
     void publish_self_status(const UserId& user, bool connected,
                              const std::optional<SessionId>& owner_session_id,
                              const std::optional<ChannelId>& channel,
@@ -158,7 +153,7 @@ class VoiceService {
     infra::redis::RedisClient& redis_;
     SessionManager& session_manager_;
     SubscriptionManager& subscription_manager_;
-    app::services::ChannelService& channel_service_;
+    app::services::HubService& hub_service_;
     net::outbound::IOutboundSink& outbound_sink_;
 
     livekit::LiveKitTokenService token_service_;

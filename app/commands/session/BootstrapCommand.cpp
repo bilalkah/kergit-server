@@ -1,20 +1,50 @@
 #include "app/commands/session/BootstrapCommand.h"
 
+#include "app/commands/session/StateSyncBuilder.h"
 #include "app/commands/utils.h"
 #include "app/managers/subscription/Topic.h"
-#include "domains/Channel.h"
-#include "domains/Hub.h"
 #include "proto/envelope.pb.h"
 #include "proto/event/activity.pb.h"
-#include "proto/event/session.pb.h"
 
-#include <string>
-#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
 namespace app {
+namespace {
+
+template <typename TPayload>
+std::string serialize_as_envelope(const sercom::protocol::Envelope::Type type,
+                                  const TPayload& payload) {
+    sercom::protocol::Envelope env;
+    env.set_version(1);
+    env.set_type(type);
+    payload.SerializeToString(env.mutable_payload());
+    return env.SerializeAsString();
+}
+
+std::string make_voice_self_status(bool connected, bool is_owner,
+                                   const std::optional<HubId>& hub_id,
+                                   const std::optional<ChannelId>& channel_id) {
+    sercom::protocol::event::VoiceSelfStatus status;
+    status.set_connected(connected);
+    status.set_is_owner(is_owner);
+    if (connected && hub_id.has_value() && channel_id.has_value()) {
+        *status.mutable_channel() = to_proto_channel_ref(*hub_id, *channel_id);
+    }
+    return serialize_as_envelope(sercom::protocol::Envelope::VOICE_SELF_STATUS, status);
+}
+
+std::string make_presence_signal(const HubId& hub_id, const UserId& user_id, bool is_online) {
+    sercom::protocol::event::RtSignal signal;
+    auto* presence = signal.mutable_presence();
+    presence->set_hub_id(hub_id.value);
+    presence->set_user_id(user_id.value);
+    presence->set_is_online(is_online);
+    return make_rt_signal(signal);
+}
+
+}  // namespace
 
 std::vector<net::outbound::OutgoingMessage> BootstrapCommand::execute(CommandContext& ctx,
                                                                       const queue::Event& evt) {
@@ -33,15 +63,6 @@ std::vector<net::outbound::OutgoingMessage> BootstrapCommand::execute(CommandCon
         return out;
     }
 
-    auto db_user = ctx.user_service.getUser(user_id);
-    if (!db_user) {
-        out.emplace_back(make_drop_connection(
-            event->conn_id,
-            sercom::protocol::event::CommandErrorCode::CommandErrorCode_UNAUTHORIZED,
-            "User not found"));
-        return out;
-    }
-
     auto session_id_exp = ctx.session_manager.sessionIdOfConnection(event->conn_id);
     if (!session_id_exp.has_value()) {
         out.emplace_back(make_drop_connection(
@@ -52,139 +73,70 @@ std::vector<net::outbound::OutgoingMessage> BootstrapCommand::execute(CommandCon
     }
     const SessionId session_id = session_id_exp.value();
 
-    // Session already created by AuthenticateCommand - just subscribe to hubs
-    const auto hubs = ctx.hub_service.getUserHubs(user_id);
-    for (const auto& hub : hubs) {
-        ctx.subscription_manager.subscribeConnection(event->conn_id, Topic::HubTopic(hub.id));
+    const auto sync = build_state_sync_for_user(ctx, user_id);
+    std::vector<HubId> hub_ids;
+    hub_ids.reserve(sync.hubs_size());
+    for (const auto& hub_sync : sync.hubs()) {
+        const auto& hub_proto = hub_sync.hub();
+        if (hub_proto.id().empty()) {
+            continue;
+        }
+        HubId hub_id{hub_proto.id()};
+        hub_ids.push_back(hub_id);
+        ctx.subscription_manager.subscribeConnection(event->conn_id, Topic::HubTopic(hub_id));
     }
 
-    // --- build bootstrap payload ---
-    sercom::protocol::event::SessionBootstrap bootstrap;
+    out.emplace_back(make_outgoing_message(net::outbound::Target::one(event->conn_id),
+                                           make_state_sync(sync)));
 
-    auto* self = bootstrap.mutable_self();
-    self->set_id(user_id.value);
-
-    const std::string display_name =
-        !db_user->username.empty() ? db_user->username
-                                   : (!db_user->full_name.empty() ? db_user->full_name : "Member");
-
-    self->mutable_metadata()->set_username(display_name);
-    self->mutable_metadata()->set_avatar_seed(db_user->avatar_seed);
-
-    for (const auto& hub : hubs) {
-        auto* hub_state = bootstrap.add_hubs();
-
-        hub_state->mutable_hub()->set_id(hub.id.value);
-        hub_state->mutable_hub()->set_name(hub.name);
-        hub_state->mutable_hub()->mutable_metadata()->set_avatar_seed(hub.avatar_seed);
-
-        const auto snapshot = ctx.hub_service.getOrBuildSnapshot(hub.id);
-        const auto channels = ctx.channel_service.getHubChannels(hub.id);
-        for (const auto& channel : channels) {
-            auto* ch = hub_state->add_channels();
-            ch->set_id(channel.id.value);
-            ch->set_hub_id(hub.id.value);
-            ch->set_type(to_proto_channel_type(channel.type));
-            ch->mutable_metadata()->set_name(channel.name);
-        }
-
-        const auto online = ctx.presence_manager.onlineUsersInHub(hub.id);
-        std::unordered_set<UserId> online_set(online.begin(), online.end());
-
-        for (const auto& member : snapshot.members) {
-            auto* m = hub_state->add_members();
-            m->set_hub_id(hub.id.value);
-            m->set_user_id(member.user_id.value);
-            m->set_is_online(online_set.contains(member.user_id));
-            m->set_role(to_proto_hub_role(member.role));
-
-            // Build user entry for the users lookup table
-            if (auto user = ctx.user_service.getUser(member.user_id)) {
-                auto* u = hub_state->add_users();
-                u->set_id(member.user_id.value);
-                const std::string member_display =
-                    !user->username.empty()
-                        ? user->username
-                        : (!user->full_name.empty() ? user->full_name : "Member");
-                u->mutable_metadata()->set_username(member_display);
-                u->mutable_metadata()->set_avatar_seed(user->avatar_seed);
-            }
-        }
-
-        for (const auto& channel : channels) {
-            if (channel.type != ChannelType::VOICE) continue;
-            const auto participants =
-                ctx.voice_service.sessions().participants_in_channel(channel.id);
-            if (participants.empty()) continue;
-
-            auto* voice_snapshot = bootstrap.add_voice_channels();
-            voice_snapshot->mutable_channel()->set_hub_id(hub.id.value);
-            voice_snapshot->mutable_channel()->set_channel_id(channel.id.value);
-            voice_snapshot->set_started_at_unix(
-                ctx.voice_service.channel_started_at_unix(channel.id));
-            for (const auto& participant : participants) {
-                auto* out_participant = voice_snapshot->add_participants();
-                out_participant->set_user_id(participant.user_id.value);
-                out_participant->set_muted(participant.muted);
-                out_participant->set_deafened(participant.deafened);
-            }
-        }
-
-        // --- presence fanout ---
-        if (!online.empty()) {
-            std::unordered_set<GlobalConnId> target_set;
-            for (const auto& member_id : online) {
-                if (member_id == user_id) continue;
-                const auto member_conns = ctx.session_manager.getSessionConnections(member_id);
-                for (const auto& conn : member_conns) {
-                    target_set.insert(conn);
-                }
-            }
-
-            std::vector<GlobalConnId> targets;
-            targets.reserve(target_set.size());
-            for (const auto& conn : target_set) {
-                targets.push_back(conn);
-            }
-
-            if (!targets.empty()) {
-                std::string bytes = make_member_presence(hub.id, user_id, true);
-
-                out.emplace_back(make_outgoing_message(
-                    net::outbound::Target::many(std::move(targets)), std::move(bytes)));
-            }
-        }
-    }
-
-    // --- send bootstrap ---
-    sercom::protocol::Envelope bootstrap_env;
-    bootstrap_env.set_version(1);
-    bootstrap_env.set_type(sercom::protocol::Envelope::SESSION_BOOTSTRAP);
-    bootstrap.SerializeToString(bootstrap_env.mutable_payload());
-    std::string out_bytes = bootstrap_env.SerializeAsString();
-
-    out.emplace_back(
-        make_outgoing_message(net::outbound::Target::one(event->conn_id), std::move(out_bytes)));
-
-    sercom::protocol::event::VoiceSelfStatus self_status;
+    std::optional<HubId> voice_hub_id;
+    std::optional<ChannelId> voice_channel_id;
     const auto voice_channel = ctx.voice_service.sessions().user_channel(user_id);
     const auto voice_owner = ctx.voice_service.sessions().user_session(user_id);
     if (voice_channel.has_value()) {
-        self_status.set_connected(true);
-        self_status.set_is_owner(voice_owner.has_value() && *voice_owner == session_id);
-        self_status.set_channel_id(voice_channel->value);
-    } else {
-        self_status.set_connected(false);
-        self_status.set_is_owner(false);
+        voice_channel_id = voice_channel;
+        if (auto channel = ctx.hub_service.getChannel(*voice_channel)) {
+            voice_hub_id = channel->hub_id;
+        }
     }
 
-    sercom::protocol::Envelope self_status_env;
-    self_status_env.set_version(1);
-    self_status_env.set_type(sercom::protocol::Envelope::VOICE_SELF_STATUS);
-    self_status.SerializeToString(self_status_env.mutable_payload());
-    std::string self_status_bytes = self_status_env.SerializeAsString();
-    out.emplace_back(make_outgoing_message(net::outbound::Target::one(event->conn_id),
-                                           std::move(self_status_bytes)));
+    out.emplace_back(make_outgoing_message(
+        net::outbound::Target::one(event->conn_id),
+        make_voice_self_status(voice_channel.has_value(),
+                               voice_owner.has_value() && *voice_owner == session_id, voice_hub_id,
+                               voice_channel_id)));
+
+    // Broadcast online presence only on the first active connection of this user.
+    const auto user_conns = ctx.session_manager.getSessionConnections(user_id);
+    if (user_conns.size() != 1) {
+        return out;
+    }
+
+    const std::unordered_set<GlobalConnId> own_conn_set(user_conns.begin(), user_conns.end());
+    for (const auto& hub_id : hub_ids) {
+        utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(
+            1, std::memory_order_relaxed);
+        auto subs = ctx.subscription_manager.getSubscribers(Topic::HubTopic(hub_id));
+        if (!subs || subs->empty()) {
+            continue;
+        }
+
+        std::vector<GlobalConnId> targets;
+        targets.reserve(subs->size());
+        for (const auto& conn : *subs) {
+            if (own_conn_set.contains(conn)) {
+                continue;
+            }
+            targets.push_back(conn);
+        }
+        if (targets.empty()) {
+            continue;
+        }
+
+        out.emplace_back(make_outgoing_message(net::outbound::Target::many(std::move(targets)),
+                                               make_presence_signal(hub_id, user_id, true)));
+    }
+
     return out;
 }
 

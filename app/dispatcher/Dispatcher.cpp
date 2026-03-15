@@ -14,13 +14,13 @@
 #include "app/commands/activity/SelectActiveChannelCommand.h"
 #include "app/commands/activity/TypingCommand.h"
 #include "app/commands/activity/VoiceChannelActivityCommand.h"
-#include "app/commands/message/FetchLatestMessagesCommand.h"
 #include "app/commands/message/FetchMessagesBeforeCommand.h"
 #include "app/commands/message/SendMessageCommand.h"
 // #include "app/commands/profile/UpdateProfileCommand.h"
 #include "app/commands/session/AuthenticateCommand.h"
 #include "app/commands/session/BootstrapCommand.h"
 #include "app/commands/session/DisconnectionCommand.h"
+#include "app/commands/session/RequestStateSyncCommand.h"
 #include "app/commands/user/UpdateUserCommand.h"
 
 namespace app {
@@ -60,6 +60,8 @@ void Dispatcher::register_all() {
     map_str_["disconnection"] = std::make_unique<DisconnectionCommand>();
 
     map_proto_[sercom::protocol::Envelope_Type_AUTH] = std::make_unique<AuthenticateCommand>();
+    map_proto_[sercom::protocol::Envelope_Type_REQUEST_STATE_SYNC] =
+        std::make_unique<RequestStateSyncCommand>();
     map_proto_[sercom::protocol::Envelope_Type_ACTIVE_CHANNEL] =
         std::make_unique<SelectActiveChannelCommand>();
     map_proto_[sercom::protocol::Envelope_Type_TYPING] = std::make_unique<TypingCommand>();
@@ -69,8 +71,6 @@ void Dispatcher::register_all() {
         std::make_unique<VoiceChannelActivityCommand>();
     map_proto_[sercom::protocol::Envelope_Type_MESSAGE_SEND] =
         std::make_unique<SendMessageCommand>();
-    map_proto_[sercom::protocol::Envelope_Type_MESSAGE_FETCH_LATEST] =
-        std::make_unique<FetchLatestMessagesCommand>();
     map_proto_[sercom::protocol::Envelope_Type_MESSAGE_FETCH_BEFORE] =
         std::make_unique<FetchMessagesBeforeCommand>();
     map_proto_[sercom::protocol::Envelope_Type_HUB_CREATE] = std::make_unique<CreateHubCommand>();

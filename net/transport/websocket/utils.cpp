@@ -6,7 +6,7 @@ namespace net::transport::websocket {
 
 std::string_view app_pong_response_bytes() {
     static const std::string bytes = [] {
-        sercom::protocol::system::Pong pong;
+        sercom::protocol::event::Pong pong;
 
         sercom::protocol::Envelope out;
         out.set_version(1);

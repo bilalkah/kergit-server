@@ -1,18 +1,17 @@
 #include "app/commands/hub/CreateHubCommand.h"
 
+#include "app/commands/session/StateSyncBuilder.h"
 #include "app/commands/utils.h"
 #include "app/dispatcher/CommandContext.h"
 #include "app/managers/subscription/Topic.h"
-#include "domains/Hub.h"
 #include "proto/command/hub.pb.h"
-#include "proto/domain/channel.pb.h"
 #include "proto/event/error.pb.h"
 
 #include <algorithm>
 #include <cassert>
 #include <cctype>
-#include <optional>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace app {
@@ -45,9 +44,9 @@ std::vector<net::outbound::OutgoingMessage> CreateHubCommand::execute(CommandCon
         return out;
     }
 
-    HubId hub_id;
+    Hub created_hub;
     try {
-        hub_id = ctx.hub_service.createHub(name, user_id);
+        created_hub = ctx.hub_service.createHub(name, user_id);
     } catch (const std::exception& ex) {
         out.emplace_back(make_command_error(
             event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
@@ -61,29 +60,25 @@ std::vector<net::outbound::OutgoingMessage> CreateHubCommand::execute(CommandCon
     }
 
     try {
-        ctx.channel_service.createChannel(hub_id, "general", "text");
+        ctx.hub_service.createChannel(created_hub.id, "general", "text");
+    } catch (const std::exception& ex) {
+        utils::log_line(
+            utils::LogLevel::WARN,
+            std::string("CreateHubCommand: default channel creation failed for hub_id=") +
+                created_hub.id.value + " error=" + ex.what());
     } catch (...) {
+        utils::log_line(
+            utils::LogLevel::WARN,
+            std::string("CreateHubCommand: default channel creation failed for hub_id=") +
+                created_hub.id.value + " error=unknown");
     }
 
-    ctx.subscription_manager.subscribeConnection(event->conn_id, Topic::HubTopic(hub_id));
+    ctx.subscription_manager.subscribeConnection(event->conn_id, Topic::HubTopic(created_hub.id));
 
-    std::string avatar_seed;
-    if (auto hub = ctx.hub_service.getHub(hub_id)) {
-        avatar_seed = hub->avatar_seed;
-    }
-
-    std::optional<Channel> default_channel;
-    const auto channels = ctx.channel_service.getHubChannels(hub_id);
-    if (!channels.empty()) {
-        default_channel = channels.front();
-    }
-
-    const auto self_role = ctx.hub_service.getMembershipRole(hub_id, user_id).value_or(Role::USER);
-    std::string bytes =
-        make_hub_create(hub_id, name, avatar_seed, user_id, self_role, true,
-                                 default_channel);
-
-    out.emplace_back(make_outgoing_message(net::outbound::Target::one(event->conn_id), std::move(bytes)));
+    std::unordered_set<HubId> requested_hub_ids{created_hub.id};
+    const auto sync = build_state_sync_for_requested_hubs(ctx, user_id, requested_hub_ids);
+    out.emplace_back(
+        make_outgoing_message(net::outbound::Target::one(event->conn_id), make_state_sync(sync)));
     return out;
 }
 

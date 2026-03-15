@@ -19,8 +19,8 @@ void AppStack::stop() {
     // Stop webhook server
     webhook_server_.stop();
 
-    if (channel_service_) {
-        channel_service_->stopAsyncWriter();
+    if (message_service_) {
+        message_service_->stopAsyncWriter();
     }
     worker_pool_->stop();
 }
@@ -69,23 +69,21 @@ void AppStack::init_services() {
         presence_manager_ =
             std::make_unique<services::PresenceService>(*session_manager_, *subscription_manager_);
         user_service_ = std::make_unique<services::UserService>(persistence_gateway_->users());
-        channel_service_ =
-            std::make_unique<services::ChannelService>(persistence_gateway_->channels());
+        hub_service_ = std::make_unique<services::HubService>(persistence_gateway_->hubs());
+        message_service_ =
+            std::make_unique<services::MessageService>(persistence_gateway_->messages());
         if (config_.app_stack.db_write_queue_capacity > 0) {
-            channel_service_->startAsyncWriter(
+            message_service_->startAsyncWriter(
                 config_.app_stack.db_write_queue_capacity, config_.app_stack.db_write_max_retries,
                 std::chrono::milliseconds(config_.app_stack.db_write_retry_ms));
         }
-        hub_service_ = std::make_unique<services::HubService>(persistence_gateway_->hubs(),
-                                                              persistence_gateway_->channels());
-        channel_service_->setHubService(*hub_service_);
 
         auto livekit_key = utils::EnvLoader::get_env("LIVEKIT_API_KEY", "");
         auto livekit_secret = utils::EnvLoader::get_env("LIVEKIT_API_SECRET", "");
 
         voice_service_ = std::make_unique<services::voice::VoiceService>(
             livekit_key, livekit_secret, persistence_gateway_->voice_state(), *redis_client_,
-            *session_manager_, *subscription_manager_, *channel_service_, *out_queue_);
+            *session_manager_, *subscription_manager_, *hub_service_, *out_queue_);
 
         webhook_server_.set_signing_credentials(livekit_key, livekit_secret);
 
@@ -99,7 +97,7 @@ void AppStack::init_services() {
 
         cmd_ctx_ = std::make_unique<CommandContext>(CommandContext{
             *auth_service_,
-            *channel_service_,
+            *message_service_,
             *hub_service_,
             *voice_service_,
             *user_service_,

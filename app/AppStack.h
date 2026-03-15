@@ -54,7 +54,7 @@ class AppStack : public utils::Loggable {
     std::unique_ptr<services::AuthService> auth_service_;
     std::unique_ptr<services::PresenceService> presence_manager_;
     std::unique_ptr<services::UserService> user_service_;
-    std::unique_ptr<services::ChannelService> channel_service_;
+    std::unique_ptr<services::MessageService> message_service_;
     std::unique_ptr<services::HubService> hub_service_;
     std::unique_ptr<services::voice::VoiceService> voice_service_;
     std::unique_ptr<services::InviteService> invite_service_;

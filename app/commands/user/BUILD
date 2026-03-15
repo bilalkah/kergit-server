@@ -13,6 +13,6 @@ cc_library(
         "//proto:envelope_cc_proto",
         "//proto/command:user_cc_proto",
         "//proto/event:error_cc_proto",
-        "//proto/event:user_cc_proto",
+        "//proto/event:state_cc_proto",
     ],
 )

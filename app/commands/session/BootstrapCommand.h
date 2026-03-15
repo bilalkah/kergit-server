@@ -1,5 +1,5 @@
-#ifndef APP_SESSION_BOOTSTRAPCOMMAND_H
-#define APP_SESSION_BOOTSTRAPCOMMAND_H
+#ifndef APP_SESSION_INIT_COMMAND_H
+#define APP_SESSION_INIT_COMMAND_H
 
 #include "app/commands/ICommand.h"
 #include "app/dispatcher/CommandContext.h"
@@ -14,4 +14,4 @@ class BootstrapCommand : public ICommand {
 
 }  // namespace app
 
-#endif  // APP_SESSION_BOOTSTRAPCOMMAND_H
+#endif  // APP_SESSION_INIT_COMMAND_H

@@ -7,7 +7,7 @@
 #include "proto/command/hub.pb.h"
 #include "proto/envelope.pb.h"
 #include "proto/event/error.pb.h"
-#include "proto/event/hub.pb.h"
+#include "proto/event/state.pb.h"
 
 #include <cassert>
 #include <optional>
@@ -72,15 +72,15 @@ std::vector<net::outbound::OutgoingMessage> UpdateHubCommand::execute(CommandCon
     }
 
     const HubId hub_id{cmd.hub_id()};
-    if (!ctx.hub_service.isHubMember(hub_id, user_id)) {
+    auto role = ctx.hub_service.getMembershipRole(hub_id, user_id);
+    if (!role) {
         out.emplace_back(make_command_error(
             event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_FORBIDDEN,
             "Join the hub before updating it"));
         return out;
     }
 
-    auto role = ctx.hub_service.getMembershipRole(hub_id, user_id);
-    if (!role || (*role != Role::OWNER && *role != Role::ADMIN)) {
+    if (*role != Role::OWNER && *role != Role::ADMIN) {
         out.emplace_back(make_command_error(
             event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_FORBIDDEN,
             "Only admins or owners can update hub settings"));
@@ -139,11 +139,16 @@ std::vector<net::outbound::OutgoingMessage> UpdateHubCommand::execute(CommandCon
         return {};
     }
 
-    // Send single HubUpdated event with full hub state
-    std::string bytes =
-        make_hub_update(hub_id, updated_hub->name, updated_hub->avatar_seed);
+    sercom::protocol::event::StateDelta delta;
+    auto* hub_delta = delta.add_hubs();
+    hub_delta->set_hub_id(hub_id.value);
+    auto* upsert = hub_delta->add_hub_ops()->mutable_upsert()->mutable_hub();
+    upsert->set_id(hub_id.value);
+    upsert->set_name(updated_hub->name);
+    upsert->mutable_metadata()->set_avatar_seed(updated_hub->avatar_seed);
 
-    out.emplace_back(make_outgoing_message(net::outbound::Target::many(std::move(conns)), std::move(bytes)));
+    out.emplace_back(make_outgoing_message(net::outbound::Target::many(std::move(conns)),
+                                           make_state_delta(delta)));
     return out;
 }
 

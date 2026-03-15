@@ -8,6 +8,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//app/commands:i_command",
+        "//app/commands/session:state_sync_builder",
         "//app/dispatcher:command_context",
         "//app/managers/subscription:topic",
         "//domains:channel_domain",
@@ -17,8 +18,7 @@ cc_library(
         "//proto/domain:channel_cc_proto",
         "//proto/domain:hub_cc_proto",
         "//proto/event:error_cc_proto",
-        "//proto/event:hub_cc_proto",
-        "//proto/event:session_cc_proto",
+        "//proto/event:state_cc_proto",
     ],
 )
 
@@ -30,6 +30,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//app/commands:i_command",
+        "//app/commands/session:state_sync_builder",
         "//app/dispatcher:command_context",
         "//app/managers/subscription:topic",
         "//domains:channel_domain",
@@ -39,8 +40,7 @@ cc_library(
         "//proto/domain:channel_cc_proto",
         "//proto/domain:hub_cc_proto",
         "//proto/event:error_cc_proto",
-        "//proto/event:hub_cc_proto",
-        "//proto/event:session_cc_proto",
+        "//proto/event:state_cc_proto",
     ],
 )
 
@@ -57,7 +57,7 @@ cc_library(
         "//proto:envelope_cc_proto",
         "//proto/command:hub_cc_proto",
         "//proto/event:error_cc_proto",
-        "//proto/event:hub_cc_proto",
+        "//proto/event:state_cc_proto",
     ],
 )
 
@@ -76,7 +76,7 @@ cc_library(
         "//proto:envelope_cc_proto",
         "//proto/command:hub_cc_proto",
         "//proto/event:error_cc_proto",
-        "//proto/event:hub_cc_proto",
+        "//proto/event:state_cc_proto",
     ],
 )
 
@@ -95,7 +95,7 @@ cc_library(
         "//proto:envelope_cc_proto",
         "//proto/command:hub_cc_proto",
         "//proto/event:error_cc_proto",
-        "//proto/event:hub_cc_proto",
+        "//proto/event:state_cc_proto",
     ],
 )
 
@@ -113,6 +113,6 @@ cc_library(
         "//proto:envelope_cc_proto",
         "//proto/command:hub_cc_proto",
         "//proto/event:error_cc_proto",
-        "//proto/event:hub_cc_proto",
+        "//proto/event:state_cc_proto",
     ],
 )

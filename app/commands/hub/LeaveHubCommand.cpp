@@ -7,7 +7,7 @@
 #include "proto/command/hub.pb.h"
 #include "proto/envelope.pb.h"
 #include "proto/event/error.pb.h"
-#include "proto/event/hub.pb.h"
+#include "proto/event/state.pb.h"
 
 #include <cassert>
 #include <vector>
@@ -62,11 +62,11 @@ std::vector<net::outbound::OutgoingMessage> LeaveHubCommand::execute(CommandCont
         return out;
     }
 
-    const auto channels = ctx.channel_service.getHubChannels(hub_id);
+    const auto channel_ids = ctx.hub_service.getHubChannelIds(hub_id);
     ctx.subscription_manager.unsubscribeConnection(event->conn_id, Topic::HubTopic(hub_id));
-    for (const auto& ch : channels) {
+    for (const auto& channel_id : channel_ids) {
         ctx.subscription_manager.unsubscribeConnection(event->conn_id,
-                                                       Topic::ChannelTopic(hub_id, ch.id));
+                                                       Topic::ChannelTopic(hub_id, channel_id));
     }
 
     std::vector<GlobalConnId> conns;
@@ -91,22 +91,31 @@ std::vector<net::outbound::OutgoingMessage> LeaveHubCommand::execute(CommandCont
         conns.push_back(event->conn_id);
     }
 
-    if (conns.empty()) {
-        return {};
+    if (!conns.empty()) {
+        std::vector<GlobalConnId> others;
+        others.reserve(conns.size());
+        for (const auto& conn : conns) {
+            if (conn == event->conn_id) {
+                continue;
+            }
+            others.push_back(conn);
+        }
+        if (!others.empty()) {
+            sercom::protocol::event::StateDelta delta;
+            auto* hub_delta = delta.add_hubs();
+            hub_delta->set_hub_id(hub_id.value);
+            hub_delta->add_member_ops()->mutable_remove()->set_user_id(user_id.value);
+            out.emplace_back(make_outgoing_message(net::outbound::Target::many(std::move(others)),
+                                                   make_state_delta(delta)));
+        }
     }
 
-    sercom::protocol::event::HubMemberLeft left;
-    left.set_hub_id(hub_id.value);
-    left.set_user_id(user_id.value);
-
-    sercom::protocol::Envelope out_env;
-    out_env.set_version(1);
-    out_env.set_type(sercom::protocol::Envelope::HUB_MEMBER_LEFT);
-    left.SerializeToString(out_env.mutable_payload());
-    std::string bytes = out_env.SerializeAsString();
-
-    out.emplace_back(
-        make_outgoing_message(net::outbound::Target::many(std::move(conns)), std::move(bytes)));
+    sercom::protocol::event::StateDelta self_delta;
+    auto* self_hub_delta = self_delta.add_hubs();
+    self_hub_delta->set_hub_id(hub_id.value);
+    self_hub_delta->add_hub_ops()->mutable_remove();
+    out.emplace_back(make_outgoing_message(net::outbound::Target::one(event->conn_id),
+                                           make_state_delta(self_delta)));
     return out;
 }
 

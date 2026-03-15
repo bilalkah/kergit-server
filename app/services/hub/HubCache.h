@@ -2,7 +2,7 @@
 #define APP_SERVICES_HUB_HUBCACHE_H
 
 #include "core/cache/OnMemoryCache.h"
-#include "domains/Hub.h"
+#include "app/services/hub/HubSnapshot.h"
 #include "domains/ids/Ids.h"
 
 #include <expected>
@@ -16,9 +16,9 @@ class IHubCache {
    public:
     virtual ~IHubCache() = default;
 
-    virtual std::expected<Hub, HubCacheError> get(const HubId& hubId) = 0;
+    virtual std::expected<HubSnapshot, HubCacheError> get(const HubId& hubId) = 0;
 
-    virtual void put(const Hub& hub) = 0;
+    virtual void put(const HubSnapshot& snapshot) = 0;
     virtual void invalidate(const HubId& hubId) = 0;
 };
 
@@ -27,9 +27,9 @@ class HubCache final : public IHubCache {
     explicit HubCache();
     ~HubCache() override = default;
 
-    std::expected<Hub, HubCacheError> get(const HubId& hubId) override;
+    std::expected<HubSnapshot, HubCacheError> get(const HubId& hubId) override;
 
-    void put(const Hub& hub) override;
+    void put(const HubSnapshot& snapshot) override;
 
     void invalidate(const HubId& hubId) override;
 

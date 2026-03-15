@@ -1,36 +1,21 @@
 #include "app/commands/hub/JoinHubByInviteCommand.h"
 
+#include "app/commands/session/StateSyncBuilder.h"
 #include "app/commands/utils.h"
 #include "app/dispatcher/CommandContext.h"
 #include "app/managers/subscription/Topic.h"
-#include "domains/Hub.h"
 #include "proto/command/hub.pb.h"
-#include "proto/domain/channel.pb.h"
-#include "proto/domain/hub.pb.h"
 #include "proto/envelope.pb.h"
 #include "proto/event/error.pb.h"
-#include "proto/event/hub.pb.h"
-#include "proto/event/session.pb.h"
+#include "proto/event/state.pb.h"
 
 #include <cassert>
+#include <optional>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace app {
-
-namespace {
-
-std::string resolve_display_name(CommandContext& ctx, const UserId& user_id,
-                                 const std::string& stored_display) {
-    if (!stored_display.empty()) return stored_display;
-    if (auto user = ctx.user_service.getUser(user_id)) {
-        if (!user->username.empty()) return user->username;
-        if (!user->full_name.empty()) return user->full_name;
-    }
-    return "Member";
-}
-
-}  // namespace
 
 std::vector<net::outbound::OutgoingMessage> JoinHubByInviteCommand::execute(
     CommandContext& ctx, const queue::Event& evt) {
@@ -52,8 +37,8 @@ std::vector<net::outbound::OutgoingMessage> JoinHubByInviteCommand::execute(
     const UserId user_id = user_exp.value();
 
     std::string raw_code = cmd.join_code();
-    auto invite_pos = raw_code.find("/invite/");
-    std::string token =
+    const auto invite_pos = raw_code.find("/invite/");
+    const std::string token =
         (invite_pos != std::string::npos) ? raw_code.substr(invite_pos + 8) : raw_code;
 
     auto hub_id_opt = ctx.invite_service.resolveInvite(token);
@@ -65,16 +50,17 @@ std::vector<net::outbound::OutgoingMessage> JoinHubByInviteCommand::execute(
     }
     const HubId hub_id = hub_id_opt.value();
 
-    const auto snapshot = ctx.hub_service.getOrBuildSnapshot(hub_id);
-    if (snapshot.name.empty()) {
-        out.emplace_back(make_command_error(
-            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_NOT_FOUND,
-            "Hub not found"));
-        return out;
-    }
-
-    const bool already_member = ctx.hub_service.isHubMember(hub_id, user_id);
+    const auto existing_role = ctx.hub_service.resolveMembershipRole(hub_id, user_id);
+    const bool already_member = existing_role.has_value();
     if (!already_member) {
+        const auto hub = ctx.hub_service.getHub(hub_id);
+        if (!hub.has_value()) {
+            out.emplace_back(make_command_error(
+                event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_NOT_FOUND,
+                "Hub not found"));
+            return out;
+        }
+
         try {
             ctx.hub_service.addMember(hub_id, user_id, Role::USER);
         } catch (const std::exception& ex) {
@@ -92,94 +78,51 @@ std::vector<net::outbound::OutgoingMessage> JoinHubByInviteCommand::execute(
 
     ctx.subscription_manager.subscribeConnection(event->conn_id, Topic::HubTopic(hub_id));
 
-    if (already_member) {
-        std::string already_bytes = make_hub_already_member(
-            hub_id, user_id, ctx.hub_service.getMembershipRole(hub_id, user_id).value_or(Role::USER),
-            true);
+    std::unordered_set<HubId> requested_hub_ids{hub_id};
+    const auto sync = build_state_sync_for_requested_hubs(ctx, user_id, requested_hub_ids);
+    out.emplace_back(
+        make_outgoing_message(net::outbound::Target::one(event->conn_id), make_state_sync(sync)));
 
-        out.emplace_back(make_outgoing_message(net::outbound::Target::one(event->conn_id), std::move(already_bytes)));
+    if (already_member) {
         return out;
     }
 
-    sercom::protocol::event::SessionBootstrap bootstrap;
-    auto* self = bootstrap.mutable_self();
-    self->set_id(user_id.value);
-    {
-        auto display = resolve_display_name(ctx, user_id, "");
-        self->mutable_metadata()->set_username(display);
-        if (auto user = ctx.user_service.getUser(user_id)) {
-            self->mutable_metadata()->set_avatar_seed(user->avatar_seed);
+    utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(
+        1, std::memory_order_relaxed);
+    auto subs = ctx.subscription_manager.getSubscribers(Topic::HubTopic(hub_id));
+    if (!subs || subs->empty()) {
+        return out;
+    }
+
+    std::vector<GlobalConnId> recipients;
+    recipients.reserve(subs->size());
+    for (const auto& conn : *subs) {
+        if (conn == event->conn_id) {
+            continue;
         }
+        recipients.push_back(conn);
+    }
+    if (recipients.empty()) {
+        return out;
     }
 
-    auto* hub_state = bootstrap.add_hubs();
-    hub_state->mutable_hub()->set_id(hub_id.value);
-    hub_state->mutable_hub()->set_name(snapshot.name);
-    hub_state->mutable_hub()->mutable_metadata()->set_avatar_seed(snapshot.avatar_seed);
+    sercom::protocol::event::StateDelta delta;
+    auto* hub_delta = delta.add_hubs();
+    hub_delta->set_hub_id(hub_id.value);
 
-    const auto channels = ctx.channel_service.getHubChannels(hub_id);
-    for (const auto& channel : channels) {
-        auto* ch = hub_state->add_channels();
-        ch->set_id(channel.id.value);
-        ch->set_hub_id(hub_id.value);
-        ch->set_type(to_proto_channel_type(channel.type));
-        ch->mutable_metadata()->set_name(channel.name);
+    auto* member_upsert = hub_delta->add_member_ops()->mutable_upsert()->mutable_state()->mutable_member();
+    *member_upsert = to_proto_hub_member(user_id, std::optional<Role>{Role::USER},
+                                         ctx.presence_manager.isUserOnline(user_id));
+
+    auto* user_upsert = hub_delta->add_user_ops()->mutable_upsert()->mutable_state()->mutable_user();
+    if (const auto user = ctx.user_service.getUser(user_id)) {
+        *user_upsert = to_proto_user(*user);
+    } else {
+        user_upsert->set_id(user_id.value);
     }
 
-    const auto members = ctx.hub_service.getHubMembers(hub_id);
-    for (const auto& member : members) {
-        const auto& member_id = member.user_id;
-        auto* m = hub_state->add_members();
-        m->set_hub_id(hub_id.value);
-        m->set_user_id(member_id.value);
-        m->set_is_online(ctx.presence_manager.isUserOnline(member_id) || member_id == user_id);
-        m->set_role(to_proto_hub_role(ctx.hub_service.getMembershipRole(hub_id, member_id)));
-
-        // Add user to the users lookup table
-        if (auto user_info = ctx.user_service.getUser(member_id)) {
-            auto* u = hub_state->add_users();
-            u->set_id(member_id.value);
-            u->mutable_metadata()->set_username(
-                resolve_display_name(ctx, member_id, member.display_name));
-            u->mutable_metadata()->set_avatar_seed(user_info->avatar_seed);
-        }
-    }
-
-    sercom::protocol::Envelope joined_env;
-    joined_env.set_version(1);
-    joined_env.set_type(sercom::protocol::Envelope::SESSION_BOOTSTRAP);
-    bootstrap.SerializeToString(joined_env.mutable_payload());
-    std::string joined_bytes = joined_env.SerializeAsString();
-
-    out.emplace_back(make_outgoing_message(net::outbound::Target::one(event->conn_id), std::move(joined_bytes)));
-
-    if (!already_member) {
-        utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(
-            1, std::memory_order_relaxed);
-        auto subs = ctx.subscription_manager.getSubscribers(Topic::HubTopic(hub_id));
-        if (subs) {
-            std::vector<GlobalConnId> conns;
-            conns.reserve(subs->size());
-            for (const auto& conn : *subs) {
-                if (conn == event->conn_id) continue;
-                conns.push_back(conn);
-            }
-            if (!conns.empty()) {
-                auto display = resolve_display_name(ctx, user_id, "");
-                std::string avatar;
-                if (auto user = ctx.user_service.getUser(user_id)) {
-                    avatar = user->avatar_seed;
-                }
-                std::string bytes = make_member_join(
-                    hub_id, user_id,
-                    ctx.hub_service.getMembershipRole(hub_id, user_id).value_or(Role::USER),
-                    display, avatar, true);
-
-                out.emplace_back(make_outgoing_message(net::outbound::Target::many(std::move(conns)), std::move(bytes)));
-            }
-        }
-    }
-
+    out.emplace_back(make_outgoing_message(net::outbound::Target::many(std::move(recipients)),
+                                           make_state_delta(delta)));
     return out;
 }
 

@@ -6,9 +6,9 @@
 
 // include services headers
 #include "app/services/auth/AuthService.h"
-#include "app/services/channel/ChannelService.h"
 #include "app/services/hub/HubService.h"
 #include "app/services/invite/InviteService.h"
+#include "app/services/message/MessageService.h"
 #include "app/services/presence/PresenceService.h"
 #include "app/services/user/UserService.h"
 #include "app/services/voice/VoiceService.h"
@@ -21,7 +21,7 @@ namespace app {
 
 struct CommandContext {
     services::AuthService& auth_service;
-    services::ChannelService& channel_service;
+    services::MessageService& message_service;
     services::HubService& hub_service;
     services::voice::VoiceService& voice_service;
     services::UserService& user_service;

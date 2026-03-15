@@ -2,7 +2,7 @@
 #define NET_TRANSPORT_WEBSOCKET_UTILS_H
 
 #include "proto/envelope.pb.h"
-#include "proto/system/heartbeat.pb.h"
+#include "proto/event/heartbeat.pb.h"
 
 #include <optional>
 #include <string>

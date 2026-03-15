@@ -3,6 +3,7 @@ syntax = "proto3";
 package sercom.protocol.command;
 
 import "proto/domain/ref.proto";
+import "proto/domain/message.proto";
 
 /*
  * Client intent: select the active channel inside a hub.
@@ -15,8 +16,8 @@ message SelectActiveChannel {
   // 0 means server default.
   uint32 latest_limit = 2;
 
-  // Public latest message id already known by client for this channel.
-  optional string known_latest_message_id = 3;
+  // Public latest message cursor already known by client for this channel.
+  optional sercom.protocol.domain.MessageCursor known_latest_cursor = 3;
 }
 
 /*

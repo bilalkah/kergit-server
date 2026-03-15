@@ -8,35 +8,20 @@
 #include "proto/envelope.pb.h"
 #include "proto/event/activity.pb.h"
 #include "proto/event/error.pb.h"
+#include "proto/event/state.pb.h"
 
 #include <cassert>
-#include <string_view>
 #include <vector>
 
 namespace app {
 namespace {
 
-std::string make_voice_state(std::string_view user_id, bool muted, bool deafened) {
-    sercom::protocol::event::VoiceState voice_state;
-    voice_state.mutable_participant()->set_user_id(user_id.data(), user_id.size());
-    voice_state.mutable_participant()->set_muted(muted);
-    voice_state.mutable_participant()->set_deafened(deafened);
-
-    sercom::protocol::Envelope env;
-    env.set_version(1);
-    env.set_type(sercom::protocol::Envelope::VOICE_STATE_EVENT);
-    voice_state.SerializeToString(env.mutable_payload());
-
-    std::string bytes;
-    env.SerializeToString(&bytes);
-    return bytes;
-}
-
-std::string make_voice_self_status_connected(bool is_owner, const ChannelId& channel) {
+std::string make_voice_self_status_connected(bool is_owner, const HubId& hub_id,
+                                             const ChannelId& channel_id) {
     sercom::protocol::event::VoiceSelfStatus self_status;
     self_status.set_connected(true);
     self_status.set_is_owner(is_owner);
-    self_status.set_channel_id(channel.value);
+    *self_status.mutable_channel() = to_proto_channel_ref(hub_id, channel_id);
 
     sercom::protocol::Envelope env;
     env.set_version(1);
@@ -59,6 +44,15 @@ std::vector<net::outbound::OutgoingMessage> VoiceChannelActivityCommand::execute
     assert(env.type() == sercom::protocol::Envelope::VOICE_ACTIVITY);
 
     const auto& cmd = require_parsed<sercom::protocol::command::VoiceChannelActivity>(*event);
+    const auto scope_opt = to_channel_scope(cmd.channel());
+    if (!scope_opt.has_value()) {
+        out.emplace_back(make_command_error(
+            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
+            "channel.hub_id and channel.channel_id are required"));
+        return out;
+    }
+    const HubId hub_id = scope_opt->hub_id;
+    const ChannelId channel_id = scope_opt->channel_id;
 
     auto user_exp = ctx.session_manager.sessionOfConnection(event->conn_id);
     if (!user_exp.has_value()) {
@@ -78,18 +72,8 @@ std::vector<net::outbound::OutgoingMessage> VoiceChannelActivityCommand::execute
     }
     const SessionId requester_session_id = requester_session_id_exp.value();
 
-    const ChannelId channel_id{cmd.channel_id()};
-    const HubId hub_id{cmd.hub_id()};
-
-    auto channel_opt = ctx.channel_service.getChannel(channel_id);
-    if (!channel_opt) {
-        out.emplace_back(make_command_error(
-            event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_NOT_FOUND,
-            "Channel not found"));
-        return out;
-    }
-
-    if (channel_opt->hub_id != hub_id) {
+    auto channel_opt = ctx.hub_service.getChannel(channel_id);
+    if (!channel_opt || channel_opt->hub_id != hub_id) {
         out.emplace_back(make_command_error(
             event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_NOT_FOUND,
             "Channel not found"));
@@ -148,7 +132,6 @@ std::vector<net::outbound::OutgoingMessage> VoiceChannelActivityCommand::execute
     }
     if (!has_current_state) return {};
 
-    // Command carries the full desired voice state. Deafening always implies muted.
     const bool desired_deafened = cmd.is_deafened();
     const bool desired_muted = cmd.is_muted() || desired_deafened;
 
@@ -161,7 +144,6 @@ std::vector<net::outbound::OutgoingMessage> VoiceChannelActivityCommand::execute
         changed = voice_sessions.set_deafened(user_id, desired_deafened) || changed;
     }
 
-    // set_deafened() also mutates mute, so re-read before applying desired mute.
     current_muted = false;
     current_deafened = false;
     has_current_state = false;
@@ -191,29 +173,33 @@ std::vector<net::outbound::OutgoingMessage> VoiceChannelActivityCommand::execute
         }
     }
 
-    // Hub-wide mute/deafen delta.
-    utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(1,
-                                                                           std::memory_order_relaxed);
+    utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(
+        1, std::memory_order_relaxed);
     auto subs = ctx.subscription_manager.getSubscribers(Topic::HubTopic(hub_id));
     if (subs && !subs->empty()) {
+        sercom::protocol::event::StateDelta delta;
+        auto* hub_delta = delta.add_hubs();
+        hub_delta->set_hub_id(hub_id.value);
+        auto* channel_delta = hub_delta->add_channels();
+        channel_delta->set_channel_id(channel_id.value);
+        auto* upsert = channel_delta->add_voice_ops()->mutable_upsert();
+        upsert->mutable_participant()->set_user_id(user_id.value);
+        upsert->mutable_participant()->set_muted(final_muted);
+        upsert->mutable_participant()->set_deafened(final_deafened);
+
         std::vector<GlobalConnId> conns{subs->begin(), subs->end()};
-        auto voice_state_msg =
-            make_outgoing_message(net::outbound::Target::many(std::move(conns)),
-                                  make_voice_state(user_id.value, final_muted, final_deafened));
-        out.emplace_back(std::move(voice_state_msg));
+        out.emplace_back(make_outgoing_message(net::outbound::Target::many(std::move(conns)),
+                                               make_state_delta(delta)));
     }
 
-    // Voice ownership/connection state for all of user's sessions.
     for (const auto& session_id : ctx.session_manager.getUserSessionIds(user_id)) {
         auto session_conns = ctx.session_manager.getSessionIdConnections(session_id);
         if (session_conns.empty()) continue;
 
-        auto self_status_msg = make_outgoing_message(
+        out.emplace_back(make_outgoing_message(
             net::outbound::Target::many(std::move(session_conns)),
-            make_voice_self_status_connected(owner_session.has_value() &&
-                                                 *owner_session == session_id,
-                                             channel_id));
-        out.emplace_back(std::move(self_status_msg));
+            make_voice_self_status_connected(owner_session.has_value() && *owner_session == session_id,
+                                             hub_id, channel_id)));
     }
 
     return out;

@@ -12,16 +12,17 @@
 #include "utils/Metrics.h"
 
 // Protobuf includes
-#include "proto/command/message.pb.h"
+#include "proto/domain/ref.pb.h"
 #include "proto/domain/channel.pb.h"
 #include "proto/domain/hub.pb.h"
 #include "proto/domain/message.pb.h"
 #include "proto/domain/user.pb.h"
 #include "proto/envelope.pb.h"
 #include "proto/event/error.pb.h"
-#include "proto/event/message.pb.h"
+#include "proto/event/heartbeat.pb.h"
+#include "proto/event/realtime.pb.h"
+#include "proto/event/state.pb.h"
 
-#include <chrono>
 #include <cstdint>
 #include <exception>
 #include <optional>
@@ -59,32 +60,29 @@ net::outbound::OutgoingMessage make_drop_connection(const GlobalConnId& conn,
                                                     std::string_view reason);
 std::string sanitize(std::string value);
 std::string normalize_name_lowercase(std::string value);
-uint64_t to_epoch_ms(const std::chrono::system_clock::time_point& tp);
-sercom::protocol::domain::Message to_proto_message(const Message& msg,
-                                                   const std::optional<User>& author_opt);
-std::string make_message_batch(const ChannelId& ch_id,
-                               sercom::protocol::event::MessageBatch::Direction direction,
-                               const std::vector<sercom::protocol::domain::Message>& messages);
+
+struct ChannelScope {
+    HubId hub_id;
+    ChannelId channel_id;
+};
+
+sercom::protocol::domain::ChannelRef to_proto_channel_ref(const HubId& hub_id,
+                                                          const ChannelId& channel_id);
+std::optional<ChannelScope> to_channel_scope(const sercom::protocol::domain::ChannelRef& ref);
+sercom::protocol::domain::User to_proto_user(const User& user);
+sercom::protocol::domain::Hub to_proto_hub(const Hub& hub);
+sercom::protocol::domain::HubMember to_proto_hub_member(const UserId& user_id, std::optional<Role> role,
+                                                        bool is_online);
+sercom::protocol::domain::Channel to_proto_channel(const Channel& channel);
+sercom::protocol::domain::Message to_proto_message(const Message& msg);
+sercom::protocol::event::MessageState to_proto_message_state(const Message& msg);
+
+std::string make_state_sync(const sercom::protocol::event::StateSync& payload);
+std::string make_state_delta(const sercom::protocol::event::StateDelta& payload);
+std::string make_rt_signal(const sercom::protocol::event::RtSignal& payload);
+std::string make_pong();
 
 // app/hub/channel event packaging ---------------------------
-
-std::string make_hub_create(const HubId& hub_id, const std::string& name,
-                            const std::string& avatar_seed, const UserId& self_user_id,
-                            Role self_role, bool self_online,
-                            const std::optional<Channel>& default_channel);
-std::string make_hub_already_member(const HubId& hub_id, const UserId& user_id, Role role,
-                                    bool is_online);
-std::string make_hub_update(const HubId& hub_id, const std::string& name,
-                            const std::string& avatar_seed);
-std::string make_hub_remove(const HubId& hub_id);
-std::string make_member_join(const HubId& hub_id, const UserId& user_id, Role role,
-                             const std::string& username, const std::string& avatar_seed,
-                             bool is_online);
-std::string make_member_leave(const HubId& hub_id, const UserId& user_id);
-std::string make_member_presence(const HubId& hub_id, const UserId& user_id, bool is_online);
-std::string make_channel_create(const HubId& hub_id, const Channel& channel);
-std::string make_channel_update(const HubId& hub_id, const Channel& channel);
-std::string make_channel_remove(const HubId& hub_id, const ChannelId& channel_id);
 
 sercom::protocol::domain::HubRole to_proto_hub_role(std::optional<Role> role);
 sercom::protocol::domain::ChannelType to_proto_channel_type(ChannelType type);

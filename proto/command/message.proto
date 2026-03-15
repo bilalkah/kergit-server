@@ -3,6 +3,7 @@ syntax = "proto3";
 package sercom.protocol.command;
 
 import "proto/domain/ref.proto";
+import "proto/domain/message.proto";
 
 /*
  * Client intent: send a message to a channel.
@@ -18,6 +19,6 @@ message SendMessage {
  */
 message FetchMessagesBefore {
   sercom.protocol.domain.ChannelRef channel = 1;
-  string before_message_id = 2;
+  sercom.protocol.domain.MessageCursor before_cursor = 2;
   uint32 limit = 3;
 }

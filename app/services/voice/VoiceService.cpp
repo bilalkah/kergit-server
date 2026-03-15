@@ -29,109 +29,30 @@ uint64_t unix_now_seconds() {
                                        .count());
 }
 
-std::string make_voice_channel_participants(
-    const HubId& hub, const ChannelId& channel,
-    const std::vector<VoiceSessionManager::ParticipantInfo>& channel_participants,
-    uint64_t started_at_unix) {
-    sercom::protocol::event::VoiceChannelParticipants participants;
-    participants.mutable_channel()->set_hub_id(hub.value);
-    participants.mutable_channel()->set_channel_id(channel.value);
-    participants.set_started_at_unix(started_at_unix);
-    for (const auto& p : channel_participants) {
-        auto* out_p = participants.add_participants();
-        out_p->set_user_id(p.user_id.value);
-        out_p->set_muted(p.muted);
-        out_p->set_deafened(p.deafened);
-    }
-
+template <typename TPayload>
+std::string serialize_as_envelope(const sercom::protocol::Envelope::Type type,
+                                  const TPayload& payload) {
     sercom::protocol::Envelope env;
     env.set_version(1);
-    env.set_type(sercom::protocol::Envelope::VOICE_CHANNEL_PARTICIPANTS);
-    participants.SerializeToString(env.mutable_payload());
-
-    std::string bytes;
-    env.SerializeToString(&bytes);
-    return bytes;
+    env.set_type(type);
+    payload.SerializeToString(env.mutable_payload());
+    return env.SerializeAsString();
 }
 
-std::string make_voice_activity(std::string_view hub_id, std::string_view channel_id,
-                                std::string_view user_id, bool muted, bool deafened,
-                                sercom::protocol::event::VoiceChannelActivityState state) {
-    sercom::protocol::event::VoiceActivity activity;
-    activity.mutable_channel()->set_hub_id(hub_id.data(), hub_id.size());
-    activity.mutable_channel()->set_channel_id(channel_id.data(), channel_id.size());
-    activity.mutable_participant()->set_user_id(user_id.data(), user_id.size());
-    activity.mutable_participant()->set_muted(muted);
-    activity.mutable_participant()->set_deafened(deafened);
-    activity.set_activity(state);
-
-    sercom::protocol::Envelope env;
-    env.set_version(1);
-    env.set_type(sercom::protocol::Envelope::VOICE_ACTIVITY_EVENT);
-    activity.SerializeToString(env.mutable_payload());
-
-    std::string bytes;
-    env.SerializeToString(&bytes);
-    return bytes;
-}
-
-std::string make_voice_state(std::string_view user_id, bool muted, bool deafened) {
-    sercom::protocol::event::VoiceState voice_state;
-    voice_state.mutable_participant()->set_user_id(user_id.data(), user_id.size());
-    voice_state.mutable_participant()->set_muted(muted);
-    voice_state.mutable_participant()->set_deafened(deafened);
-
-    sercom::protocol::Envelope env;
-    env.set_version(1);
-    env.set_type(sercom::protocol::Envelope::VOICE_STATE_EVENT);
-    voice_state.SerializeToString(env.mutable_payload());
-
-    std::string bytes;
-    env.SerializeToString(&bytes);
-    return bytes;
-}
-
-sercom::protocol::event::VoiceChannelActivityState to_proto_presence_state(
-    VoiceService::PresenceState state) {
-    switch (state) {
-        case VoiceService::PresenceState::Joined:
-            return sercom::protocol::event::ACTIVITY_JOINED;
-        case VoiceService::PresenceState::Left:
-            return sercom::protocol::event::ACTIVITY_LEFT;
-        default:
-            return sercom::protocol::event::ACTIVITY_UNSPECIFIED;
-    }
-}
-
-std::string make_voice_self_status_connected(bool is_owner, const ChannelId& channel) {
+std::string make_voice_self_status_connected(bool is_owner, const HubId& hub_id,
+                                             const ChannelId& channel_id) {
     sercom::protocol::event::VoiceSelfStatus status;
     status.set_connected(true);
     status.set_is_owner(is_owner);
-    status.set_channel_id(channel.value);
-
-    sercom::protocol::Envelope env;
-    env.set_version(1);
-    env.set_type(sercom::protocol::Envelope::VOICE_SELF_STATUS);
-    status.SerializeToString(env.mutable_payload());
-
-    std::string bytes;
-    env.SerializeToString(&bytes);
-    return bytes;
+    *status.mutable_channel() = ::app::to_proto_channel_ref(hub_id, channel_id);
+    return serialize_as_envelope(sercom::protocol::Envelope::VOICE_SELF_STATUS, status);
 }
 
 std::string make_voice_self_status_disconnected() {
     sercom::protocol::event::VoiceSelfStatus status;
     status.set_connected(false);
     status.set_is_owner(false);
-
-    sercom::protocol::Envelope env;
-    env.set_version(1);
-    env.set_type(sercom::protocol::Envelope::VOICE_SELF_STATUS);
-    status.SerializeToString(env.mutable_payload());
-
-    std::string bytes;
-    env.SerializeToString(&bytes);
-    return bytes;
+    return serialize_as_envelope(sercom::protocol::Envelope::VOICE_SELF_STATUS, status);
 }
 
 bool contains_participant(const std::vector<livekit::cli::ParticipantInfo>& participants,
@@ -160,13 +81,13 @@ VoiceService::VoiceService(std::string api_key, std::string api_secret,
                            VoiceStateRepository& voice_state_repo,
                            infra::redis::RedisClient& redis, SessionManager& session_manager,
                            SubscriptionManager& subscription_manager,
-                           app::services::ChannelService& channel_service,
+                           app::services::HubService& hub_service,
                            net::outbound::IOutboundSink& outbound_sink)
     : voice_state_repo_(voice_state_repo),
       redis_(redis),
       session_manager_(session_manager),
       subscription_manager_(subscription_manager),
-      channel_service_(channel_service),
+      hub_service_(hub_service),
       outbound_sink_(outbound_sink),
       token_service_(std::move(api_key), std::move(api_secret)) {
     auto public_base = utils::EnvLoader::get_env("WEB_DOMAIN", "https://localhost");
@@ -493,46 +414,74 @@ void VoiceService::emit(net::outbound::OutgoingMessage msg) {
     utils::metrics::counters().outbound_msgs_total.fetch_add(1, std::memory_order_relaxed);
 }
 
-void VoiceService::publish_participants(const HubId& hub, const ChannelId& channel,
-                                        uint64_t started_at_unix) {
+void VoiceService::publish_voice_snapshot(const HubId& hub, const ChannelId& channel,
+                                          uint64_t started_at_unix) {
     utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(1,
                                                                            std::memory_order_relaxed);
     auto subs = subscription_manager_.getSubscribers(Topic::HubTopic(hub));
     if (!subs || subs->empty()) return;
 
-    auto participants = sessions_.participants_in_channel(channel);
-    std::vector<GlobalConnId> conns{subs->begin(), subs->end()};
-    auto msg = ::app::make_outgoing_message(
-        net::outbound::Target::many(std::move(conns)),
-        make_voice_channel_participants(hub, channel, participants, started_at_unix));
-    emit(std::move(msg));
-}
-
-void VoiceService::publish_presence(const HubId& hub, const ChannelId& channel, const UserId& user,
-                                    PresenceState state, bool muted, bool deafened) {
-    utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(1,
-                                                                           std::memory_order_relaxed);
-    auto subs = subscription_manager_.getSubscribers(Topic::HubTopic(hub));
-    if (!subs || subs->empty()) return;
-
-    std::vector<GlobalConnId> conns{subs->begin(), subs->end()};
-    auto msg = ::app::make_outgoing_message(
-        net::outbound::Target::many(std::move(conns)),
-        make_voice_activity(hub.value, channel.value, user.value, muted, deafened,
-                            to_proto_presence_state(state)));
-    emit(std::move(msg));
-}
-
-void VoiceService::publish_voice_state(const HubId& hub, const UserId& user, bool muted,
-                                       bool deafened) {
-    utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(1,
-                                                                           std::memory_order_relaxed);
-    auto subs = subscription_manager_.getSubscribers(Topic::HubTopic(hub));
-    if (!subs || subs->empty()) return;
+    sercom::protocol::event::StateDelta delta;
+    auto* hub_delta = delta.add_hubs();
+    hub_delta->set_hub_id(hub.value);
+    auto* channel_delta = hub_delta->add_channels();
+    channel_delta->set_channel_id(channel.value);
+    auto* snapshot = channel_delta->add_voice_ops()->mutable_snapshot()->mutable_state();
+    snapshot->set_started_at_unix(started_at_unix);
+    for (const auto& participant : sessions_.participants_in_channel(channel)) {
+        auto* out_participant = snapshot->add_participants();
+        out_participant->set_user_id(participant.user_id.value);
+        out_participant->set_muted(participant.muted);
+        out_participant->set_deafened(participant.deafened);
+    }
 
     std::vector<GlobalConnId> conns{subs->begin(), subs->end()};
     auto msg = ::app::make_outgoing_message(net::outbound::Target::many(std::move(conns)),
-                                            make_voice_state(user.value, muted, deafened));
+                                            ::app::make_state_delta(delta));
+    emit(std::move(msg));
+}
+
+void VoiceService::publish_voice_participant_upsert(const HubId& hub, const ChannelId& channel,
+                                                    const UserId& user, bool muted,
+                                                    bool deafened) {
+    utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(1,
+                                                                           std::memory_order_relaxed);
+    auto subs = subscription_manager_.getSubscribers(Topic::HubTopic(hub));
+    if (!subs || subs->empty()) return;
+
+    sercom::protocol::event::StateDelta delta;
+    auto* hub_delta = delta.add_hubs();
+    hub_delta->set_hub_id(hub.value);
+    auto* channel_delta = hub_delta->add_channels();
+    channel_delta->set_channel_id(channel.value);
+    auto* upsert = channel_delta->add_voice_ops()->mutable_upsert()->mutable_participant();
+    upsert->set_user_id(user.value);
+    upsert->set_muted(muted);
+    upsert->set_deafened(deafened);
+
+    std::vector<GlobalConnId> conns{subs->begin(), subs->end()};
+    auto msg = ::app::make_outgoing_message(net::outbound::Target::many(std::move(conns)),
+                                            ::app::make_state_delta(delta));
+    emit(std::move(msg));
+}
+
+void VoiceService::publish_voice_participant_remove(const HubId& hub, const ChannelId& channel,
+                                                    const UserId& user) {
+    utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(1,
+                                                                           std::memory_order_relaxed);
+    auto subs = subscription_manager_.getSubscribers(Topic::HubTopic(hub));
+    if (!subs || subs->empty()) return;
+
+    sercom::protocol::event::StateDelta delta;
+    auto* hub_delta = delta.add_hubs();
+    hub_delta->set_hub_id(hub.value);
+    auto* channel_delta = hub_delta->add_channels();
+    channel_delta->set_channel_id(channel.value);
+    channel_delta->add_voice_ops()->mutable_remove()->set_user_id(user.value);
+
+    std::vector<GlobalConnId> conns{subs->begin(), subs->end()};
+    auto msg = ::app::make_outgoing_message(net::outbound::Target::many(std::move(conns)),
+                                            ::app::make_state_delta(delta));
     emit(std::move(msg));
 }
 
@@ -549,11 +498,11 @@ void VoiceService::publish_self_status(const UserId& user, bool connected,
         const bool is_owner =
             connected && owner_session_id.has_value() && owner_session_id.value() == session_id;
 
-        std::string bytes;
+        std::string bytes = make_voice_self_status_disconnected();
         if (connected && channel.has_value()) {
-            bytes = make_voice_self_status_connected(is_owner, *channel);
-        } else {
-            bytes = make_voice_self_status_disconnected();
+            if (const auto channel_info = hub_service_.getChannel(*channel)) {
+                bytes = make_voice_self_status_connected(is_owner, channel_info->hub_id, *channel);
+            }
         }
 
         auto msg =
@@ -625,14 +574,13 @@ void VoiceService::handle_participant_joined(const livekit::webhook::LiveKitEven
     persist_voice_join(event.user_id, event.channel_id, final_muted, final_deafened);
     utils::EventLogger::instance().voice_join(event.user_id.value, event.channel_id.value);
 
-    if (auto channel = channel_service_.getChannel(event.channel_id)) {
+    if (auto channel = hub_service_.getChannel(event.channel_id)) {
         if (first_join_in_channel) {
-            publish_participants(channel->hub_id, event.channel_id,
-                                 read_channel_started_at_unix(event.channel_id));
+            publish_voice_snapshot(channel->hub_id, event.channel_id,
+                                   read_channel_started_at_unix(event.channel_id));
         }
-        publish_presence(channel->hub_id, event.channel_id, event.user_id, PresenceState::Joined,
-                         final_muted, final_deafened);
-        publish_voice_state(channel->hub_id, event.user_id, final_muted, final_deafened);
+        publish_voice_participant_upsert(channel->hub_id, event.channel_id, event.user_id,
+                                         final_muted, final_deafened);
     }
 
     publish_self_status(event.user_id, true, intent.session_id, event.channel_id);
@@ -656,16 +604,6 @@ void VoiceService::handle_participant_left(const livekit::webhook::LiveKitEvent&
 
     const auto current_channel = sessions_.user_channel(event.user_id);
     const auto current_owner = sessions_.user_session(event.user_id);
-
-    bool leaving_muted = false;
-    bool leaving_deafened = false;
-    for (const auto& p : sessions_.participants_in_channel(event.channel_id)) {
-        if (p.user_id == event.user_id) {
-            leaving_muted = p.muted;
-            leaving_deafened = p.deafened;
-            break;
-        }
-    }
 
     const bool matches_owner_session =
         event.app_session_id == 0 ||
@@ -694,9 +632,8 @@ void VoiceService::handle_participant_left(const livekit::webhook::LiveKitEvent&
         persist_voice_leave(event.user_id);
         utils::EventLogger::instance().voice_leave(event.user_id.value, event.channel_id.value);
 
-        if (auto channel = channel_service_.getChannel(event.channel_id)) {
-            publish_presence(channel->hub_id, event.channel_id, event.user_id,
-                             PresenceState::Left, leaving_muted, leaving_deafened);
+        if (auto channel = hub_service_.getChannel(event.channel_id)) {
+            publish_voice_participant_remove(channel->hub_id, event.channel_id, event.user_id);
         }
 
         publish_self_status(event.user_id, false, std::nullopt, std::nullopt);
@@ -735,9 +672,8 @@ void VoiceService::handle_participant_left(const livekit::webhook::LiveKitEvent&
             persist_voice_join(event.user_id, *active_channel, active_muted, active_deafened);
         }
 
-        if (auto channel = channel_service_.getChannel(event.channel_id)) {
-            publish_presence(channel->hub_id, event.channel_id, event.user_id,
-                             PresenceState::Left, leaving_muted, leaving_deafened);
+        if (auto channel = hub_service_.getChannel(event.channel_id)) {
+            publish_voice_participant_remove(channel->hub_id, event.channel_id, event.user_id);
         }
 
         if (sessions_.is_empty(event.channel_id)) {

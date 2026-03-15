@@ -14,8 +14,8 @@ cc_library(
         "//domains:hub_domain",
         "//proto:envelope_cc_proto",
         "//proto/command:channel_cc_proto",
-        "//proto/event:channel_cc_proto",
         "//proto/event:error_cc_proto",
+        "//proto/event:state_cc_proto",
     ],
 )
 
@@ -33,8 +33,8 @@ cc_library(
         "//domains:hub_domain",
         "//proto:envelope_cc_proto",
         "//proto/command:channel_cc_proto",
-        "//proto/event:channel_cc_proto",
         "//proto/event:error_cc_proto",
+        "//proto/event:state_cc_proto",
     ],
 )
 
@@ -52,7 +52,7 @@ cc_library(
         "//domains:hub_domain",
         "//proto:envelope_cc_proto",
         "//proto/command:channel_cc_proto",
-        "//proto/event:channel_cc_proto",
         "//proto/event:error_cc_proto",
+        "//proto/event:state_cc_proto",
     ],
 )

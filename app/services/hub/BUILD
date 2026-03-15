@@ -3,7 +3,10 @@ load("@rules_cc//cc:defs.bzl", "cc_library")
 cc_library(
     name = "hub_cache",
     srcs = ["HubCache.cpp"],
-    hdrs = ["HubCache.h"],
+    hdrs = [
+        "HubCache.h",
+        "HubSnapshot.h",
+    ],
     copts = ["-std=gnu++23"],
     visibility = ["//app:__subpackages__"],
     deps = [

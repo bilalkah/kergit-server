@@ -51,7 +51,6 @@ inline EventPriority classify_event(const Event& evt) {
                 switch (ev.payload.env.type()) {
                     // Low priority: UI hints only.
                     case sercom::protocol::Envelope::TYPING:
-                    case sercom::protocol::Envelope::PRESENCE:
                         return EventPriority::Low;
                     // Voice activity is low priority ONLY if it never encodes join/leave.
                     // Membership truth must remain high priority under overload.
@@ -59,7 +58,6 @@ inline EventPriority classify_event(const Event& evt) {
                         return EventPriority::Low;
                     // Voice membership updates are authoritative.
                     case sercom::protocol::Envelope::VOICE_JOIN:
-                    case sercom::protocol::Envelope::VOICE_CHANNEL_PARTICIPANTS:
                         return EventPriority::High;
                     default:
                         return EventPriority::High;

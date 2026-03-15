@@ -27,6 +27,7 @@ proto_library(
     name = "activity_proto",
     srcs = ["activity.proto"],
     deps = [
+        "//proto/domain:message_proto",
         "//proto/domain:ref_proto",
     ],
 )
@@ -56,6 +57,7 @@ proto_library(
     name = "message_proto",
     srcs = ["message.proto"],
     deps = [
+        "//proto/domain:message_proto",
         "//proto/domain:ref_proto",
     ],
 )

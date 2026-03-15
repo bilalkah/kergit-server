@@ -8,6 +8,8 @@
 #include <expected>
 #include <optional>
 #include <string_view>
+#include <unordered_map>
+#include <vector>
 
 namespace app::services {
 
@@ -18,6 +20,8 @@ class UserService {
     // ---- Read operations ----
     // Returns full user aggregate (cache-backed)
     std::optional<User> getUser(const UserId& userId);
+    // Cache-first bulk user read. Misses are fetched via a single repository query.
+    std::unordered_map<UserId, User> getUsersByIds(const std::vector<UserId>& userIds);
     // Returns display name only (cheap path, no cache fill)
     std::optional<std::string> getDisplayName(const UserId& userId);
 

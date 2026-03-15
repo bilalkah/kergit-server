@@ -1,5 +1,5 @@
-#ifndef APP_SERVICES_CHANNEL_DB_WRITE_QUEUE_H
-#define APP_SERVICES_CHANNEL_DB_WRITE_QUEUE_H
+#ifndef APP_SERVICES_MESSAGE_DB_WRITE_QUEUE_H
+#define APP_SERVICES_MESSAGE_DB_WRITE_QUEUE_H
 
 #include "core/base/ThreadSafeQueue.h"
 
@@ -69,4 +69,4 @@ class DbWriteQueue : public ThreadSafeQueue<T> {
 
 }  // namespace app::services
 
-#endif  // APP_SERVICES_CHANNEL_DB_WRITE_QUEUE_H
+#endif  // APP_SERVICES_MESSAGE_DB_WRITE_QUEUE_H

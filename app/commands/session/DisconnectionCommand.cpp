@@ -5,7 +5,6 @@
 #include "utils/EventLogger.h"
 
 #include <string>
-#include <unordered_set>
 #include <variant>
 #include <vector>
 
@@ -39,13 +38,14 @@ std::vector<net::outbound::OutgoingMessage> DisconnectionCommand::execute(Comman
         "session_id=" + std::to_string(session_id) + " close_code=" + std::to_string(event->code) +
             " reason=" + event->reason);
 
-    const auto hubid_list = [&]() {
+    const auto hub_ids = [&]() {
         std::vector<HubId> list;
-        const auto conn_subs =
-            ctx.subscription_manager.getSubscriptionsForConnection(event->conn_id);
+        const auto conn_subs = ctx.subscription_manager.getSubscriptionsForConnection(event->conn_id);
         if (!conn_subs.has_value()) return list;
         for (const auto& topic : conn_subs.value()) {
-            if (topic.kind != TopicKind::Hub) continue;
+            if (topic.kind != TopicKind::Hub) {
+                continue;
+            }
             list.emplace_back(topic_utils::extractHubId(topic));
         }
         return list;
@@ -54,26 +54,35 @@ std::vector<net::outbound::OutgoingMessage> DisconnectionCommand::execute(Comman
     ctx.session_manager.removeConnection(event->conn_id);
     ctx.subscription_manager.removeAllForConnection(event->conn_id);
 
-    if (!ctx.session_manager.hasSession(user_id)) {
-        for (const auto& hub_id : hubid_list) {
-            const auto online_members = ctx.presence_manager.onlineUsersInHub(hub_id);
-            std::unordered_set<GlobalConnId> recipient_set;
+    if (ctx.session_manager.hasSession(user_id)) {
+        return out;
+    }
 
-            for (const auto& member_id : online_members) {
-                if (member_id == user_id) continue;
-                const auto member_conns = ctx.session_manager.getSessionConnections(member_id);
-                for (const auto& conn : member_conns) {
-                    recipient_set.insert(conn);
-                }
-            }
-
-            std::vector<GlobalConnId> recipients(recipient_set.begin(), recipient_set.end());
-            if (!recipients.empty()) {
-                auto payload = make_member_presence(hub_id, user_id, false);
-                out.emplace_back(make_outgoing_message(
-                    net::outbound::Target::many(std::move(recipients)), std::move(payload)));
-            }
+    for (const auto& hub_id : hub_ids) {
+        utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(
+            1, std::memory_order_relaxed);
+        auto subs = ctx.subscription_manager.getSubscribers(Topic::HubTopic(hub_id));
+        if (!subs || subs->empty()) {
+            continue;
         }
+
+        std::vector<GlobalConnId> recipients;
+        recipients.reserve(subs->size());
+        for (const auto& conn : *subs) {
+            recipients.push_back(conn);
+        }
+        if (recipients.empty()) {
+            continue;
+        }
+
+        sercom::protocol::event::RtSignal signal;
+        auto* presence = signal.mutable_presence();
+        presence->set_hub_id(hub_id.value);
+        presence->set_user_id(user_id.value);
+        presence->set_is_online(false);
+
+        out.emplace_back(make_outgoing_message(net::outbound::Target::many(std::move(recipients)),
+                                               make_rt_signal(signal)));
     }
 
     return out;

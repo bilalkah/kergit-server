@@ -3,7 +3,7 @@
 
 #include "domains/ids/Ids.h"
 
-#include <chrono>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -13,6 +13,11 @@ enum class MessageType {
 };
 
 enum class MessageStatus { PENDING, SENT, DELIVERED, READ, FAILED, BLOCKED };
+
+struct MessageCursor {
+    MessageId message_id{""};
+    uint64_t created_at_unix_us{0};
+};
 
 struct Message {
     Message() {}
@@ -35,7 +40,7 @@ struct Message {
     MessageStatus status{MessageStatus::PENDING};
 
     // Timestamps
-    std::chrono::system_clock::time_point sent_at{};
+    uint64_t created_at_unix_us{0};
 };
 
 #endif  // DOMAINS_MESSAGE_H

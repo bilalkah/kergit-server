@@ -6,7 +6,7 @@
 #include "proto/command/user.pb.h"
 #include "proto/envelope.pb.h"
 #include "proto/event/error.pb.h"
-#include "proto/event/user.pb.h"
+#include "proto/event/state.pb.h"
 
 #include <cassert>
 #include <optional>
@@ -19,21 +19,6 @@ namespace app {
 namespace {
 constexpr size_t kMaxUsernameSize = 48;
 constexpr size_t kMaxAvatarSeedSize = 64;
-
-std::string make_user_profile_updated(const UserId& user_id, const std::string& username,
-                                      const std::string& avatar_seed) {
-    sercom::protocol::event::UserProfileUpdated updated;
-    auto* proto_user = updated.mutable_user();
-    proto_user->set_id(user_id.value);
-    proto_user->mutable_metadata()->set_username(username);
-    proto_user->mutable_metadata()->set_avatar_seed(avatar_seed);
-
-    sercom::protocol::Envelope env;
-    env.set_version(1);
-    env.set_type(sercom::protocol::Envelope::USER_PROFILE_UPDATED);
-    updated.SerializeToString(env.mutable_payload());
-    return env.SerializeAsString();
-}
 
 }  // namespace
 
@@ -51,7 +36,7 @@ std::vector<net::outbound::OutgoingMessage> UpdateUserCommand::execute(CommandCo
     if (!user_exp.has_value()) {
         out.emplace_back(make_drop_connection(event->conn_id,
                                               sercom::protocol::event::CommandErrorCode_FORBIDDEN,
-                                              "Must be authenticated to fetch messages"));
+                                              "Must be authenticated to update user"));
         return out;
     }
 
@@ -64,7 +49,7 @@ std::vector<net::outbound::OutgoingMessage> UpdateUserCommand::execute(CommandCo
             out.emplace_back(make_command_error(
                 event->conn_id, env.type(),
                 sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
-                "Username length must be between 0 and " + std::to_string(kMaxUsernameSize)));
+                "Username length must be between 1 and " + std::to_string(kMaxUsernameSize)));
             return out;
         }
         username_opt = std::move(username);
@@ -76,10 +61,18 @@ std::vector<net::outbound::OutgoingMessage> UpdateUserCommand::execute(CommandCo
             out.emplace_back(make_command_error(
                 event->conn_id, env.type(),
                 sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
-                "Avatar seed must be between 0 and " + std::to_string(kMaxAvatarSeedSize)));
+                "Avatar seed must be between 1 and " + std::to_string(kMaxAvatarSeedSize)));
             return out;
         }
         avatar_seed_opt = std::move(seed);
+    }
+
+    if (!username_opt.has_value() && !avatar_seed_opt.has_value()) {
+        out.emplace_back(make_command_error(
+            event->conn_id, env.type(),
+            sercom::protocol::event::CommandErrorCode_INVALID_ARGUMENT,
+            "No changes requested"));
+        return out;
     }
 
     const UserId user_id = user_exp.value();
@@ -88,44 +81,54 @@ std::vector<net::outbound::OutgoingMessage> UpdateUserCommand::execute(CommandCo
         out.emplace_back(make_command_error(
             event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
             "Unable to update user settings"));
+        return out;
     }
 
-    std::string final_username;
-    std::string final_avatar_seed;
-    if (auto user = ctx.user_service.getUser(user_id)) {
-        final_username = user->username;
-        final_avatar_seed = user->avatar_seed;
-    } else {
+    auto final_user_opt = ctx.user_service.getUser(user_id);
+    if (!final_user_opt.has_value()) {
         out.emplace_back(make_drop_connection(
             event->conn_id, sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
             "Unable to fetch updated user information"));
+        return out;
     }
 
-    std::string bytes = make_user_profile_updated(user_id, final_username, final_avatar_seed);
-
-    std::unordered_set<GlobalConnId> conn_set;
-    conn_set.insert(event->conn_id);
-
     const auto hubs = ctx.hub_service.getUserHubs(user_id);
+    std::unordered_set<GlobalConnId> self_connections;
+    for (const auto& conn : ctx.session_manager.getSessionConnections(user_id)) {
+        self_connections.insert(conn);
+    }
+
     for (const auto& hub : hubs) {
         utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(
             1, std::memory_order_relaxed);
+
         auto subs = ctx.subscription_manager.getSubscribers(Topic::HubTopic(hub.id));
-        if (!subs) {
+        std::unordered_set<GlobalConnId> recipients = self_connections;
+        if (subs) {
+            for (const auto& conn : *subs) {
+                recipients.insert(conn);
+            }
+        }
+        if (recipients.empty()) {
             continue;
         }
-        for (const auto& sub : *subs) {
-            conn_set.insert(sub);
+
+        sercom::protocol::event::StateDelta delta;
+        auto* hub_delta = delta.add_hubs();
+        hub_delta->set_hub_id(hub.id.value);
+        auto* user_upsert = hub_delta->add_user_ops()->mutable_upsert()->mutable_state()->mutable_user();
+        *user_upsert = to_proto_user(*final_user_opt);
+
+        std::vector<GlobalConnId> conns;
+        conns.reserve(recipients.size());
+        for (const auto& conn : recipients) {
+            conns.push_back(conn);
         }
+
+        out.emplace_back(make_outgoing_message(net::outbound::Target::many(std::move(conns)),
+                                               make_state_delta(delta)));
     }
 
-    std::vector<GlobalConnId> conns;
-    for (const auto& conn : conn_set) {
-        conns.push_back(conn);
-    }
-
-    out.emplace_back(
-        make_outgoing_message(net::outbound::Target::many(std::move(conns)), std::move(bytes)));
     return out;
 }
 

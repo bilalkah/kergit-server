@@ -6,25 +6,13 @@
 #include "proto/command/hub.pb.h"
 #include "proto/envelope.pb.h"
 #include "proto/event/error.pb.h"
-#include "proto/event/hub.pb.h"
+#include "proto/event/state.pb.h"
 
 #include <cassert>
 #include <string>
 #include <vector>
 
 namespace app {
-
-std::string make_hub_join_code_created(const HubId& hub_id, std::string join_code) {
-    sercom::protocol::event::HubJoinCodeCreated created;
-    created.set_hub_id(hub_id.value);
-    created.set_join_code(std::move(join_code));
-
-    sercom::protocol::Envelope out_env;
-    out_env.set_version(1);
-    out_env.set_type(sercom::protocol::Envelope::HUB_JOIN_CODE_CREATED);
-    created.SerializeToString(out_env.mutable_payload());
-    return out_env.SerializeAsString();
-}
 
 std::vector<net::outbound::OutgoingMessage> GetHubInviteCommand::execute(CommandContext& ctx,
                                                                          const queue::Event& evt) {
@@ -43,28 +31,33 @@ std::vector<net::outbound::OutgoingMessage> GetHubInviteCommand::execute(Command
                                               "Authenticate before sending messages"));
         return out;
     }
-    
+
     const UserId user_id = user_exp.value();
     const HubId hub_id{cmd.hub_id()};
-    if (!ctx.hub_service.isHubMember(hub_id, user_id)) {
+    auto role = ctx.hub_service.getMembershipRole(hub_id, user_id);
+    if (!role) {
         out.emplace_back(make_command_error(event->conn_id, env.type(),
                                             sercom::protocol::event::CommandErrorCode_FORBIDDEN,
                                             "Join the hub before requesting a join code"));
         return out;
     }
 
-    auto role = ctx.hub_service.getMembershipRole(hub_id, user_id);
-    if (!role.has_value() || (*role != Role::OWNER && *role != Role::ADMIN)) {
+    if (*role != Role::OWNER && *role != Role::ADMIN) {
         out.emplace_back(make_command_error(event->conn_id, env.type(),
                                             sercom::protocol::event::CommandErrorCode_FORBIDDEN,
                                             "Only owners or admins can create join codes"));
         return out;
     }
 
-    std::string bytes = make_hub_join_code_created(hub_id, ctx.invite_service.createInvite(hub_id));
+    const std::string join_code = ctx.invite_service.createInvite(hub_id);
 
-    out.emplace_back(
-        make_outgoing_message(net::outbound::Target::one(event->conn_id), std::move(bytes)));
+    sercom::protocol::event::StateDelta delta;
+    auto* hub_delta = delta.add_hubs();
+    hub_delta->set_hub_id(hub_id.value);
+    hub_delta->add_hub_ops()->mutable_join_code_set()->set_join_code(join_code);
+
+    out.emplace_back(make_outgoing_message(net::outbound::Target::one(event->conn_id),
+                                           make_state_delta(delta)));
     return out;
 }
 
