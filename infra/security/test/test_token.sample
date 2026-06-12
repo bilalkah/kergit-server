@@ -1,0 +1,5 @@
+# Intentionally empty in the public repository.
+#
+# If you need to benchmark JWT verification locally, add your own short-lived
+# sample tokens here. Do not commit real user tokens, real Supabase project
+# identifiers, or any other sensitive auth payloads.

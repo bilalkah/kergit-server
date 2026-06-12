@@ -1,0 +1,78 @@
+# === gcc13 + C++23 toolchain defaults ===
+build:gcc13_cpp23
+build:gcc13_cpp23 --action_env=CC=/usr/bin/gcc-13
+build:gcc13_cpp23 --action_env=CXX=/usr/bin/g++-13
+build:gcc13_cpp23 --host_action_env=CC=/usr/bin/gcc-13
+build:gcc13_cpp23 --host_action_env=CXX=/usr/bin/g++-13
+build:gcc13_cpp23 --cxxopt=-std=gnu++23
+build:gcc13_cpp23 --host_cxxopt=-std=gnu++23
+
+# === Global defaults ===
+build --@@curl+//:ssl_lib=openssl
+
+# === opt mode ===
+build:opt
+build:opt -c opt
+build:opt --strip=always
+
+# === debug mode ===
+build:dbg
+build:dbg -c dbg
+build:dbg --strip=never
+
+# === fastbuild mode ===
+build:fast
+build:fast -c fastbuild
+
+# === Transport layer: BoringSSL + QUIC ===
+build:transport_ssl --define USE_SSL=true
+build:transport_ssl --define WITH_BORINGSSL=1
+build:transport_ssl --define WITH_QUIC=1
+build:transport_ssl --define WITH_LIBDEFLATE=1
+
+# === Transport layer: plain (no BoringSSL, no QUIC) ===
+build:transport_plain --define USE_SSL=false
+build:transport_plain --define WITH_BORINGSSL=0
+build:transport_plain --define WITH_QUIC=0
+build:transport_plain --define WITH_LIBDEFLATE=1
+
+# === sslquic variants (transport SSL ON) ===
+build:sslquic_dbg --config=gcc13_cpp23
+build:sslquic_dbg --config=transport_ssl
+build:sslquic_dbg --config=dbg
+
+build:sslquic --config=gcc13_cpp23
+build:sslquic --config=transport_ssl
+build:sslquic --config=fast
+
+build:sslquic_opt --config=gcc13_cpp23
+build:sslquic_opt --config=transport_ssl
+build:sslquic_opt --config=opt
+build:sslquic_opt --define SERCOM_DEBUG_LOGS=1
+
+# === vanilla variants (transport SSL OFF) ===
+build:vanilla_dbg --config=gcc13_cpp23
+build:vanilla_dbg --config=transport_plain
+build:vanilla_dbg --config=dbg
+build:vanilla_dbg --verbose_failures
+
+build:vanilla --config=gcc13_cpp23
+build:vanilla --config=transport_plain
+build:vanilla --config=fast
+
+build:vanilla_opt --config=gcc13_cpp23
+build:vanilla_opt --config=transport_plain
+build:vanilla_opt --config=opt
+
+# === configurations for tests ===
+test:testing --config=dbg
+test:testing --config=gcc13_cpp23
+test:testing --test_output=all
+test:testing --verbose_failures
+test:testing --nocache_test_results
+
+# === benchmark tests (release/opt) ===
+test:benchmark --config=opt
+test:benchmark --config=gcc13_cpp23
+test:benchmark --test_output=all
+test:benchmark --nocache_test_results

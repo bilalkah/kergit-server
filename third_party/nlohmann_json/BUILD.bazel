@@ -1,0 +1,5 @@
+alias(
+    name = "nlohmann_json",
+    actual = "@nlohmann_json//:nlohmann_json",
+    visibility = ["//visibility:public"],
+)

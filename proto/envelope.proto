@@ -1,0 +1,173 @@
+syntax = "proto3";
+
+package sercom.protocol;
+
+message Envelope {
+    uint32 version = 1;
+
+    enum Type {
+        // Direction: n/a
+        // Payload: none
+        // When: unset/invalid sentinel.
+        UNKNOWN = 0;
+
+        // Direction: S->C
+        // Payload: sercom.protocol.event.CommandError
+        // When: a client command is rejected.
+        CommandError = 1;
+
+        // Direction: C->S
+        // Payload: sercom.protocol.command.Ping
+        // When: client heartbeat request.
+        PING = 10;
+
+        // Direction: S->C
+        // Payload: sercom.protocol.event.Pong
+        // When: server heartbeat response to PING.
+        PONG = 11;
+
+        // Session / state sync
+        // Direction: C->S
+        // Payload: sercom.protocol.command.Authenticate
+        // When: initial auth and re-auth attempts.
+        AUTH = 20;
+
+        // Direction: S->C
+        // Payload: sercom.protocol.event.AuthOk
+        // When: authentication is accepted.
+        AUTH_OK = 21;
+
+        // Direction: C->S
+        // Payload: sercom.protocol.command.RequestStateSync
+        // When: client requests authoritative resync (recovery/inconsistency).
+        REQUEST_STATE_SYNC = 22;
+
+        // Direction: S->C
+        // Payload: sercom.protocol.event.StateSync
+        // When: full authoritative snapshot for bootstrap or resync.
+        STATE_SYNC = 23;
+
+        // Direction: S->C
+        // Payload: sercom.protocol.event.StateDelta
+        // When: ongoing durable state mutations after sync.
+        STATE_DELTA = 24;
+
+        // Direction: S->C
+        // Payload: sercom.protocol.event.RtSignal
+        // When: transient non-durable realtime hints (typing/presence).
+        RT_SIGNAL = 25;
+
+        // Direction: C->S
+        // Payload: sercom.protocol.command.Typing
+        // When: client emits typing activity intent.
+        TYPING = 30;
+
+        // Direction: C->S
+        // Payload: sercom.protocol.command.SelectActiveChannel
+        // When: client selects active channel and may request latest messages.
+        ACTIVE_CHANNEL = 31;
+
+        // Direction: C->S
+        // Payload: sercom.protocol.command.JoinVoiceChannelRequest
+        // When: client requests to join a voice channel.
+        VOICE_JOIN = 33;
+
+        // Direction: C->S
+        // Payload: sercom.protocol.command.KickVoiceParticipant
+        // When: moderator requests voice-only participant removal.
+        VOICE_KICK_PARTICIPANT = 34;
+
+        // Direction: C->S
+        // Payload: sercom.protocol.command.VoiceChannelActivity
+        // When: client updates own voice activity state (mute/deafen).
+        VOICE_ACTIVITY = 35;
+
+        // Direction: S->C
+        // Payload: sercom.protocol.event.VoiceTokenIssued
+        // When: server issues voice token after successful join.
+        VOICE_TOKEN_ISSUED = 36;
+
+        // Direction: S->C
+        // Payload: sercom.protocol.event.VoiceSelfStatus
+        // When: server sends session-scoped voice connection status.
+        VOICE_SELF_STATUS = 37;
+
+        // Direction: S->C
+        // Payload: sercom.protocol.event.VoiceSelfRevoked
+        // When: server revokes current session voice ownership/connection.
+        VOICE_SELF_REVOKED = 38;
+
+        // Direction: C->S
+        // Payload: sercom.protocol.command.SendMessage
+        // When: client sends a new channel message intent.
+        MESSAGE_SEND = 40;
+
+        // Direction: C->S
+        // Payload: sercom.protocol.command.FetchMessagesBefore
+        // When: client requests older message history page.
+        MESSAGE_FETCH_BEFORE = 42;
+
+        // Direction: C->S
+        // Payload: sercom.protocol.command.CreateHub
+        // When: client requests new hub creation.
+        HUB_CREATE = 50;
+
+        // Direction: C->S
+        // Payload: sercom.protocol.command.JoinHub
+        // When: client joins a hub with join code.
+        HUB_JOIN = 51;
+
+        // Direction: C->S
+        // Payload: sercom.protocol.command.CreateHubJoinCode
+        // When: client requests create/rotate hub join code.
+        HUB_CREATE_JOIN_CODE = 52;
+
+        // Direction: C->S
+        // Payload: sercom.protocol.command.LeaveHub
+        // When: client leaves a hub.
+        HUB_LEAVE = 53;
+
+        // Direction: C->S
+        // Payload: sercom.protocol.command.RemoveHub
+        // When: client requests permanent hub deletion.
+        HUB_REMOVE = 54;
+
+        // Direction: C->S
+        // Payload: sercom.protocol.command.KickHubMember
+        // When: moderator removes a user from hub membership.
+        HUB_MEMBER_KICK = 55;
+
+        // Direction: C->S
+        // Payload: sercom.protocol.command.UpdateHub
+        // When: client updates hub fields.
+        HUB_UPDATE = 56;
+
+        // Direction: C->S
+        // Payload: sercom.protocol.command.UpdateHubMemberRole
+        // When: owner updates a member role in a hub.
+        HUB_MEMBER_ROLE_UPDATE = 57;
+
+        // Direction: C->S
+        // Payload: sercom.protocol.command.UpdateUser
+        // When: client updates own user/profile fields.
+        USER_UPDATE = 70;
+
+        // Direction: C->S
+        // Payload: sercom.protocol.command.CreateChannel
+        // When: client creates a channel in a hub.
+        CHANNEL_CREATE = 80;
+
+        // Direction: C->S
+        // Payload: sercom.protocol.command.UpdateChannel
+        // When: client updates channel fields.
+        CHANNEL_UPDATE = 81;
+
+        // Direction: C->S
+        // Payload: sercom.protocol.command.RemoveChannel
+        // When: client requests permanent channel deletion.
+        CHANNEL_REMOVE = 85;
+    }
+
+    Type type = 3;
+    bytes payload = 100;
+}

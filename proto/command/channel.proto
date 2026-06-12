@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package sercom.protocol.command;
+
+import "proto/domain/channel.proto";
+import "proto/domain/ref.proto";
+
+/*
+ * Create a channel inside a hub.
+ * Only OWNER / ADMIN.
+ */
+message CreateChannel {
+    string hub_id = 1;
+    string name = 2;
+    sercom.protocol.domain.ChannelType type = 3;
+}
+
+/*
+ * Update channel settings.
+ * Only set the fields you want to change — unset fields are left unchanged.
+ * Only OWNER / ADMIN.
+ */
+message UpdateChannel {
+    sercom.protocol.domain.ChannelRef channel = 1;
+    optional string name = 2;
+}
+
+/*
+ * Permanently delete a channel.
+ * Only OWNER.
+ */
+message RemoveChannel {
+    sercom.protocol.domain.ChannelRef channel = 1;
+}

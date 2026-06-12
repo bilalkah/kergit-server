@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package sercom.protocol.command;
+
+/*
+ * Update current user profile.
+ * Only set the fields you want to change — unset fields are left unchanged.
+ */
+message UpdateUser {
+  optional string username = 1;
+  optional string avatar_seed = 2;
+}

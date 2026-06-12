@@ -1,0 +1,73 @@
+syntax = "proto3";
+
+package sercom.protocol.command;
+import "proto/domain/hub.proto";
+
+/*
+ * Create a new hub.
+ * The requesting user becomes OWNER and first member.
+ */
+message CreateHub {
+    string name = 1;
+}
+
+/*
+ * Join an existing hub using a join code.
+ */
+message JoinHub {
+    string join_code = 1;
+}
+
+/*
+ * Generate or rotate a join code.
+ * Only OWNER / ADMIN.
+ */
+message CreateHubJoinCode {
+    string hub_id = 1;
+}
+
+/*
+ * Leave a hub.
+ */
+message LeaveHub {
+    string hub_id = 1;
+}
+
+/*
+ * Permanently delete a hub.
+ * Only OWNER.
+ */
+message RemoveHub {
+    string hub_id = 1;
+}
+
+/*
+ * Update hub settings (name, avatar, etc.).
+ * Only set the fields you want to change — unset fields are left unchanged.
+ * Only OWNER / ADMIN.
+ */
+message UpdateHub {
+    string hub_id = 1;
+    optional string name = 2;
+    optional string avatar_seed = 3;
+}
+
+/*
+ * Remove a member from a hub.
+ * OWNER can kick ADMIN/MEMBER.
+ * ADMIN can kick MEMBER.
+ */
+message KickHubMember {
+    string hub_id = 1;
+    string user_id = 2;
+}
+
+/*
+ * Update member role in a hub.
+ * OWNER only. Target role can be MEMBER or ADMIN.
+ */
+message UpdateHubMemberRole {
+    string hub_id = 1;
+    string user_id = 2;
+    sercom.protocol.domain.HubRole role = 3;
+}

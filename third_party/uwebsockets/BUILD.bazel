@@ -1,0 +1,5 @@
+alias(
+    name = "uwebsockets",
+    actual = "@uwebsockets//:uwebsockets",
+    visibility = ["//visibility:public"],
+)

@@ -1,0 +1,8 @@
+[submodule "clients/web"]
+	path = clients/web
+	url = https://github.com/bilalkah/kergit-web-client.git
+	branch = master
+[submodule "clients/admin"]
+	path = clients/admin
+	url = https://github.com/bilalkah/kergit-admin-client.git
+	branch = master

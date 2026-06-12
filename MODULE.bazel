@@ -1,0 +1,64 @@
+"""Bazel module configuration for Kergit."""
+
+module(name = "serverless_communication")
+
+# Third-party dependencies.
+bazel_dep(name = "websocketpp", version = "0.8.2")
+bazel_dep(name = "googletest", version = "1.17.0")
+bazel_dep(name = "fmt", version = "12.1.0")
+bazel_dep(name = "protobuf", version = "33.4")
+bazel_dep(name = "cpr", version = "1.14.1")
+
+libpqxx_ext = use_extension("//third_party/libpqxx:extension.bzl", "libpqxx")
+use_repo(libpqxx_ext, "libpqxx")
+
+nlohmann_json_ext = use_extension("//third_party/nlohmann_json:extension.bzl", "nlohmann_json")
+use_repo(nlohmann_json_ext, "nlohmann_json")
+
+jwt_cpp_ext = use_extension("//third_party/jwt-cpp:extension.bzl", "jwt_cpp")
+use_repo(jwt_cpp_ext, "jwt-cpp")
+
+boringssl_ext = use_extension("//third_party/boringssl:extension.bzl", "boringssl")
+use_repo(boringssl_ext, "boringssl")
+
+lsquic_ext = use_extension("//third_party/lsquic:extension.bzl", "lsquic")
+use_repo(lsquic_ext, "lsquic")
+
+usockets_ext = use_extension("//third_party/usockets:extension.bzl", "usockets")
+use_repo(usockets_ext, "usockets")
+
+libdeflate_ext = use_extension("//third_party/libdeflate:extension.bzl", "libdeflate")
+use_repo(libdeflate_ext, "libdeflate")
+
+uwebsockets_ext = use_extension("//third_party/uwebsockets:extension.bzl", "uwebsockets")
+use_repo(uwebsockets_ext, "uwebsockets")
+
+redis_plus_plus_ext = use_extension("//third_party/redis_plus_plus:extension.bzl", "redis_plus_plus")
+use_repo(redis_plus_plus_ext, "redis_plus_plus")
+
+hiredis_ext = use_extension("//third_party/hiredis:extension.bzl", "hiredis")
+use_repo(hiredis_ext, "hiredis")
+
+nanoid_ext = use_extension("//third_party/nanoid:extension.bzl", "nanoid")
+use_repo(nanoid_ext, "nanoid")
+
+# Bazel rules dependencies.
+bazel_dep(name = "rules_python", version = "1.7.0")
+bazel_dep(name = "rules_cc", version = "0.2.14")
+bazel_dep(name = "rules_shell", version = "0.6.1")
+bazel_dep(name = "platforms", version = "1.0.0")
+bazel_dep(name = "rules_license", version = "1.0.0")
+
+bazel_dep(name = "hedron_compile_commands", dev_dependency = True)
+git_override(
+    module_name = "hedron_compile_commands",
+    commit = "4f28899228fb3ad0126897876f147ca15026151e",
+    remote = "https://github.com/hedronvision/bazel-compile-commands-extractor.git",
+)
+
+bazel_dep(name = "rules_foreign_cc", dev_dependency = True)
+git_override(
+    module_name = "rules_foreign_cc",
+    commit = "66b9b3242ca791e2147b8789e82c708ee8bc4f1a",
+    remote = "https://github.com/bazel-contrib/rules_foreign_cc.git",
+)

@@ -1,0 +1,302 @@
+#include "utils/Metrics.h"
+
+#include "proto/envelope.pb.h"
+#include "utils/EnvLoader.h"
+#include "utils/Logger.h"
+
+#include <chrono>
+#include <fmt/format.h>
+#include <mutex>
+#include <shared_mutex>
+#include <thread>
+
+namespace utils::metrics {
+namespace {
+constexpr auto kLogInterval = std::chrono::seconds(5);
+std::atomic<uint64_t> last_log_ns{0};
+constexpr std::size_t kTimeseriesCapacity = 300;
+std::vector<MetricsSnapshot> ring;
+std::size_t ring_index = 0;
+std::size_t ring_size = 0;
+std::shared_mutex ring_mu;
+std::jthread timeseries_thread;
+std::atomic<bool> timeseries_started{false};
+
+bool metrics_log_enabled() { return utils::EnvLoader::get<bool>("METRICS_LOG", true); }
+}  // namespace
+
+Counters& counters() {
+    static Counters instance;
+    return instance;
+}
+
+void maybe_log() {
+    if (!metrics_log_enabled()) {
+        return;
+    }
+    const auto now = std::chrono::steady_clock::now().time_since_epoch();
+    const auto now_ns =
+        static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(now).count());
+    auto last = last_log_ns.load(std::memory_order_relaxed);
+    if (now_ns - last <
+        static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(kLogInterval).count())) {
+        return;
+    }
+    if (!last_log_ns.compare_exchange_strong(last, now_ns, std::memory_order_relaxed)) {
+        return;
+    }
+
+    auto& c = counters();
+    const auto inbound = c.inbound_msgs_total.load(std::memory_order_relaxed);
+    const auto outbound = c.outbound_msgs_total.load(std::memory_order_relaxed);
+    const auto parse_fail = c.parse_fail_total.load(std::memory_order_relaxed);
+    const auto auth_fail = c.auth_fail_total.load(std::memory_order_relaxed);
+    const auto membership_fail = c.membership_fail_total.load(std::memory_order_relaxed);
+    const auto dropped_in = c.dropped_inbound_total.load(std::memory_order_relaxed);
+    const auto dropped_out = c.dropped_outbound_total.load(std::memory_order_relaxed);
+    const auto dropped_in_low = c.dropped_inbound_low_overflow.load(std::memory_order_relaxed);
+    const auto dropped_in_high = c.dropped_inbound_high_overflow.load(std::memory_order_relaxed);
+    const auto evicted_in_low_for_high =
+        c.evicted_inbound_low_for_high.load(std::memory_order_relaxed);
+    const auto payload_parse = c.payload_parse_total.load(std::memory_order_relaxed);
+    const auto payload_parse_fail = c.payload_parse_fail_total.load(std::memory_order_relaxed);
+    const auto parsed_payload_violation =
+        c.parsed_payload_violation_total.load(std::memory_order_relaxed);
+    const auto registry_view_access = c.registry_view_access_total.load(std::memory_order_relaxed);
+    const auto registry_miss = c.registry_miss_total.load(std::memory_order_relaxed);
+    const auto registry_copy_elim =
+        c.registry_copy_eliminated_total.load(std::memory_order_relaxed);
+    const auto fanout_sub_snap = c.fanout_subscriber_snapshot_total.load(std::memory_order_relaxed);
+    const auto fanout_payload_shared =
+        c.fanout_payload_shared_total.load(std::memory_order_relaxed);
+    const auto per_conn_enq = c.per_conn_queue_enqueued_total.load(std::memory_order_relaxed);
+    const auto per_conn_drop_low =
+        c.per_conn_queue_dropped_low_total.load(std::memory_order_relaxed);
+    const auto per_conn_overflow = c.per_conn_queue_overflow_total.load(std::memory_order_relaxed);
+    const auto slow_conn_dropped = c.slow_connection_dropped_total.load(std::memory_order_relaxed);
+    const auto outbound_flush = c.outbound_flush_total.load(std::memory_order_relaxed);
+    const auto outbound_flush_empty = c.outbound_flush_empty_total.load(std::memory_order_relaxed);
+    const auto outbound_flush_fail =
+        c.outbound_flush_send_fail_total.load(std::memory_order_relaxed);
+    const auto outbound_update_auth =
+        c.outbound_update_auth_state_total.load(std::memory_order_relaxed);
+    const auto outbound_drop_connection =
+        c.outbound_drop_connection_total.load(std::memory_order_relaxed);
+    const auto outbound_backpressured =
+        c.outbound_backpressured_total.load(std::memory_order_relaxed);
+    const auto active_connections = c.active_connections.load(std::memory_order_relaxed);
+    const auto active_users = c.active_users.load(std::memory_order_relaxed);
+    const auto http_health_rtt_ms = c.http_health_rtt_ms.load(std::memory_order_relaxed);
+    const auto client_rtt_sum = c.client_rtt_sum_ms.load(std::memory_order_relaxed);
+    const auto client_rtt_count = c.client_rtt_count.load(std::memory_order_relaxed);
+    const auto client_rtt_avg = client_rtt_count > 0 ? client_rtt_sum / client_rtt_count : 0;
+    const auto client_rtt_max = c.client_rtt_max_ms.load(std::memory_order_relaxed);
+    const auto outbound_backpressure =
+        c.outbound_backpressure_total.load(std::memory_order_relaxed);
+    const auto event_hiwat = c.event_queue_highwater.exchange(0, std::memory_order_relaxed);
+    const auto outbound_hiwat = c.outbound_queue_highwater.exchange(0, std::memory_order_relaxed);
+    const auto dropped_out_low =
+        c.dropped_outbound_overflow_low_pri.load(std::memory_order_relaxed);
+    const auto dropped_out_high =
+        c.dropped_outbound_overflow_high_pri.load(std::memory_order_relaxed);
+    const auto b0 = c.outbound_msgs_per_tick_buckets[0].load(std::memory_order_relaxed);
+    const auto b1 = c.outbound_msgs_per_tick_buckets[1].load(std::memory_order_relaxed);
+    const auto b2 = c.outbound_msgs_per_tick_buckets[2].load(std::memory_order_relaxed);
+    const auto b3 = c.outbound_msgs_per_tick_buckets[3].load(std::memory_order_relaxed);
+    const auto b4 = c.outbound_msgs_per_tick_buckets[4].load(std::memory_order_relaxed);
+    const auto b5 = c.outbound_msgs_per_tick_buckets[5].load(std::memory_order_relaxed);
+
+    utils::log_line(
+        utils::LogLevel::INFO,
+        fmt::format(
+            "metrics inbound_total={} outbound_total={} parse_fail={} auth_fail={} "
+            "membership_fail={} payload_parse_total={} payload_parse_fail_total={} "
+            "parsed_payload_violation_total={} registry_view_access_total={} "
+            "registry_miss_total={} "
+            "registry_copy_elim_total={} "
+            "fanout_sub_snapshot_total={} fanout_payload_shared_total={} "
+            "per_conn_enqueued_total={} per_conn_dropped_low_total={} "
+            "per_conn_overflow_total={} slow_connection_dropped_total={} "
+            "outbound_flush_total={} outbound_flush_empty_total={} "
+            "outbound_flush_send_fail_total={} outbound_update_auth_state_total={} "
+            "outbound_drop_connection_total={} outbound_backpressured_total={} dropped_in={} "
+            "dropped_in_low={} dropped_in_high={} evicted_in_low_for_high={} dropped_out={} "
+            "dropped_out_low={} dropped_out_high={} outbound_backpressure={} event_hiwat={} "
+            "outbound_hiwat={} active_connections={} active_users={} http_health_rtt_ms={} "
+            "client_rtt_avg_ms={} client_rtt_max_ms={} "
+            "outbound_tick_hist=[{} {} {} {} {} {}]",
+            inbound, outbound, parse_fail, auth_fail, membership_fail, payload_parse,
+            payload_parse_fail, parsed_payload_violation, registry_view_access, registry_miss,
+            registry_copy_elim, fanout_sub_snap, fanout_payload_shared, per_conn_enq,
+            per_conn_drop_low, per_conn_overflow, slow_conn_dropped, outbound_flush,
+            outbound_flush_empty, outbound_flush_fail, outbound_update_auth,
+            outbound_drop_connection, outbound_backpressured, dropped_in, dropped_in_low,
+            dropped_in_high, evicted_in_low_for_high, dropped_out, dropped_out_low,
+            dropped_out_high, outbound_backpressure, event_hiwat, outbound_hiwat,
+            active_connections, active_users, http_health_rtt_ms, client_rtt_avg, client_rtt_max,
+            b0, b1, b2, b3, b4, b5));
+}
+
+static MetricsSnapshot capture_snapshot(uint64_t ts_sec) {
+    auto& c = counters();
+    MetricsSnapshot s{};
+    s.timestamp_sec = ts_sec;
+    s.counters.inbound_total = c.inbound_msgs_total.load(std::memory_order_relaxed);
+    s.counters.outbound_total = c.outbound_msgs_total.load(std::memory_order_relaxed);
+    s.counters.parse_fail = c.parse_fail_total.load(std::memory_order_relaxed);
+    s.counters.auth_fail = c.auth_fail_total.load(std::memory_order_relaxed);
+    s.counters.membership_fail = c.membership_fail_total.load(std::memory_order_relaxed);
+    s.counters.payload_parse_total = c.payload_parse_total.load(std::memory_order_relaxed);
+    s.counters.payload_parse_fail_total =
+        c.payload_parse_fail_total.load(std::memory_order_relaxed);
+    s.counters.parsed_payload_violation_total =
+        c.parsed_payload_violation_total.load(std::memory_order_relaxed);
+    s.counters.registry_view_access_total =
+        c.registry_view_access_total.load(std::memory_order_relaxed);
+    s.counters.registry_miss_total = c.registry_miss_total.load(std::memory_order_relaxed);
+    s.counters.registry_copy_elim_total =
+        c.registry_copy_eliminated_total.load(std::memory_order_relaxed);
+    s.counters.fanout_sub_snapshot_total =
+        c.fanout_subscriber_snapshot_total.load(std::memory_order_relaxed);
+    s.counters.fanout_payload_shared_total =
+        c.fanout_payload_shared_total.load(std::memory_order_relaxed);
+    s.counters.per_conn_enqueued_total =
+        c.per_conn_queue_enqueued_total.load(std::memory_order_relaxed);
+    s.counters.per_conn_dropped_low_total =
+        c.per_conn_queue_dropped_low_total.load(std::memory_order_relaxed);
+    s.counters.per_conn_overflow_total =
+        c.per_conn_queue_overflow_total.load(std::memory_order_relaxed);
+    s.counters.slow_connection_dropped_total =
+        c.slow_connection_dropped_total.load(std::memory_order_relaxed);
+    s.counters.outbound_flush_total = c.outbound_flush_total.load(std::memory_order_relaxed);
+    s.counters.outbound_flush_empty_total =
+        c.outbound_flush_empty_total.load(std::memory_order_relaxed);
+    s.counters.outbound_flush_send_fail_total =
+        c.outbound_flush_send_fail_total.load(std::memory_order_relaxed);
+    s.counters.outbound_update_auth_state_total =
+        c.outbound_update_auth_state_total.load(std::memory_order_relaxed);
+    s.counters.outbound_drop_connection_total =
+        c.outbound_drop_connection_total.load(std::memory_order_relaxed);
+    s.counters.outbound_backpressured_total =
+        c.outbound_backpressured_total.load(std::memory_order_relaxed);
+    s.counters.dropped_in = c.dropped_inbound_total.load(std::memory_order_relaxed);
+    s.counters.dropped_in_low = c.dropped_inbound_low_overflow.load(std::memory_order_relaxed);
+    s.counters.dropped_in_high = c.dropped_inbound_high_overflow.load(std::memory_order_relaxed);
+    s.counters.evicted_in_low_for_high =
+        c.evicted_inbound_low_for_high.load(std::memory_order_relaxed);
+    s.counters.dropped_out = c.dropped_outbound_total.load(std::memory_order_relaxed);
+    s.counters.dropped_out_low =
+        c.dropped_outbound_overflow_low_pri.load(std::memory_order_relaxed);
+    s.counters.dropped_out_high =
+        c.dropped_outbound_overflow_high_pri.load(std::memory_order_relaxed);
+    s.counters.outbound_backpressure =
+        c.outbound_backpressure_total.load(std::memory_order_relaxed);
+    s.gauges.event_hiwat = c.event_queue_highwater.load(std::memory_order_relaxed);
+    s.gauges.outbound_hiwat = c.outbound_queue_highwater.load(std::memory_order_relaxed);
+    s.gauges.active_connections = c.active_connections.load(std::memory_order_relaxed);
+    s.gauges.active_users = c.active_users.load(std::memory_order_relaxed);
+    s.gauges.http_health_rtt_ms = c.http_health_rtt_ms.load(std::memory_order_relaxed);
+
+    // Calculate average client RTT
+    const auto rtt_count = c.client_rtt_count.load(std::memory_order_relaxed);
+    if (rtt_count > 0) {
+        const auto rtt_sum = c.client_rtt_sum_ms.load(std::memory_order_relaxed);
+        s.gauges.client_rtt_avg_ms = rtt_sum / rtt_count;
+        // Reset for next window
+        c.client_rtt_sum_ms.store(0, std::memory_order_relaxed);
+        c.client_rtt_count.store(0, std::memory_order_relaxed);
+    } else {
+        s.gauges.client_rtt_avg_ms = 0;
+    }
+    s.gauges.client_rtt_max_ms = c.client_rtt_max_ms.exchange(0, std::memory_order_relaxed);
+
+    // Copy per-port connection counts
+    for (std::size_t i = 0; i < s.gauges.connections_by_port.size(); ++i) {
+        s.gauges.connections_by_port[i] = c.connections_by_port[i].load(std::memory_order_relaxed);
+    }
+
+    // Worker performance metrics
+    s.gauges.active_workers = c.active_workers.load(std::memory_order_relaxed);
+    s.gauges.total_workers = c.total_workers.load(std::memory_order_relaxed);
+    s.gauges.current_queue_depth = c.current_queue_depth.load(std::memory_order_relaxed);
+    if (s.gauges.total_workers > 0) {
+        s.gauges.worker_utilization_pct = (s.gauges.active_workers * 100) / s.gauges.total_workers;
+    } else {
+        s.gauges.worker_utilization_pct = 0;
+    }
+
+    // Command execution timings
+    for (std::size_t i = 0; i < kEnvelopeTypeSlots; ++i) {
+        const auto count = c.cmd_exec_time_count[i].load(std::memory_order_relaxed);
+        if (count > 0) {
+            const auto sum_us = c.cmd_exec_time_sum_us[i].load(std::memory_order_relaxed);
+            const auto max_us = c.cmd_exec_time_max_us[i].load(std::memory_order_relaxed);
+            std::string name = sercom::protocol::Envelope_Type_Name(
+                static_cast<sercom::protocol::Envelope_Type>(i));
+            s.command_timings.push_back(CommandTimings{.type = static_cast<uint32_t>(i),
+                                                       .name = std::move(name),
+                                                       .avg_us = sum_us / count,
+                                                       .max_us = max_us,
+                                                       .count = count});
+        }
+    }
+
+    for (std::size_t i = 0; i < s.histograms.outbound_tick_hist.size(); ++i) {
+        s.histograms.outbound_tick_hist[i] =
+            c.outbound_msgs_per_tick_buckets[i].load(std::memory_order_relaxed);
+    }
+    return s;
+}
+
+MetricsSnapshot snapshot_now() {
+    const auto now = std::chrono::system_clock::now().time_since_epoch();
+    const auto ts_sec =
+        static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::seconds>(now).count());
+    return capture_snapshot(ts_sec);
+}
+
+std::vector<MetricsSnapshot> timeseries(uint32_t window_sec) {
+    std::shared_lock lock(ring_mu);
+    if (ring_size == 0) return {};
+    const std::size_t window = std::min<std::size_t>(window_sec, ring_size);
+    std::vector<MetricsSnapshot> out;
+    out.reserve(window);
+    const std::size_t start = (ring_index + kTimeseriesCapacity - window) % kTimeseriesCapacity;
+    for (std::size_t i = 0; i < window; ++i) {
+        const std::size_t idx = (start + i) % kTimeseriesCapacity;
+        out.push_back(ring[idx]);
+    }
+    return out;
+}
+
+void start_timeseries() {
+    bool expected = false;
+    if (!timeseries_started.compare_exchange_strong(expected, true)) return;
+    ring.resize(kTimeseriesCapacity);
+    timeseries_thread = std::jthread([](std::stop_token st) {
+        while (!st.stop_requested()) {
+            const auto now = std::chrono::system_clock::now().time_since_epoch();
+            const auto ts_sec = static_cast<uint64_t>(
+                std::chrono::duration_cast<std::chrono::seconds>(now).count());
+            auto snap = capture_snapshot(ts_sec);
+            {
+                std::unique_lock lock(ring_mu);
+                ring[ring_index] = std::move(snap);
+                ring_index = (ring_index + 1) % kTimeseriesCapacity;
+                ring_size = std::min<std::size_t>(ring_size + 1, kTimeseriesCapacity);
+            }
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+        }
+    });
+}
+
+void stop_timeseries() {
+    if (!timeseries_started.exchange(false)) return;
+    timeseries_thread.request_stop();
+    if (timeseries_thread.joinable()) {
+        timeseries_thread.join();
+    }
+}
+
+}  // namespace utils::metrics

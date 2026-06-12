@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package sercom.protocol.command;
+
+import "proto/domain/ref.proto";
+
+// Client -> Server
+// Authenticate or re-authenticate a session.
+// ---------------------------------
+enum AuthType {
+    AuthType_UNSPECIFIED = 0;
+    AuthType_AUTH = 1;
+    AuthType_REAUTH = 2;
+}
+
+enum AuthProvider {
+    AuthProvider_UNSPECIFIED = 0;
+    AuthProvider_SUPABASE = 1;
+}
+
+message Authenticate {
+    AuthType type = 1;
+    AuthProvider provider = 2;
+    string token = 3;
+    VoiceResume voice_resume = 4;
+}
+// ---------------------------------
+
+/*
+ * Single-use resume payload for reconnect-safe voice ownership transfer.
+ */
+message VoiceResume {
+    sercom.protocol.domain.ChannelRef channel = 1;
+    string resume_id = 2;
+}
+
+/*
+ * Client intent: request an authoritative state resync.
+ *
+ * Client should send this when:
+ * - reconnecting after a transport break where deltas may have been missed,
+ * - receiving a delta that references an unknown hub/channel/member/user,
+ * - local store invariants fail (for example dangling refs after apply).
+ *
+ * Scope:
+ * - hub_ids empty: server returns full StateSync.
+ * - hub_ids provided: server returns scoped StateSync for those hubs.
+ */
+message RequestStateSync {
+    repeated string hub_ids = 1;
+}

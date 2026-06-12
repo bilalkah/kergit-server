@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package sercom.protocol.domain;
+
+enum HubRole {
+    HubRole_UNSPECIFIED = 0;
+    HubRole_MEMBER = 1;
+    HubRole_OWNER = 2;
+    HubRole_ADMIN = 3;
+}
+
+/*
+ * Extensible display metadata for a hub.
+ * Contains all mutable, user-facing fields beyond the hub name.
+ */
+message HubMetadata {
+    string avatar_seed = 1;
+    // Future: description, icon_url, banner, etc.
+}
+
+/*
+ * Canonical hub representation.
+ * Identity + name at top level; extensible display fields in metadata.
+ */
+message Hub {
+    string id = 1;
+    string name = 2;
+    HubMetadata metadata = 3;
+}
+
+/*
+ * Hub membership record.
+ * Hub scope is inherited from the surrounding sync/delta context.
+ */
+message HubMember {
+    string user_id = 2;
+    HubRole role = 3;
+    bool is_online = 4;
+}
