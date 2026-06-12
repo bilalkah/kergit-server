@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package sercom.protocol.command;
+
+import "proto/domain/ref.proto";
+import "proto/domain/message.proto";
+
+/*
+ * Client intent: select the active channel inside a hub.
+ * This also carries the latest-message fetch hint for that channel.
+ */
+message SelectActiveChannel {
+  sercom.protocol.domain.ChannelRef channel = 1;
+
+  // Latest fetch page size for this selection.
+  // 0 means server default.
+  uint32 latest_limit = 2;
+
+  // Public latest message cursor already known by client for this channel.
+  optional sercom.protocol.domain.MessageCursor known_latest_cursor = 3;
+}
+
+/*
+ * Client typing hint.
+ * Best-effort signal.
+ */
+message Typing {
+  sercom.protocol.domain.ChannelRef channel = 1;
+  bool is_typing = 2;
+}
+
+message JoinVoiceChannelRequest {
+  sercom.protocol.domain.ChannelRef channel = 1;
+
+  // Preferred initial voice state for this join intent.
+  bool prefer_muted = 2;
+  bool prefer_deafened = 3;
+}
+
+message KickVoiceParticipant {
+  sercom.protocol.domain.ChannelRef channel = 1;
+  string user_id = 2;
+}
+
+message VoiceChannelActivity {
+  sercom.protocol.domain.ChannelRef channel = 1;
+  bool is_muted = 2;
+  bool is_deafened = 3;
+}

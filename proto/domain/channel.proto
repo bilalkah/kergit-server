@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package sercom.protocol.domain;
+
+enum ChannelType {
+    ChannelType_UNSPECIFIED = 0;
+    ChannelType_TEXT = 1;
+    ChannelType_VOICE = 2;
+}
+
+/*
+ * Extensible display metadata for a channel.
+ * Contains all mutable, user-facing fields.
+ */
+message ChannelMetadata {
+    string name = 1;
+    // Future: topic, description, icon, etc.
+}
+
+/*
+ * Canonical channel representation.
+ * Parent hub scope is carried by surrounding context, not this entity.
+ */
+message Channel {
+    string id = 1;
+    ChannelType type = 3;
+    ChannelMetadata metadata = 4;
+}

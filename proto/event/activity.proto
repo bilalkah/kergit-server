@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package sercom.protocol.event;
+
+import "proto/domain/ref.proto";
+
+/*
+ * Issued to a client after joining a voice channel.
+ * Contains everything needed to connect to the LiveKit server.
+ */
+message VoiceTokenIssued {
+    string token = 1;
+    string livekit_url = 2;
+    uint64 expires_in = 3;
+    string e2ee_key = 4;
+    string resume_id = 5;
+}
+
+/*
+ * Session-scoped voice state.
+ */
+message VoiceSelfStatus {
+    bool connected = 1;
+    bool is_owner = 2;
+    sercom.protocol.domain.ChannelRef channel = 3;
+    string resume_id = 4;
+}
+
+/*
+ * Sent to a session when another session takes over voice.
+ * Client must immediately drop its transport.
+ */
+message VoiceSelfRevoked {}

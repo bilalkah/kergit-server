@@ -1,0 +1,80 @@
+services:
+  server-node:
+    build: .
+    container_name: server-node
+    env_file:
+      - path: ../.env
+        required: false
+    volumes:
+      - ../:/root/workspace:cached
+      - ccache:/root/.ccache
+      - bazel-cache:/root/.cache/bazel
+    working_dir: /root/workspace
+    tty: true
+    stdin_open: true
+    environment:
+      - CCACHE_DIR=/root/.ccache
+      - LOG_DIR=/root/workspace/logs
+      - REDIS_HOST=redis-node
+      - REDIS_PORT=6379
+      - CONTROL_HOST=${CONTROL_HOST:-0.0.0.0}
+      - CONTROL_PORT=${CONTROL_PORT:-8081}
+    ports:
+      - "9001:9001"
+      - "127.0.0.1:8081:8081"
+      - "127.0.0.1:8080:8080"
+    pid: host
+    cap_add:
+      - SYS_ADMIN
+      - SYS_PTRACE
+    security_opt:
+      - seccomp:unconfined
+    command: bash -lc "sleep infinity"
+
+  caddy-node:
+    image: caddy:2
+    container_name: caddy-node
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # run-server.sh validates/exports these; stop-server.sh derives/falls back for `down`.
+      # Keep these as pass-through values so Compose does not depend on the user's shell.
+      - WEB_DOMAIN=${WEB_DOMAIN:?WEB_DOMAIN is required}
+      - WEB_SOCKET_ORIGIN=${WEB_SOCKET_ORIGIN:?WEB_SOCKET_ORIGIN must be derived by docker/run-server.sh}
+      - NUXT_PUBLIC_SUPABASE_URL=${NUXT_PUBLIC_SUPABASE_URL:?NUXT_PUBLIC_SUPABASE_URL is required}
+      - CADDY_TLS_CERT_FILE=${CADDY_TLS_CERT_FILE:-/certs/dev/localhost.pem}
+      - CADDY_TLS_KEY_FILE=${CADDY_TLS_KEY_FILE:-/certs/dev/localhost-key.pem}
+      - ADMIN_ALLOWED_CIDR=${ADMIN_ALLOWED_CIDR:-127.0.0.1/32}
+      # Internal Docker upstreams are stack topology, not user-configurable runtime values.
+      - ADMIN_APP_TARGET=admin-node:3001
+      - ADMIN_CONTROL_TARGET=server-node:8081
+      - CADDY_WS_TARGET=server-node:9001
+      - CADDY_WEB_TARGET=web-node:3000
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./caddy/${CADDY_CONF_DIR:-conf.dev}:/etc/caddy:ro
+      - ./caddy/generated/livekit_routes.caddy:/etc/caddy-generated/livekit_routes.caddy:ro
+      - ./caddy/data:/data
+      - ../certs:/certs:ro
+    restart: unless-stopped
+  redis-node:
+    image: redis:8.6.1-alpine
+    container_name: redis-node
+    ports:
+      - "6379:6379"
+    # Redis holds ephemeral coordination and LiveKit cluster state. Persisting it
+    # across a full-stack restart can resurrect stale rooms and participants.
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    restart: unless-stopped
+
+volumes:
+  ccache:
+  bazel-cache:
+
+networks:
+  default:
+    external: true
+    name: kergit_default
+    

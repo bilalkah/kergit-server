@@ -1,0 +1,5 @@
+alias(
+    name = "jwt_cpp",
+    actual = "@jwt-cpp//:jwt-cpp",
+    visibility = ["//visibility:public"],
+)

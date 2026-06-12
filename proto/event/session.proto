@@ -1,0 +1,6 @@
+syntax = "proto3";
+
+package sercom.protocol.event;
+
+// Sent when authentication succeeds.
+message AuthOk {}

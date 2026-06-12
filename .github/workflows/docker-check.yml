@@ -1,0 +1,84 @@
+name: Docker Config Check
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  docker-config-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Make shell scripts executable
+        run: |
+          chmod +x docker/*.sh
+          chmod +x docker/lib/*.sh
+          chmod +x docker/services/*/*.sh
+          chmod +x clients/web/docker/*.sh
+          chmod +x clients/admin/docker/*.sh
+          chmod +x scripts/certs/generate-dev-cert.sh
+
+      - name: Check shell syntax
+        run: |
+          bash -n docker/run-server.sh
+          bash -n docker/stop-server.sh
+          bash -n docker/lib/*.sh
+          bash -n docker/services/*/*.sh
+          bash -n clients/web/docker/run-app.sh
+          bash -n clients/web/docker/stop-app.sh
+          bash -n clients/web/docker/generate-proto.sh
+          bash -n clients/admin/docker/run-app.sh
+          bash -n clients/admin/docker/stop-app.sh
+          bash -n scripts/certs/generate-dev-cert.sh
+
+      - name: Prepare canonical root environment
+        run: |
+          cp .env.example .env
+          set -a
+          source .env
+          set +a
+          echo "WEB_DOMAIN=$WEB_DOMAIN" >> "$GITHUB_ENV"
+          echo "WEB_SOCKET_ORIGIN=wss://${WEB_DOMAIN#https://}" >> "$GITHUB_ENV"
+          echo "NUXT_PUBLIC_SUPABASE_URL=$NUXT_PUBLIC_SUPABASE_URL" >> "$GITHUB_ENV"
+
+      - name: Render root Docker Compose config
+        run: docker compose -f docker/docker-compose.yml config > /tmp/docker-compose.root.yml
+
+      - name: Verify legacy Caddy upstream overrides are ignored
+        env:
+          ADMIN_APP_TARGET: web-admin-container:3001
+          ADMIN_CONTROL_TARGET: app-server:8081
+          CADDY_WS_TARGET: app-server:9001
+          CADDY_WEB_TARGET: web-app-container:3000
+        run: |
+          docker compose -f docker/docker-compose.yml config > /tmp/docker-compose.legacy-upstreams.yml
+          grep -q "ADMIN_APP_TARGET: admin-node:3001" /tmp/docker-compose.legacy-upstreams.yml
+          grep -q "ADMIN_CONTROL_TARGET: server-node:8081" /tmp/docker-compose.legacy-upstreams.yml
+          grep -q "CADDY_WS_TARGET: server-node:9001" /tmp/docker-compose.legacy-upstreams.yml
+          grep -q "CADDY_WEB_TARGET: web-node:3000" /tmp/docker-compose.legacy-upstreams.yml
+
+      - name: Render web Docker Compose dev config
+        run: docker compose -f clients/web/docker/docker-compose.yml config web-node-dev > /tmp/docker-compose.web-dev.yml
+
+      - name: Render web Docker Compose prod config
+        run: docker compose -f clients/web/docker/docker-compose.yml config web-node-prod > /tmp/docker-compose.web-prod.yml
+
+      - name: Render admin Docker Compose config
+        run: docker compose -f clients/admin/docker/docker-compose.yml config > /tmp/docker-compose.admin.yml
+
+      - name: Adapt Caddy configs
+        run: |
+          docker run --rm -e WEB_DOMAIN -e WEB_SOCKET_ORIGIN -e NUXT_PUBLIC_SUPABASE_URL -v "$PWD/docker/caddy/conf.dev/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2 caddy adapt --config /etc/caddy/Caddyfile >/dev/null
+          docker run --rm -e WEB_DOMAIN -e WEB_SOCKET_ORIGIN -e NUXT_PUBLIC_SUPABASE_URL -v "$PWD/docker/caddy/conf.prod/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2 caddy adapt --config /etc/caddy/Caddyfile >/dev/null
+          docker run --rm -e WEB_DOMAIN -e WEB_SOCKET_ORIGIN -e NUXT_PUBLIC_SUPABASE_URL -v "$PWD/docker/caddy/conf.example/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2 caddy adapt --config /etc/caddy/Caddyfile >/dev/null
+
+      - name: Explain scope
+        run: |
+          echo "Validated shell syntax and rendered Docker/Caddy config."
+          echo "This workflow does not boot the full stack because the public repo no longer carries real secrets or TLS material."

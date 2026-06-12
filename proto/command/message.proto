@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package sercom.protocol.command;
+
+import "proto/domain/ref.proto";
+import "proto/domain/message.proto";
+
+/*
+ * Client intent: send a message to a channel.
+ */
+message SendMessage {
+  sercom.protocol.domain.ChannelRef channel = 1;
+  string content = 2;
+  repeated sercom.protocol.domain.MessageAttachment attachments = 3;
+  optional sercom.protocol.domain.MessageLinkPreview link_preview = 4;
+}
+
+/*
+ * Client intent: fetch older messages before a known boundary.
+ * Latest fetch is part of SelectActiveChannel.
+ */
+message FetchMessagesBefore {
+  sercom.protocol.domain.ChannelRef channel = 1;
+  sercom.protocol.domain.MessageCursor before_cursor = 2;
+  uint32 limit = 3;
+}

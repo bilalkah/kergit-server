@@ -1,0 +1,40 @@
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+cc_library(
+    name = "send_message_command",
+    srcs = ["SendMessageCommand.cpp"],
+    hdrs = ["SendMessageCommand.h"],
+    copts = ["-std=gnu++23"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//app/commands:i_command",
+        "//app/dispatcher:command_context",
+        "//app/managers/subscription:topic",
+        "//domains:message_domain",
+        "//proto:envelope_cc_proto",
+        "//proto/command:message_cc_proto",
+        "//proto/domain:message_cc_proto",
+        "//proto/domain:ref_cc_proto",
+        "//proto/event:error_cc_proto",
+        "//proto/event:state_cc_proto",
+    ],
+)
+
+cc_library(
+    name = "fetch_messages_before_command",
+    srcs = ["FetchMessagesBeforeCommand.cpp"],
+    hdrs = ["FetchMessagesBeforeCommand.h"],
+    copts = ["-std=gnu++23"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//app/commands:i_command",
+        "//app/dispatcher:command_context",
+        "//domains:message_domain",
+        "//proto:envelope_cc_proto",
+        "//proto/command:message_cc_proto",
+        "//proto/domain:message_cc_proto",
+        "//proto/domain:ref_cc_proto",
+        "//proto/event:error_cc_proto",
+        "//proto/event:state_cc_proto",
+    ],
+)

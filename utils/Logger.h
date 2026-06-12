@@ -1,0 +1,82 @@
+#ifndef UTILS_LOGGER_H
+#define UTILS_LOGGER_H
+
+#include <ctime>
+#include <fmt/format.h>
+#include <iomanip>
+#include <iostream>
+#include <string>
+
+namespace utils {
+
+/**
+ * Log levels for terminal output
+ */
+enum class LogLevel {
+    DEBUG,  // Gray - verbose debug info
+    INFO,   // Green - general information
+    WARN,   // Yellow - warnings
+    ERROR   // Red - errors
+};
+
+namespace Color {
+inline constexpr const char* RESET = "\033[0m";
+inline constexpr const char* GRAY = "\033[90m";
+inline constexpr const char* RED = "\033[31m";
+inline constexpr const char* GREEN = "\033[32m";
+inline constexpr const char* YELLOW = "\033[33m";
+inline constexpr const char* BLUE = "\033[34m";
+inline constexpr const char* MAGENTA = "\033[35m";
+inline constexpr const char* CYAN = "\033[36m";
+inline constexpr const char* WHITE = "\033[97m";
+}  // namespace Color
+
+inline std::string timestamp() {
+    std::time_t t = std::time(nullptr);
+    std::tm tm = *std::localtime(&t);
+    std::ostringstream oss;
+    oss << std::put_time(&tm, "%H:%M:%S");
+    return oss.str();
+}
+
+inline const char* level_to_string(LogLevel lvl) {
+    switch (lvl) {
+        case LogLevel::DEBUG:
+            return "DEBUG";
+        case LogLevel::INFO:
+            return "INFO";
+        case LogLevel::WARN:
+            return "WARN";
+        case LogLevel::ERROR:
+            return "ERROR";
+        default:
+            return "LOG";
+    }
+}
+
+inline const char* level_to_color(LogLevel lvl) {
+    switch (lvl) {
+        case LogLevel::DEBUG:
+            return Color::GRAY;
+        case LogLevel::INFO:
+            return Color::GREEN;
+        case LogLevel::WARN:
+            return Color::YELLOW;
+        case LogLevel::ERROR:
+            return Color::RED;
+        default:
+            return Color::RESET;
+    }
+}
+
+/**
+ * Print a log line to terminal (for backward compatibility)
+ */
+inline void log_line(LogLevel lvl, const std::string& msg) {
+    std::cout << fmt::format("{}[{}] [{}] {}{}\n", level_to_color(lvl), timestamp(),
+                             level_to_string(lvl), msg, Color::RESET);
+}
+
+}  // namespace utils
+
+#endif  // UTILS_LOGGER_H

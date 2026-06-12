@@ -1,0 +1,25 @@
+BasedOnStyle: Google
+IndentWidth: 4
+ColumnLimit: 100
+SortIncludes: true
+IncludeBlocks: Regroup
+
+# Custom Include Sorting
+IncludeCategories:
+  # 1. Main header for the source file (kept at the very top)
+  - Regex: '^"([^"]+)\.h"$'
+    Priority: 1
+    SortPriority: 0
+    CaseSensitive: false
+
+  # 2. User-defined/project headers (in quotes "")
+  - Regex: '^"'
+    Priority: 2
+    SortPriority: 1
+    CaseSensitive: false
+
+  # 3. System/standard headers (<...>)
+  - Regex: '^<'
+    Priority: 3
+    SortPriority: 2
+    CaseSensitive: false

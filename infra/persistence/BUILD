@@ -1,0 +1,38 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
+cc_library(
+    name = "persistence_gateway_lib",
+    srcs = [
+        "ConnectionPool.cpp",
+        "DatabaseExecutor.cpp",
+        "PersistenceGateway.cpp",
+        "repositories/HubRepository.cpp",
+        "repositories/MessageRepository.cpp",
+        "repositories/UserRepository.cpp",
+        "repositories/AuditRepository.cpp",
+    ],
+    hdrs = [
+        "ConnectionPool.h",
+        "DatabaseExecutor.h",
+        "PersistenceGateway.h",
+        "RepositoryMux.h",
+        "repositories/HubRepository.h",
+        "repositories/MessageRepository.h",
+        "repositories/RepositoryUtils.h",
+        "repositories/UserRepository.h",
+        "repositories/RepositorySchema.h",
+        "repositories/AuditRepository.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//domains:channel_domain",
+        "//domains:hub_domain",
+        "//domains:message_domain",
+        "//domains:user_domain",
+        "//domains/ids:domain_ids",
+        "//core:server_config",
+        "//utils:loggable",
+        "@libpqxx",
+        "@nlohmann_json",
+    ],
+)

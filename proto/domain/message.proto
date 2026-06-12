@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package sercom.protocol.domain;
+
+/*
+ * Stable cursor for message pagination boundaries.
+ * Uses created_at + message_id tie-break to avoid timestamp collisions.
+ */
+message MessageCursor {
+    string message_id = 1;
+    uint64 created_at_unix_us = 2;
+    // Channel-local monotonic sequence; the authoritative pagination key.
+    uint64 message_seq = 3;
+}
+
+enum MessageAttachmentKind {
+    MessageAttachmentKind_UNSPECIFIED = 0;
+    MessageAttachmentKind_IMAGE = 1;
+    MessageAttachmentKind_FILE = 2;
+}
+
+message MessageAttachment {
+    string id = 1;
+    MessageAttachmentKind kind = 2;
+    string storage_key = 3;
+    string mime_type = 4;
+    string display_name = 5;
+    uint64 size_bytes = 6;
+    // Object-storage bucket that holds the file bytes. The Nuxt upload/signing
+    // layer owns the bucket name; C++ never hardcodes it.
+    string storage_bucket = 7;
+}
+
+message MessageLinkPreview {
+    string url = 1;
+    string title = 2;
+    string description = 3;
+    string site_name = 4;
+    string image_url = 5;
+}
+
+/*
+ * Canonical chat message.
+ * Author profile is resolved from user entities using author_id.
+ */
+message Message {
+    string id = 1;
+    string author_id = 2;
+    string content = 3;
+    repeated MessageAttachment attachments = 4;
+    uint64 created_at_unix_us = 5;
+    optional MessageLinkPreview link_preview = 6;
+    // Channel-local monotonic sequence used for ordering/pagination.
+    uint64 message_seq = 7;
+}

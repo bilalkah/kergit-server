@@ -1,0 +1,92 @@
+# Bazel build outputs
+bazel-*
+*.runfiles*
+
+# Bazel configuration and lock files
+MODULE.bazel.lock
+.bazelrc.user
+
+# Build directories
+build/
+dist/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Development tools
+compile_commands.json
+.cache/
+.clangd/
+
+# Python virtual environments
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+
+**/.env
+.env.local
+.env.*.local
+!.env.example
+
+*.svg
+
+tmp/
+
+**/node_modules/
+**/.nuxt/
+**/.output/
+**/.pnpm-store/
+docker/caddy/data/
+clients/web/src/generated/
+
+# Local Caddy and LiveKit configuration
+docker/caddy/conf.example/**
+docker/caddy/conf.dev/**
+!docker/caddy/conf.dev/.gitkeep
+docker/caddy/conf.prod/**
+!docker/caddy/conf.prod/.gitkeep
+livekit/conf/example/**
+livekit/conf/dev/**
+!livekit/conf/dev/.gitkeep
+livekit/conf/prod/**
+!livekit/conf/prod/.gitkeep
+
+certs/*.pem
+certs/*.key
+certs/dev/*.pem
+!certs/dev/.gitkeep
+certs/prod/*.pem
+!certs/prod/.gitkeep
+certs/database/*.crt
+!certs/database/.gitkeep
+
+
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+
+livekit/conf/private/**
+livekit/conf/rendered/**
+docker/generated/**
+docker/caddy/generated/**
+docker/caddy/conf.local/**
+.claude/**
