@@ -102,8 +102,6 @@ CREATE OR REPLACE FUNCTION kergit_app.request_account_deletion(
   p_request_id     text DEFAULT NULL,
   p_session_id     text DEFAULT NULL,
   p_connection_id  text DEFAULT NULL,
-  p_ip             inet DEFAULT NULL,
-  p_user_agent     text DEFAULT NULL,
   p_server_node_id text DEFAULT NULL
 )
 RETURNS jsonb
@@ -140,11 +138,11 @@ BEGIN
 
   INSERT INTO kergit_app.audit_events (
     category, event_type, actor_type, actor_user_id, target_user_id,
-    request_id, session_id, connection_id, ip, user_agent, server_node_id
+    request_id, session_id, connection_id, server_node_id
   )
   VALUES (
     'account', 'account.delete_requested', 'user', p_user_id, p_user_id,
-    p_request_id, p_session_id, p_connection_id, p_ip, p_user_agent, p_server_node_id
+    p_request_id, p_session_id, p_connection_id, p_server_node_id
   );
 
   SELECT count(*)
@@ -161,11 +159,11 @@ BEGIN
 
     INSERT INTO kergit_app.audit_events (
       category, event_type, severity, actor_type, actor_user_id, target_user_id,
-      request_id, session_id, connection_id, ip, user_agent, server_node_id, metadata
+      request_id, session_id, connection_id, server_node_id, metadata
     )
     VALUES (
       'account', 'account.delete_blocked_owned_hubs', 'warning', 'user', p_user_id, p_user_id,
-      p_request_id, p_session_id, p_connection_id, p_ip, p_user_agent, p_server_node_id,
+      p_request_id, p_session_id, p_connection_id, p_server_node_id,
       jsonb_build_object('owned_hub_count', v_owned_hub_count)
     );
 
@@ -183,11 +181,11 @@ BEGIN
 
   INSERT INTO kergit_app.audit_events (
     category, event_type, actor_type, actor_user_id, target_user_id,
-    request_id, session_id, connection_id, ip, user_agent, server_node_id
+    request_id, session_id, connection_id, server_node_id
   )
   VALUES (
     'account', 'account.email_reserved_for_deleted_account', 'user', p_user_id, p_user_id,
-    p_request_id, p_session_id, p_connection_id, p_ip, p_user_agent, p_server_node_id
+    p_request_id, p_session_id, p_connection_id, p_server_node_id
   );
 
   -- Remove current hub memberships. Soft-deleted profiles must not stay members.
@@ -200,11 +198,11 @@ BEGIN
 
   INSERT INTO kergit_app.audit_events (
     category, event_type, actor_type, actor_user_id, target_user_id,
-    request_id, session_id, connection_id, ip, user_agent, server_node_id
+    request_id, session_id, connection_id, server_node_id
   )
   VALUES (
     'account', 'account.memberships_removed', 'user', p_user_id, p_user_id,
-    p_request_id, p_session_id, p_connection_id, p_ip, p_user_agent, p_server_node_id
+    p_request_id, p_session_id, p_connection_id, p_server_node_id
   );
 
   -- Anonymize the profile. Historical messages are preserved and keep
@@ -225,11 +223,11 @@ BEGIN
 
   INSERT INTO kergit_app.audit_events (
     category, event_type, actor_type, actor_user_id, target_user_id,
-    request_id, session_id, connection_id, ip, user_agent, server_node_id
+    request_id, session_id, connection_id, server_node_id
   )
   VALUES (
     'account', 'account.profile_anonymized', 'user', p_user_id, p_user_id,
-    p_request_id, p_session_id, p_connection_id, p_ip, p_user_agent, p_server_node_id
+    p_request_id, p_session_id, p_connection_id, p_server_node_id
   );
 
   RETURN jsonb_build_object(
@@ -249,8 +247,6 @@ CREATE OR REPLACE FUNCTION kergit_app.complete_account_deletion(
   p_deletion_id    uuid,
   p_user_id        uuid,
   p_request_id     text DEFAULT NULL,
-  p_ip             inet DEFAULT NULL,
-  p_user_agent     text DEFAULT NULL,
   p_server_node_id text DEFAULT NULL
 )
 RETURNS void
@@ -267,13 +263,13 @@ BEGIN
 
   INSERT INTO kergit_app.audit_events (
     category, event_type, actor_type, actor_user_id, target_user_id,
-    request_id, ip, user_agent, server_node_id
+    request_id, server_node_id
   )
   VALUES
     ('account', 'account.auth_soft_deleted', 'system', p_user_id, p_user_id,
-     p_request_id, p_ip, p_user_agent, p_server_node_id),
+     p_request_id, p_server_node_id),
     ('account', 'account.delete_completed', 'system', p_user_id, p_user_id,
-     p_request_id, p_ip, p_user_agent, p_server_node_id);
+     p_request_id, p_server_node_id);
 END
 $$;
 
@@ -289,8 +285,6 @@ CREATE OR REPLACE FUNCTION kergit_app.fail_account_deletion(
   p_error_code     text,
   p_failure_reason text,
   p_request_id     text DEFAULT NULL,
-  p_ip             inet DEFAULT NULL,
-  p_user_agent     text DEFAULT NULL,
   p_server_node_id text DEFAULT NULL
 )
 RETURNS void
@@ -308,11 +302,11 @@ BEGIN
 
   INSERT INTO kergit_app.audit_events (
     category, event_type, severity, actor_type, actor_user_id, target_user_id,
-    request_id, ip, user_agent, server_node_id, error_code, metadata
+    request_id, server_node_id, error_code, metadata
   )
   VALUES (
     'account', 'account.delete_failed', 'error', 'system', p_user_id, p_user_id,
-    p_request_id, p_ip, p_user_agent, p_server_node_id, p_error_code,
+    p_request_id, p_server_node_id, p_error_code,
     jsonb_build_object('error_code', p_error_code)
   );
 END
@@ -343,14 +337,14 @@ $$;
 -- ============================================================
 -- Reachable by the service-role server client only.
 
-REVOKE ALL ON FUNCTION kergit_app.request_account_deletion(uuid, text, text, text, text, inet, text, text) FROM anon, authenticated;
-REVOKE ALL ON FUNCTION kergit_app.complete_account_deletion(uuid, uuid, text, inet, text, text) FROM anon, authenticated;
-REVOKE ALL ON FUNCTION kergit_app.fail_account_deletion(uuid, uuid, text, text, text, inet, text, text) FROM anon, authenticated;
+REVOKE ALL ON FUNCTION kergit_app.request_account_deletion(uuid, text, text, text, text, text) FROM anon, authenticated;
+REVOKE ALL ON FUNCTION kergit_app.complete_account_deletion(uuid, uuid, text, text) FROM anon, authenticated;
+REVOKE ALL ON FUNCTION kergit_app.fail_account_deletion(uuid, uuid, text, text, text, text) FROM anon, authenticated;
 REVOKE ALL ON FUNCTION kergit_app.is_email_reserved(text) FROM anon, authenticated;
 
-GRANT EXECUTE ON FUNCTION kergit_app.request_account_deletion(uuid, text, text, text, text, inet, text, text) TO service_role;
-GRANT EXECUTE ON FUNCTION kergit_app.complete_account_deletion(uuid, uuid, text, inet, text, text) TO service_role;
-GRANT EXECUTE ON FUNCTION kergit_app.fail_account_deletion(uuid, uuid, text, text, text, inet, text, text) TO service_role;
+GRANT EXECUTE ON FUNCTION kergit_app.request_account_deletion(uuid, text, text, text, text, text) TO service_role;
+GRANT EXECUTE ON FUNCTION kergit_app.complete_account_deletion(uuid, uuid, text, text) TO service_role;
+GRANT EXECUTE ON FUNCTION kergit_app.fail_account_deletion(uuid, uuid, text, text, text, text) TO service_role;
 GRANT EXECUTE ON FUNCTION kergit_app.is_email_reserved(text) TO service_role;
 
 COMMIT;

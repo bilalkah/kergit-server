@@ -3,9 +3,9 @@
 --
 -- Current documents:
 --   terms alpha-1/tr-TR:
---     b5e9215b21ef17bb610b370c7a2460219f1572ab4301c226521255d30e28a2fd
+--     155811d1bf243f68381140a63aafc5680233a413e7a7ff2289265d2c8ec75ad9
 --   privacy notice alpha-1/tr-TR:
---     c791a73fa778c8fd70c219c1461bf9fa8a7700d33ccc73592f3933ed474fabe5
+--     f82668be160aeedc2a95e742ef325b1384c6d5b0b2ac2943fa80f514f29f7404
 --
 -- Assumptions:
 -- - Client does not access PostgreSQL directly.
@@ -143,10 +143,10 @@ DECLARE
   v_locale constant text := 'tr-TR';
 
   v_terms_hash constant text :=
-    'b5e9215b21ef17bb610b370c7a2460219f1572ab4301c226521255d30e28a2fd';
+    '155811d1bf243f68381140a63aafc5680233a413e7a7ff2289265d2c8ec75ad9';
 
   v_privacy_notice_hash constant text :=
-    'c791a73fa778c8fd70c219c1461bf9fa8a7700d33ccc73592f3933ed474fabe5';
+    'f82668be160aeedc2a95e742ef325b1384c6d5b0b2ac2943fa80f514f29f7404';
 
   v_metadata jsonb := COALESCE(NEW.raw_user_meta_data, '{}'::jsonb);
   v_recorded_at timestamptz := COALESCE(NEW.created_at, now());
