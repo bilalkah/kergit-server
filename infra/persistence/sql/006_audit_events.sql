@@ -15,8 +15,9 @@
 --   should not break short-lived audit records.
 -- - Account deletion uses app-level soft delete/anonymization.
 -- - Audit records may reference anonymized/deleted users by raw UUID.
--- - This table does NOT store message content, file content, passwords,
---   access tokens, refresh tokens, full request bodies, or full header dumps.
+-- - This table does NOT store IP addresses, user agents, message content,
+--   file content, email addresses, passwords, access tokens, refresh tokens,
+--   cookies, full request bodies, full headers, or arbitrary client payloads.
 --
 -- Retention:
 -- - Audit events are purged by occurred_at.
@@ -48,12 +49,13 @@ CREATE TABLE IF NOT EXISTS kergit_app.audit_events (
   attachment_id   uuid,
   invite_id       uuid,
 
+  -- Internal correlation identifiers only.
+  -- Do not store auth tokens, cookies, raw session secrets, IP addresses,
+  -- user agents, or request bodies in these fields.
   request_id      text,
   session_id      text,
   connection_id   text,
 
-  ip              inet,
-  user_agent      text,
   server_node_id  text,
 
   error_code      text,
@@ -64,15 +66,20 @@ CREATE TABLE IF NOT EXISTS kergit_app.audit_events (
   --   {"reason":"rate_limit"}
   --   {"old_role":"member","new_role":"admin"}
   --   {"owned_hub_count":2}
+  --   {"channel_type":"voice"}
   --
   -- Bad examples:
+  --   IP address
+  --   user-agent
+  --   email address
+  --   username/display name
   --   message content
   --   file content
-  --   email address
   --   token
   --   cookie
   --   full request body
   --   full headers
+  --   arbitrary client payload
   metadata        jsonb NOT NULL DEFAULT '{}'::jsonb,
 
   CONSTRAINT audit_events_category_check
@@ -137,12 +144,6 @@ CREATE TABLE IF NOT EXISTS kergit_app.audit_events (
     CHECK (
       connection_id IS NULL
       OR char_length(connection_id) <= 128
-    ),
-
-  CONSTRAINT audit_events_user_agent_length
-    CHECK (
-      user_agent IS NULL
-      OR char_length(user_agent) <= 512
     ),
 
   CONSTRAINT audit_events_server_node_id_length
@@ -210,9 +211,6 @@ CREATE INDEX IF NOT EXISTS idx_audit_events_session_id
 CREATE INDEX IF NOT EXISTS idx_audit_events_connection_id
   ON kergit_app.audit_events(connection_id);
 
-CREATE INDEX IF NOT EXISTS idx_audit_events_ip_occurred_at
-  ON kergit_app.audit_events(ip, occurred_at DESC);
-
 -- ============================================================
 -- Purge helper
 -- ============================================================
@@ -264,86 +262,34 @@ $$;
 -- Use these event_type values from server-side application code.
 --
 -- auth:
---   auth.signup_succeeded
 --   auth.login_succeeded
 --   auth.login_failed
 --   auth.logout
---   auth.token_refresh_failed
---
--- account:
---   account.email_change_requested
---   account.email_changed
---   account.delete_requested
---   account.delete_blocked_owned_hubs
---   account.delete_started
---   account.memberships_removed
---   account.profile_anonymized
---   account.auth_soft_deleted
---   account.delete_completed
---   account.delete_failed
---
--- connection:
---   connection.websocket_connected
---   connection.websocket_disconnected
---   connection.websocket_reconnected
 --
 -- hub:
 --   hub.created
 --   hub.updated
 --   hub.deleted
+--   hub.invite.created
+--   hub.invite.used
+--   hub.invite.revoked
+--   hub.invite.expired
+--   hub.member.joined
+--   hub.member.left
+--   hub.member.kicked
+--   hub.member.role_changed
 --
 -- channel:
 --   channel.created
 --   channel.updated
 --   channel.deleted
 --
--- member:
---   member.joined
---   member.left
---   member.kicked
---   member.role_changed
---
--- message:
---   message.created
---
--- attachment:
---   attachment.uploaded
---   attachment.download_url_issued
---   attachment.deleted
---
--- invite:
---   invite.created
---   invite.used
---   invite.revoked
---   invite.expired
---
 -- voice:
 --   voice.joined
 --   voice.left
---   voice.muted
---   voice.unmuted
---   voice.deafened
---   voice.undeafened
---   voice.takeover_required
---   voice.self_revoked
+--   voice.takeover
+--   voice.kicked
 --
--- security:
---   security.invalid_token
---   security.forbidden_action
---   security.rate_limited
---   security.suspicious_request
---   security.webhook_signature_invalid
---
--- legal:
---   legal.terms_accepted
---   legal.privacy_notice_delivered
---
--- system:
---   system.error
---   system.reconciliation_started
---   system.reconciliation_completed
---   system.reconciliation_failed
-
 -- ============================================================
 -- Permissions
 -- ============================================================

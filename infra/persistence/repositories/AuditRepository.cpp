@@ -1,3 +1,5 @@
+// AuditRepository.cpp
+
 #include "infra/persistence/repositories/AuditRepository.h"
 
 #include "infra/persistence/repositories/RepositorySchema.h"
@@ -78,8 +80,6 @@ void AuditRepository::logEvent(const Event& event) {
                                   "request_id, "
                                   "session_id, "
                                   "connection_id, "
-                                  "ip, "
-                                  "user_agent, "
                                   "server_node_id, "
                                   "error_code, "
                                   "status_code, "
@@ -100,12 +100,10 @@ void AuditRepository::logEvent(const Event& event) {
                                   "$12, "
                                   "$13, "
                                   "$14, "
-                                  "$15::inet, "
+                                  "$15, "
                                   "$16, "
-                                  "$17, "
-                                  "$18, "
-                                  "$19::integer, "
-                                  "$20::jsonb"
+                                  "$17::integer, "
+                                  "$18::jsonb"
                                   ")";
 
         txn.exec(query, pqxx::params{
@@ -123,8 +121,6 @@ void AuditRepository::logEvent(const Event& event) {
                             event.request_id,
                             event.session_id,
                             event.connection_id,
-                            event.ip,
-                            event.user_agent,
                             event.server_node_id,
                             event.error_code,
                             int_param(event.status_code),

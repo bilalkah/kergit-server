@@ -98,6 +98,14 @@ std::vector<net::outbound::OutgoingMessage> AuthenticateCommand::execute(Command
 
     auto auth_result = ctx.auth_service.authenticate(auth.token());
     if (!auth_result.has_value()) {
+        ctx.audit_service.log(AuditRepository::Event{
+            .category = "auth",
+            .event_type = "auth.login_failed",
+            .severity = "info",
+            .actor_type = "user",
+            .connection_id = to_string(event.conn_id),
+        });
+        
         result.emplace_back(make_auth_update(net::outbound::Target::one(event.conn_id),
                                              net::outbound::kAuthStateFailed));
         return result;
@@ -162,6 +170,16 @@ std::vector<net::outbound::OutgoingMessage> AuthenticateCommand::execute(Command
     bootstrap_event.conn_id = event.conn_id;
     bootstrap_event.user_id = user_id;
     ctx.event_sink.push(std::move(bootstrap_event));
+
+    ctx.audit_service.log(AuditRepository::Event{
+        .category = "auth",
+        .event_type = "auth.login_succeeded",
+        .severity = "info",
+        .actor_type = "user",
+        .actor_user_id = user_id,
+        .session_id = std::to_string(new_session_id),
+        .connection_id = to_string(event.conn_id),
+    });
 
     return result;
 }

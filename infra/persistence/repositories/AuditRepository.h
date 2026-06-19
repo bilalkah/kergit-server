@@ -1,3 +1,5 @@
+// AuditRepository.h
+
 #ifndef INFRA_PERSISTENCE_REPOSITORIES_AUDIT_REPOSITORY_H
 #define INFRA_PERSISTENCE_REPOSITORIES_AUDIT_REPOSITORY_H
 
@@ -11,12 +13,17 @@
 // Product-level audit and technical event writer.
 //
 // Important:
+// - Do not write IP addresses.
+// - Do not write user agents.
+// - Do not write email addresses.
+// - Do not write usernames/display names.
 // - Do not write message content.
 // - Do not write file content.
 // - Do not write passwords.
 // - Do not write access/refresh tokens.
+// - Do not write cookies.
 // - Do not write request bodies.
-// - Do not write cookie/header dumps.
+// - Do not write full headers or arbitrary client payloads.
 // - Metadata must stay compact and non-sensitive.
 //
 // Durable user-visible state belongs in normal tables.
@@ -45,8 +52,6 @@ class AuditRepository {
         std::optional<std::string> session_id;
         std::optional<std::string> connection_id;
 
-        std::optional<std::string> ip;
-        std::optional<std::string> user_agent;
         std::optional<std::string> server_node_id;
 
         std::optional<std::string> error_code;

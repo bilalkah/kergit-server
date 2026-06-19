@@ -52,6 +52,22 @@ std::vector<net::outbound::OutgoingMessage> GetHubInviteCommand::execute(Command
 
     const std::string join_code = ctx.invite_service.createInvite(hub_id);
 
+    ctx.audit_service.log(AuditRepository::Event{
+        .category = "hub",
+        .event_type = "hub.invite.created",
+        .severity = "info",
+        .actor_type = "user",
+        .actor_user_id = user_id,
+        .hub_id = hub_id,
+        .session_id =
+            std::to_string(ctx.session_manager.sessionIdOfConnection(event->conn_id).value_or(0)),
+        .connection_id = to_string(event->conn_id),
+        .metadata =
+            nlohmann::json{
+                {"code", join_code},
+            },
+    });
+
     sercom::protocol::event::StateDelta delta;
     auto* hub_delta = delta.add_hubs();
     hub_delta->set_hub_id(hub_id.value);

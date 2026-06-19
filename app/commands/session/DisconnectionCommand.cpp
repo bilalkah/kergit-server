@@ -86,6 +86,16 @@ std::vector<net::outbound::OutgoingMessage> DisconnectionCommand::execute(Comman
                                                make_rt_signal(signal)));
     }
 
+    ctx.audit_service.log(AuditRepository::Event{
+        .category = "auth",
+        .event_type = "auth.logout",
+        .severity = "info",
+        .actor_type = "user",
+        .actor_user_id = user_id,
+        .session_id = std::to_string(session_id),
+        .connection_id = to_string(event->conn_id),
+    });
+
     return out;
 }
 

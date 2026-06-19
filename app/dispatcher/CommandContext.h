@@ -5,6 +5,7 @@
 #include "app/queue/IEventSink.h"
 
 // include services headers
+#include "app/services/audit/AuditService.h"
 #include "app/services/auth/AuthService.h"
 #include "app/services/hub/HubService.h"
 #include "app/services/invite/InviteService.h"
@@ -26,6 +27,7 @@ struct CommandContext {
     services::voice::VoiceService& voice_service;
     services::UserService& user_service;
     services::PresenceService& presence_manager;
+    services::AuditService& audit_service;
 
     SubscriptionManager& subscription_manager;
     SessionManager& session_manager;

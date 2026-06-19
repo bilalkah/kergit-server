@@ -24,6 +24,10 @@ void AppStack::stop() {
     if (message_service_) {
         message_service_->stopAsyncWriter();
     }
+
+    if (audit_service_) {
+        audit_service_->stop();
+    }
     worker_pool_->stop();
 }
 
@@ -63,6 +67,9 @@ std::uint64_t AppStack::active_webrtc_user_count() const {
 void AppStack::init_database() {
     try {
         persistence_gateway_ = std::make_unique<PersistenceGateway>(config_.database);
+
+        audit_service_ = std::make_unique<services::AuditService>(persistence_gateway_->audit());
+        audit_service_->start();
     } catch (const std::exception& e) {
         log(utils::LogLevel::ERROR, "init_database failed: ", e.what());
         throw;
@@ -111,10 +118,19 @@ void AppStack::init_services() {
         invite_service_ = std::make_unique<services::InviteService>(
             *redis_client_, config_.public_endpoints.invite_base_url());
 
-        cmd_ctx_ = std::make_unique<CommandContext>(
-            CommandContext{*auth_service_, *message_service_, *hub_service_, *voice_service_,
-                           *user_service_, *presence_manager_, *subscription_manager_,
-                           *session_manager_, *event_queue_, *invite_service_});
+        cmd_ctx_ = std::make_unique<CommandContext>(CommandContext{
+            *auth_service_,
+            *message_service_,
+            *hub_service_,
+            *voice_service_,
+            *user_service_,
+            *presence_manager_,
+            *audit_service_,
+            *subscription_manager_,
+            *session_manager_,
+            *event_queue_,
+            *invite_service_,
+        });
 
     } catch (const std::exception& ex) {
         log(utils::LogLevel::ERROR, "init_services failed: ", ex.what());

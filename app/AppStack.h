@@ -62,6 +62,7 @@ class AppStack : public utils::Loggable {
     std::unique_ptr<services::HubService> hub_service_;
     std::unique_ptr<services::voice::VoiceService> voice_service_;
     std::unique_ptr<services::InviteService> invite_service_;
+    std::unique_ptr<services::AuditService> audit_service_;
 
     // Core
     std::unique_ptr<CommandContext> cmd_ctx_;

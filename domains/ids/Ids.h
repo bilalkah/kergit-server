@@ -45,6 +45,10 @@ struct GlobalConnId {
         : netstack_id(std::move(nsid)), conn_id(std::move(cid)) {}
 };
 
+inline std::string to_string(const GlobalConnId& id) {
+    return std::string(id.netstack_id.value) + "/" + std::string(id.conn_id.value);
+}
+
 inline bool operator==(const HubId& a, const HubId& b) { return a.value == b.value; }
 inline bool operator==(const ChannelId& a, const ChannelId& b) { return a.value == b.value; }
 inline bool operator==(const UserId& a, const UserId& b) { return a.value == b.value; }

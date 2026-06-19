@@ -82,6 +82,19 @@ std::vector<net::outbound::OutgoingMessage> RemoveChannelCommand::execute(Comman
         return out;
     }
 
+    ctx.audit_service.log(AuditRepository::Event{
+        .category = "channel",
+        .event_type = "channel.deleted",
+        .severity = "info",
+        .actor_type = "user",
+        .actor_user_id = user_id,
+        .hub_id = hub_id,
+        .channel_id = channel.id,
+        .session_id =
+            std::to_string(ctx.session_manager.sessionIdOfConnection(event->conn_id).value_or(0)),
+        .connection_id = to_string(event->conn_id),
+    });
+
     ctx.subscription_manager.removeAllForTopic(Topic::ChannelTopic(hub_id, channel.id));
 
     sercom::protocol::event::StateDelta delta;

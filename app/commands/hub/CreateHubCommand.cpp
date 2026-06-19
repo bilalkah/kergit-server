@@ -58,6 +58,18 @@ std::vector<net::outbound::OutgoingMessage> CreateHubCommand::execute(CommandCon
     Hub created_hub;
     try {
         created_hub = ctx.hub_service.createHub(name, user_id);
+
+        ctx.audit_service.log(AuditRepository::Event{
+            .category = "hub",
+            .event_type = "hub.created",
+            .severity = "info",
+            .actor_type = "user",
+            .actor_user_id = user_id,
+            .hub_id = created_hub.id,
+            .session_id = std::to_string(
+                ctx.session_manager.sessionIdOfConnection(event->conn_id).value_or(0)),
+            .connection_id = to_string(event->conn_id),
+        });
     } catch (const std::exception& ex) {
         const auto mapped = map_hub_write_error(ex.what());
         out.emplace_back(
@@ -74,7 +86,20 @@ std::vector<net::outbound::OutgoingMessage> CreateHubCommand::execute(CommandCon
     }
 
     try {
-        ctx.hub_service.createChannel(created_hub.id, "general", "text", user_id);
+        const auto created_channel =
+            ctx.hub_service.createChannel(created_hub.id, "general", "text", user_id);
+        ctx.audit_service.log(AuditRepository::Event{
+            .category = "channel",
+            .event_type = "channel.created",
+            .severity = "info",
+            .actor_type = "user",
+            .actor_user_id = user_id,
+            .hub_id = created_hub.id,
+            .channel_id = created_channel,
+            .session_id = std::to_string(
+                ctx.session_manager.sessionIdOfConnection(event->conn_id).value_or(0)),
+            .connection_id = to_string(event->conn_id),
+        });
     } catch (const std::exception& ex) {
         utils::log_line(
             utils::LogLevel::WARN,

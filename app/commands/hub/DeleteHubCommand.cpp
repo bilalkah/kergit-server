@@ -61,6 +61,22 @@ std::vector<net::outbound::OutgoingMessage> DeleteHubCommand::execute(CommandCon
             return out;
         }
         ctx.invite_service.revokeInvitesForHub(hub_id);
+
+        ctx.audit_service.log(AuditRepository::Event{
+            .category = "hub",
+            .event_type = "hub.deleted",
+            .severity = "info",
+            .actor_type = "user",
+            .actor_user_id = user_id,
+            .hub_id = hub_id,
+            .session_id = std::to_string(
+                ctx.session_manager.sessionIdOfConnection(event->conn_id).value_or(0)),
+            .connection_id = to_string(event->conn_id),
+            .metadata =
+                nlohmann::json{
+                    {"invites_revoked", true},
+                },
+        });
     } catch (const std::exception&) {
         out.emplace_back(make_command_error(
             event->conn_id, env.type(), sercom::protocol::event::CommandErrorCode_INTERNAL_ERROR,
