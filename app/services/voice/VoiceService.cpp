@@ -1017,12 +1017,22 @@ void VoiceService::reconcile_channel_state(const ChannelId& channel, std::string
             "channel=" + channel.value + " reason=" + std::string(reason) + query_details);
         const auto active_owner_count = active_owner_connection_count(channel);
         if (active_owner_count > 0) {
-            clear_channel_remote_missing_confirmation(channel);
-            utils::EventLogger::instance().log(
-                utils::EventCategory::VOICE, "", "reconcile_room_missing_remote_deferred", 0,
-                "channel=" + channel.value + " reason=" + std::string(reason) +
-                    " active_owner_connections=" + std::to_string(active_owner_count) +
-                    query_details);
+            if (confirm_channel_remote_missing(channel, "room_missing_with_active_owner")) {
+                utils::EventLogger::instance().log(
+                    utils::EventCategory::VOICE, "",
+                    "reconcile_room_missing_active_owner_confirmed", 0,
+                    "channel=" + channel.value + " reason=" + std::string(reason) +
+                        " active_owner_connections=" + std::to_string(active_owner_count) +
+                        query_details);
+
+                on_channel_finish(channel);
+            } else {
+                utils::EventLogger::instance().log(
+                    utils::EventCategory::VOICE, "", "reconcile_room_missing_remote_deferred", 0,
+                    "channel=" + channel.value + " reason=" + std::string(reason) +
+                        " active_owner_connections=" + std::to_string(active_owner_count) +
+                        query_details);
+            }
         } else if (confirm_channel_remote_missing(channel, reason)) {
             on_channel_finish(channel);
         }
@@ -1084,14 +1094,26 @@ void VoiceService::reconcile_channel_state(const ChannelId& channel, std::string
         for (const auto& participant : local_participants) {
             if (remote_users.find(participant.user_id) != remote_users.end()) continue;
             if (has_active_owner_connection(participant.user_id, channel)) {
-                clear_participant_remote_missing_confirmation(channel, participant.user_id);
-                utils::EventLogger::instance().log(
-                    utils::EventCategory::VOICE, participant.user_id.value,
-                    "reconcile_participant_missing_remote_deferred", 0,
-                    "channel=" + channel.value +
-                        " reason=participant_missing_in_livekit active_owner_connection=1");
+                if (confirm_participant_remote_missing(channel, participant.user_id,
+                                                       "participant_missing_with_active_owner")) {
+                    utils::EventLogger::instance().log(
+                        utils::EventCategory::VOICE, participant.user_id.value,
+                        "reconcile_participant_missing_active_owner_confirmed", 0,
+                        "channel=" + channel.value +
+                            " reason=participant_missing_in_livekit active_owner_connection=1");
+
+                    force_local_leave(participant.user_id, channel,
+                                      "participant_missing_with_active_owner");
+                } else {
+                    utils::EventLogger::instance().log(
+                        utils::EventCategory::VOICE, participant.user_id.value,
+                        "reconcile_participant_missing_remote_deferred", 0,
+                        "channel=" + channel.value +
+                            " reason=participant_missing_in_livekit active_owner_connection=1");
+                }
                 continue;
             }
+
             if (confirm_participant_remote_missing(channel, participant.user_id,
                                                    "participant_missing_in_livekit")) {
                 force_local_leave(participant.user_id, channel, "participant_missing_in_livekit");

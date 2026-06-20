@@ -5,8 +5,6 @@
 #include "infra/persistence/repositories/AuditRepository.h"
 
 #include <atomic>
-#include <condition_variable>
-#include <mutex>
 #include <thread>
 
 namespace app::services {
@@ -28,21 +26,12 @@ class AuditService {
 
    private:
     void run();
-    void runPurgeLoop();
-    void purgeOldEvents() noexcept;
 
     AuditRepository& repo_;
     ThreadSafeQueue<AuditRepository::Event> queue_;
 
     std::atomic<bool> running_{false};
-
     std::thread worker_;
-    std::thread purge_worker_;
-
-    std::mutex purge_mutex_;
-    std::condition_variable purge_cv_;
-
-    static constexpr int kPurgeLimit = 1000;
 };
 
 }  // namespace app::services

@@ -1,5 +1,7 @@
 #include "app/services/voice/ReconcileEvidenceTracker.h"
 
+#include "app/services/voice/VoiceSessionManager.h"
+
 #include <chrono>
 #include <gtest/gtest.h>
 
@@ -87,6 +89,208 @@ TEST(ReconcileEvidenceTrackerTest, PositiveEvidenceResetsRelevantTimers) {
     EXPECT_TRUE(tracker.observe_channel_missing(channel, "periodic", now + 60s).first_observation);
     EXPECT_TRUE(tracker.observe_participant_missing(channel, user, "participant_missing", now + 60s)
                     .first_observation);
+}
+
+// ---------------------------------------------------------------------------
+// Reconcile cleanup policy: a single LiveKit empty/missing observation must
+// never drop a user. Missing remote evidence is accumulated over the TTL, and
+// only continuous confirmed absence cleans local voice state. These tests pair
+// the evidence tracker with VoiceSessionManager to simulate the production
+// policy without LiveKit, Redis, outbound sinks, or sleeps.
+// ---------------------------------------------------------------------------
+
+TEST(VoiceReconcileCleanupTest, ParticipantMissingFirstObservationDoesNotDropLocalUser) {
+    ReconcileEvidenceTracker tracker(60s);
+    VoiceSessionManager sessions;
+
+    const ChannelId channel{"voice-1"};
+    const UserId user{"user-1"};
+    const SessionId session = 123;
+    const auto now = ReconcileEvidenceTracker::Clock::now();
+
+    sessions.join(channel, user, session);
+
+    const auto observed =
+        tracker.observe_participant_missing(channel, user, "participant_missing_in_livekit", now);
+
+    if (observed.confirmed) {
+        sessions.leave(channel, user);
+    }
+
+    EXPECT_FALSE(observed.confirmed);
+    EXPECT_EQ(sessions.user_channel(user), channel);
+    EXPECT_FALSE(sessions.is_empty(channel));
+}
+
+TEST(VoiceReconcileCleanupTest, ParticipantMissingBeforeTtlDoesNotDropLocalUser) {
+    ReconcileEvidenceTracker tracker(60s);
+    VoiceSessionManager sessions;
+
+    const ChannelId channel{"voice-1"};
+    const UserId user{"user-1"};
+    const SessionId session = 123;
+    const auto now = ReconcileEvidenceTracker::Clock::now();
+
+    sessions.join(channel, user, session);
+
+    tracker.observe_participant_missing(channel, user, "participant_missing_in_livekit", now);
+    const auto observed = tracker.observe_participant_missing(
+        channel, user, "participant_missing_in_livekit", now + 59s);
+
+    if (observed.confirmed) {
+        sessions.leave(channel, user);
+    }
+
+    EXPECT_FALSE(observed.confirmed);
+    EXPECT_EQ(sessions.user_channel(user), channel);
+    EXPECT_FALSE(sessions.is_empty(channel));
+}
+
+TEST(VoiceReconcileCleanupTest, ParticipantMissingAfterTtlDropsLocalUser) {
+    ReconcileEvidenceTracker tracker(60s);
+    VoiceSessionManager sessions;
+
+    const ChannelId channel{"voice-1"};
+    const UserId user{"user-1"};
+    const SessionId session = 123;
+    const auto now = ReconcileEvidenceTracker::Clock::now();
+
+    sessions.join(channel, user, session);
+
+    tracker.observe_participant_missing(channel, user, "participant_missing_in_livekit", now);
+    const auto observed = tracker.observe_participant_missing(
+        channel, user, "participant_missing_in_livekit", now + 60s);
+
+    if (observed.confirmed) {
+        sessions.leave(channel, user);
+    }
+
+    EXPECT_TRUE(observed.confirmed);
+    EXPECT_FALSE(sessions.user_channel(user).has_value());
+    EXPECT_TRUE(sessions.is_empty(channel));
+}
+
+TEST(VoiceReconcileCleanupTest, RoomMissingFirstObservationDoesNotClearChannel) {
+    ReconcileEvidenceTracker tracker(60s);
+    VoiceSessionManager sessions;
+
+    const ChannelId channel{"voice-1"};
+    const UserId user{"user-1"};
+    const SessionId session = 123;
+    const auto now = ReconcileEvidenceTracker::Clock::now();
+
+    sessions.join(channel, user, session);
+
+    const auto observed =
+        tracker.observe_channel_missing(channel, "room_missing_in_livekit", now);
+
+    if (observed.confirmed) {
+        sessions.clear_channel(channel);
+    }
+
+    EXPECT_FALSE(observed.confirmed);
+    EXPECT_EQ(sessions.user_channel(user), channel);
+    EXPECT_FALSE(sessions.is_empty(channel));
+}
+
+TEST(VoiceReconcileCleanupTest, RoomMissingBeforeTtlDoesNotClearChannel) {
+    ReconcileEvidenceTracker tracker(60s);
+    VoiceSessionManager sessions;
+
+    const ChannelId channel{"voice-1"};
+    const UserId user{"user-1"};
+    const SessionId session = 123;
+    const auto now = ReconcileEvidenceTracker::Clock::now();
+
+    sessions.join(channel, user, session);
+
+    tracker.observe_channel_missing(channel, "room_missing_in_livekit", now);
+    const auto observed =
+        tracker.observe_channel_missing(channel, "room_missing_in_livekit", now + 59s);
+
+    if (observed.confirmed) {
+        sessions.clear_channel(channel);
+    }
+
+    EXPECT_FALSE(observed.confirmed);
+    EXPECT_EQ(sessions.user_channel(user), channel);
+    EXPECT_FALSE(sessions.is_empty(channel));
+}
+
+TEST(VoiceReconcileCleanupTest, RoomMissingAfterTtlClearsChannel) {
+    ReconcileEvidenceTracker tracker(60s);
+    VoiceSessionManager sessions;
+
+    const ChannelId channel{"voice-1"};
+    const UserId user{"user-1"};
+    const SessionId session = 123;
+    const auto now = ReconcileEvidenceTracker::Clock::now();
+
+    sessions.join(channel, user, session);
+
+    tracker.observe_channel_missing(channel, "room_missing_in_livekit", now);
+    const auto observed =
+        tracker.observe_channel_missing(channel, "room_missing_in_livekit", now + 60s);
+
+    if (observed.confirmed) {
+        sessions.clear_channel(channel);
+    }
+
+    EXPECT_TRUE(observed.confirmed);
+    EXPECT_FALSE(sessions.user_channel(user).has_value());
+    EXPECT_TRUE(sessions.is_empty(channel));
+}
+
+TEST(VoiceReconcileCleanupTest, PositiveEvidenceResetsParticipantMissingTimer) {
+    ReconcileEvidenceTracker tracker(60s);
+    VoiceSessionManager sessions;
+
+    const ChannelId channel{"voice-1"};
+    const UserId user{"user-1"};
+    const SessionId session = 123;
+    const auto now = ReconcileEvidenceTracker::Clock::now();
+
+    sessions.join(channel, user, session);
+
+    tracker.observe_participant_missing(channel, user, "participant_missing_in_livekit", now);
+    tracker.clear_participant_missing(channel, user);
+    const auto observed = tracker.observe_participant_missing(
+        channel, user, "participant_missing_in_livekit", now + 60s);
+
+    if (observed.confirmed) {
+        sessions.leave(channel, user);
+    }
+
+    EXPECT_TRUE(observed.first_observation);
+    EXPECT_FALSE(observed.confirmed);
+    EXPECT_EQ(sessions.user_channel(user), channel);
+    EXPECT_FALSE(sessions.is_empty(channel));
+}
+
+TEST(VoiceReconcileCleanupTest, PositiveEvidenceResetsRoomMissingTimer) {
+    ReconcileEvidenceTracker tracker(60s);
+    VoiceSessionManager sessions;
+
+    const ChannelId channel{"voice-1"};
+    const UserId user{"user-1"};
+    const SessionId session = 123;
+    const auto now = ReconcileEvidenceTracker::Clock::now();
+
+    sessions.join(channel, user, session);
+
+    tracker.observe_channel_missing(channel, "room_missing_in_livekit", now);
+    tracker.clear_channel_missing(channel);
+    const auto observed =
+        tracker.observe_channel_missing(channel, "room_missing_in_livekit", now + 60s);
+
+    if (observed.confirmed) {
+        sessions.clear_channel(channel);
+    }
+
+    EXPECT_TRUE(observed.first_observation);
+    EXPECT_FALSE(observed.confirmed);
+    EXPECT_EQ(sessions.user_channel(user), channel);
+    EXPECT_FALSE(sessions.is_empty(channel));
 }
 
 }  // namespace

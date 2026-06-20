@@ -16,6 +16,7 @@ cc_test(
     copts = ["-std=gnu++23"],
     deps = [
         ":reconcile_evidence_tracker",
+        ":voice_session_manager",
         "@googletest//:gtest_main",
     ],
 )
