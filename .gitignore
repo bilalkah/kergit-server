@@ -90,3 +90,5 @@ docker/generated/**
 docker/caddy/generated/**
 docker/caddy/conf.local/**
 .claude/**
+
+CLAUDE.md
