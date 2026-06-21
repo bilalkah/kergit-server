@@ -389,7 +389,15 @@ VoiceService::JoinVoiceToken VoiceService::join_voice(const ChannelId& channel, 
             return response;
         }
 
-        key = e2ee_keys_.get_or_create_key(channel);
+        try {
+            key = e2ee_keys_.get_or_create_key(channel);
+        } catch (const std::exception& ex) {
+            utils::EventLogger::instance().log(utils::EventCategory::VOICE, user.value,
+                                               "e2ee_key_generate_failed", 0,
+                                               "channel=" + channel.value + " error=" + ex.what());
+            response.error_reason = "voice_key_unavailable";
+            return response;
+        }
         if (key.has_value()) {
             (void)persist_channel_e2ee_key_to_storage(channel, *key);
             utils::EventLogger::instance().log(
@@ -1783,6 +1791,12 @@ void VoiceService::on_livekit_event(const livekit::webhook::LiveKitEvent& event)
     }
 }
 
+void VoiceService::on_session_destroyed(const UserId& user) {
+    const auto voice_channel = sessions_.user_channel(user);
+    if (!voice_channel.has_value()) return;
+    request_channel_reconcile(*voice_channel, "session_destroyed");
+}
+
 std::string VoiceService::generate_intent_nonce() const { return generate_nonce_hex(); }
 
 std::uint64_t VoiceService::active_voice_user_count() const {
@@ -1893,19 +1907,32 @@ void VoiceService::clear_channel_e2ee_key_from_storage(const ChannelId& channel)
 std::optional<bool> VoiceService::is_channel_effectively_empty(const ChannelId& channel) {
     if (!sessions_.is_empty(channel)) return false;
 
-    const auto node = nodes_.get_room_node(channel);
-    if (!node) return true;
+    // Sweep every configured node, not just the bound one: a participant can be live
+    // on a different node than the current room binding (stale/repaired binding). If we
+    // only checked the bound node we could wrongly conclude "empty" and mint a fresh
+    // E2EE key while that participant still holds the old one -> two keys in one channel.
+    const auto configured_nodes = nodes_.list_nodes();
+    if (configured_nodes.empty()) return true;
 
-    try {
-        livekit::cli::LivekitClient client(node->private_host, token_service_);
-        const auto participants = client.ListParticipants(channel);
-        return participants.empty();
-    } catch (const std::exception& ex) {
-        utils::EventLogger::instance().log(utils::EventCategory::VOICE, "",
-                                           "e2ee_empty_check_failed", 0,
-                                           "channel=" + channel.value + " error=" + ex.what());
-        return std::nullopt;
+    std::size_t successful_queries = 0;
+    for (const auto& node : configured_nodes) {
+        try {
+            livekit::cli::LivekitClient client(node.private_host, token_service_);
+            const auto participants = client.ListParticipants(channel);
+            ++successful_queries;
+            if (!participants.empty()) return false;
+        } catch (const std::exception& ex) {
+            utils::EventLogger::instance().log(
+                utils::EventCategory::VOICE, "", "e2ee_empty_check_failed", 0,
+                "channel=" + channel.value + " node=" + node.node_id + " error=" + ex.what());
+        }
     }
+
+    // Only conclude "empty" when every node confirmed zero participants. A partial
+    // sweep is inconclusive: returning nullopt makes the caller fail safe (force rekey)
+    // rather than mint a divergent key for a room that may be live on an unreachable node.
+    if (successful_queries != configured_nodes.size()) return std::nullopt;
+    return true;
 }
 
 void VoiceService::mark_channel_rekey_in_progress(const ChannelId& channel) {

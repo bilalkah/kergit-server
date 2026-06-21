@@ -132,6 +132,11 @@ class VoiceService {
     /// Utility for command-path nonce generation.
     std::string generate_intent_nonce() const;
 
+    /// Called when a user's last active session is destroyed (all WebSocket connections closed).
+    /// Schedules an immediate reconcile if the user is a voice participant, allowing the
+    /// reconcile loop to detect a missed LiveKit webhook and clean up ghost presence.
+    void on_session_destroyed(const UserId& user);
+
     /// Returns current one-time resume id for the user's active voice ownership, if any.
     std::optional<std::string> current_resume_id(const UserId& user) const;
 

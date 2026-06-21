@@ -30,23 +30,6 @@ void E2EEKeyManager::set_key(const ChannelId& channel, std::string key) {
     state.key = std::move(key);
 }
 
-void E2EEKeyManager::increment_participant(const ChannelId& channel) {
-    std::lock_guard lock(mutex_);
-    channels_[channel].participants++;
-}
-
-void E2EEKeyManager::decrement_participant(const ChannelId& channel) {
-    std::lock_guard lock(mutex_);
-
-    auto it = channels_.find(channel);
-    if (it == channels_.end()) return;
-
-    auto& state = it->second;
-    if (state.participants > 0) state.participants--;
-
-    if (state.participants == 0) channels_.erase(it);
-}
-
 void E2EEKeyManager::clear_key(const ChannelId& channel) {
     std::lock_guard lock(mutex_);
     channels_.erase(channel);

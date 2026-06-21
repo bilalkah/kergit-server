@@ -59,6 +59,8 @@ std::vector<net::outbound::OutgoingMessage> DisconnectionCommand::execute(Comman
         return out;
     }
 
+    ctx.voice_service.on_session_destroyed(user_id);
+
     for (const auto& hub_id : hub_ids) {
         utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(
             1, std::memory_order_relaxed);

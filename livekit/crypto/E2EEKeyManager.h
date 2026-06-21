@@ -15,8 +15,9 @@ namespace livekit {
  *
  * Maintains encryption keys for voice channels.
  *
- * Keys exist only while a channel has active participants.
- * When the last participant leaves, the key is destroyed.
+ * Key lifecycle is owned by VoiceService: keys are created on first join into an
+ * empty channel and evicted via clear_key() when the channel empties, is rekeyed,
+ * or is forcibly closed. This class is just the in-memory key store.
  */
 class E2EEKeyManager {
    public:
@@ -29,19 +30,12 @@ class E2EEKeyManager {
     /// Set/replace key for channel.
     void set_key(const ChannelId& channel, std::string key);
 
-    /// Increment participant count.
-    void increment_participant(const ChannelId& channel);
-
-    /// Decrement participant count and remove key if empty.
-    void decrement_participant(const ChannelId& channel);
-
     /// Immediately evict the key for a channel (e.g. when room is forcibly closed).
     void clear_key(const ChannelId& channel);
 
    private:
     struct ChannelState {
         std::string key;
-        size_t participants = 0;
     };
 
     std::string generate_key() const;
