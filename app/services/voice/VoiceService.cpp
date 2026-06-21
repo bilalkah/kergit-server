@@ -668,6 +668,12 @@ void VoiceService::on_channel_empty(const ChannelId& channel) {
     e2ee_keys_.clear_key(channel);
     clear_channel_e2ee_key_from_storage(channel);
     clear_channel_rekey_guard(channel);
+    // Drop the room->node binding too: once our own state agrees the channel is
+    // empty (last participant left via an authoritative LiveKit event), there is no
+    // disagreement left to reconcile. Keeping the binding would make the reconcile
+    // sweep treat the channel as still tracked and run a pointless missing-confirm
+    // cycle whose only effect is clearing this binding. Forget it now instead.
+    nodes_.clear_room(channel);
 }
 
 void VoiceService::on_channel_finish(const ChannelId& channel) {
@@ -1356,6 +1362,26 @@ void VoiceService::handle_participant_joined(const livekit::webhook::LiveKitEven
     }
 
     if (!has_correlated_intent) {
+        // The pending intent may already have been consumed by a reconcile that
+        // adopted this exact join moments earlier (synthetic "participant_joined
+        // (reconcile)"), which clears the intent. The real webhook then arrives with
+        // a session id but no matching intent. If this session already owns voice in
+        // this channel, the event is a confirming duplicate, not a mismatch — never
+        // kick the user we just admitted.
+        const auto current_channel = sessions_.user_channel(event.user_id);
+        const auto current_owner = sessions_.user_session(event.user_id);
+        const bool already_owner_here =
+            event.app_session_id != 0 && current_channel.has_value() &&
+            *current_channel == event.channel_id && current_owner.has_value() &&
+            *current_owner == static_cast<SessionId>(event.app_session_id);
+        if (already_owner_here) {
+            utils::EventLogger::instance().log(
+                utils::EventCategory::VOICE, event.user_id.value, "join_already_owner", 0,
+                "channel=" + event.channel_id.value +
+                    " session=" + std::to_string(event.app_session_id));
+            return;
+        }
+
         utils::EventLogger::instance().log(
             utils::EventCategory::VOICE, event.user_id.value, "join_intent_mismatch", 0,
             "event_channel=" + event.channel_id.value +
