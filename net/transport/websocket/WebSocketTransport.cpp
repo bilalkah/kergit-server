@@ -157,6 +157,14 @@ void TextWSServer::wire() {
         {
             .compression = uWS::SHARED_COMPRESSOR,
             .maxPayloadLength = static_cast<unsigned int>(max_payload_length),
+            // Do NOT drop connections for "inactivity". uWS' default 120s idleTimeout
+            // closes any socket that goes silent for 120s — which happens whenever the
+            // browser tab is backgrounded/frozen or the machine sleeps (the client's
+            // ping loop is suspended), producing 1006 "WebSocket timed out from
+            // inactivity" and forcing a reconnect. Liveness is owned elsewhere:
+            // HeartbeatService pings, JWT expiry closes stale auth (4402), and the TCP
+            // layer / client resume handle genuinely dead sockets. 0 = disabled.
+            .idleTimeout = 0,
             .sendPingsAutomatically = false,
             .upgrade =
                 [this](auto* res, auto* req, auto* ctx) {
