@@ -111,18 +111,22 @@ void LivekitClient::DeleteRoom(const std::string& name) {
     PostJson("/twirp/livekit.RoomService/DeleteRoom", req.dump(), token);
 }
 
-std::vector<ChannelId> LivekitClient::ListRooms() {
+std::vector<RoomInfo> LivekitClient::ListRooms() {
     livekit::LiveKitTokenService::AdminTokenRequest token_req;
     token_req.room_list = true;
     const std::string token = token_service_.mint_admin_token(token_req);
     const auto res = PostJson("/twirp/livekit.RoomService/ListRooms", "{}", token);
     const auto data = json::parse(res);
 
-    std::vector<ChannelId> rooms;
+    std::vector<RoomInfo> rooms;
     if (data.contains("rooms")) {
         for (const auto& r : data["rooms"]) {
             const std::string name = r.value("name", "");
-            if (!name.empty()) rooms.emplace_back(name);
+            if (name.empty()) continue;
+            RoomInfo info;
+            info.room = ChannelId(name);
+            info.num_participants = r.value("num_participants", 0);
+            rooms.push_back(std::move(info));
         }
     }
     return rooms;

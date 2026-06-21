@@ -928,7 +928,7 @@ void VoiceService::reconcile_full_state(std::string_view reason) {
     for (const auto& node : nodes_.list_nodes()) {
         livekit::cli::LivekitClient client(node.private_host, token_service_);
 
-        std::vector<ChannelId> rooms;
+        std::vector<livekit::cli::RoomInfo> rooms;
         try {
             rooms = client.ListRooms();
         } catch (const std::exception& ex) {
@@ -939,8 +939,15 @@ void VoiceService::reconcile_full_state(std::string_view reason) {
             continue;
         }
 
+        // Only reconcile a remote room if it has participants or we hold local state
+        // for it. An empty room we don't track has nothing to clean up, and LiveKit
+        // keeps empty rooms listed for departure_timeout/empty_timeout seconds, so
+        // skipping them avoids re-scanning a lingering empty room every interval.
         for (const auto& room : rooms) {
-            channels.insert(room);
+            if (room.num_participants > 0 || !sessions_.is_empty(room.room) ||
+                nodes_.get_room_node(room.room) != nullptr) {
+                channels.insert(room.room);
+            }
         }
     }
 
@@ -1017,6 +1024,15 @@ void VoiceService::reconcile_channel_state(const ChannelId& channel, std::string
             utils::EventLogger::instance().log(
                 utils::EventCategory::VOICE, "", "reconcile_participants_unusable", 0,
                 "channel=" + channel.value + " reason=" + std::string(reason) + query_details);
+            return;
+        }
+
+        // Both sides agree the room is empty AND we hold no local state for it, so
+        // there is nothing to tear down. Returning here avoids re-running the missing
+        // confirmation cycle (and on_channel_finish) every interval against a room
+        // LiveKit keeps listing while it lingers post-emptying.
+        if (sessions_.is_empty(channel) && nodes_.get_room_node(channel) == nullptr) {
+            clear_channel_remote_missing_confirmation(channel);
             return;
         }
 
@@ -1529,7 +1545,7 @@ void VoiceService::recover_from_restart() {
     for (const auto& node : nodes) {
         livekit::cli::LivekitClient client(node.private_host, token_service_);
 
-        std::vector<ChannelId> rooms;
+        std::vector<livekit::cli::RoomInfo> rooms;
         try {
             rooms = client.ListRooms();
         } catch (const std::exception& ex) {
@@ -1539,7 +1555,8 @@ void VoiceService::recover_from_restart() {
             continue;
         }
 
-        for (const auto& room : rooms) {
+        for (const auto& room_info : rooms) {
+            const auto& room = room_info.room;
             if (recovered_rooms.insert(room).second) {
                 nodes_.bind_room(room, node.node_id);
                 nodes_.increment_room(room, node.node_id);

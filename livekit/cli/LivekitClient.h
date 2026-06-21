@@ -16,6 +16,11 @@ struct ParticipantInfo {
     bool is_publisher = false;
 };
 
+struct RoomInfo {
+    ChannelId room;
+    int num_participants = 0;
+};
+
 class LivekitClient {
    public:
     LivekitClient(std::string host, const LiveKitTokenService& token_service);
@@ -24,9 +29,9 @@ class LivekitClient {
 
     std::vector<ParticipantInfo> ListParticipants(const ChannelId& room);
 
-    // Returns rooms visible through this LiveKit endpoint. In a Redis-backed
-    // cluster this is not authoritative node ownership.
-    std::vector<ChannelId> ListRooms();
+    // Returns rooms visible through this LiveKit endpoint, with their participant
+    // counts. In a Redis-backed cluster this is not authoritative node ownership.
+    std::vector<RoomInfo> ListRooms();
 
     void CreateRoom(const std::string& name, const std::string& metadata = "");
     void DeleteRoom(const std::string& name);
