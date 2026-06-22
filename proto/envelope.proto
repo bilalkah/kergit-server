@@ -97,6 +97,12 @@ message Envelope {
         // When: server revokes current session voice ownership/connection.
         VOICE_SELF_REVOKED = 38;
 
+        // Direction: S->C
+        // Payload: sercom.protocol.event.VoiceKeyUpdate
+        // When: channel E2EE key rotated (member joined/left); remaining
+        // participants install the new key at its index for a seamless switch.
+        VOICE_KEY_UPDATE = 39;
+
         // Direction: C->S
         // Payload: sercom.protocol.command.SendMessage
         // When: client sends a new channel message intent.

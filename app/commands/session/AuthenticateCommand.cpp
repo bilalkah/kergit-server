@@ -156,6 +156,10 @@ std::vector<net::outbound::OutgoingMessage> AuthenticateCommand::execute(Command
                         make_outgoing_message(net::outbound::Target::many(std::move(old_conns)),
                                               make_voice_self_status_disconnected()));
                 }
+
+                // Re-sync the current E2EE key to the resumed owner in case a rotation
+                // landed during the reconnect window and this session missed it.
+                ctx.voice_service.resync_voice_key_for_user(user_id);
             }
         }
     }

@@ -14,6 +14,21 @@ message VoiceTokenIssued {
     uint64 expires_in = 3;
     string e2ee_key = 4;
     string resume_id = 5;
+    // LiveKit key-provider index the e2ee_key must be installed at. Lets the client
+    // place this key in the right keyring slot so smooth rotations line up.
+    uint32 key_index = 6;
+}
+
+/*
+ * Pushed to all current voice participants when the channel E2EE key rotates
+ * (a member joined or left). Clients install the new key at key_index via the
+ * LiveKit key provider; recent keys stay in the keyring so in-flight frames keep
+ * decrypting and the transition is seamless.
+ */
+message VoiceKeyUpdate {
+    sercom.protocol.domain.ChannelRef channel = 1;
+    string e2ee_key = 2;
+    uint32 key_index = 3;
 }
 
 /*

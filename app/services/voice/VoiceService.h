@@ -21,6 +21,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -52,6 +53,7 @@ class VoiceService {
         std::string livekit_url;
         uint64_t expires_in = 0;
         std::string e2ee_key;
+        uint32_t key_index = 0;
         std::string resume_id;
         std::string error_reason;
     };
@@ -148,6 +150,11 @@ class VoiceService {
                                                                    std::string_view resume_id,
                                                                    SessionId next_owner_session);
 
+    /// Re-send the current channel E2EE key+index to a user's owner session. Used after
+    /// a resume reconnect so a client that missed a key rotation during its reconnect
+    /// window re-syncs to the live key.
+    void resync_voice_key_for_user(const UserId& user);
+
    private:
     bool consume_channel_takeover_guard(const ChannelId& channel);
     bool mark_webhook_event_seen(const std::string& event_id);
@@ -193,6 +200,19 @@ class VoiceService {
                                           const UserId& user, bool muted, bool deafened);
     void publish_voice_participant_remove(const HubId& hub, const ChannelId& channel,
                                           const UserId& user);
+    // Pushes the channel's current E2EE key+index to all current participants' owner
+    // sessions (used after a rotation). The just-joined user is reached via their token
+    // instead, so a join-time rotation broadcasts only to the pre-existing members.
+    void publish_voice_key_update(const HubId& hub, const ChannelId& channel,
+                                  const std::string& key, uint32_t key_index);
+    // Rotates the channel key, persists it, and broadcasts it to current participants.
+    // Serialized via the per-channel rotation mutex so the new index and its broadcast
+    // stay ordered. Returns the new key+index (empty key on failure).
+    livekit::E2EEKeyManager::ChannelKey rotate_and_broadcast_channel_key(
+        const ChannelId& channel, std::string_view reason);
+    // Returns the per-channel key-lifecycle mutex, creating it on first use. The returned
+    // reference is stable for the process lifetime (entries are never erased).
+    std::mutex& channel_rotation_mutex(const ChannelId& channel);
     void publish_self_status(const UserId& user, bool connected,
                              const std::optional<SessionId>& owner_session_id,
                              const std::optional<ChannelId>& channel,
@@ -215,8 +235,11 @@ class VoiceService {
     void clear_resume_id(const UserId& user);
 
     static std::string channel_e2ee_key_storage_key(const ChannelId& channel);
-    std::optional<std::string> load_channel_e2ee_key_from_storage(const ChannelId& channel);
-    bool persist_channel_e2ee_key_to_storage(const ChannelId& channel, std::string_view key);
+    static std::string channel_e2ee_index_storage_key(const ChannelId& channel);
+    std::optional<livekit::E2EEKeyManager::ChannelKey> load_channel_e2ee_key_from_storage(
+        const ChannelId& channel);
+    bool persist_channel_e2ee_key_to_storage(const ChannelId& channel, std::string_view key,
+                                             uint32_t key_index);
     void clear_channel_e2ee_key_from_storage(const ChannelId& channel);
     std::optional<bool> is_channel_effectively_empty(const ChannelId& channel);
     void mark_channel_rekey_in_progress(const ChannelId& channel);
@@ -251,6 +274,13 @@ class VoiceService {
     std::chrono::seconds e2ee_rekey_guard_ttl_;
     mutable std::mutex e2ee_rekey_mutex_;
     std::unordered_map<ChannelId, std::chrono::steady_clock::time_point> e2ee_rekey_guard_until_;
+    // Per-channel serialization of key lifecycle (acquire/rotate/clear) so the assigned
+    // index and the VOICE_KEY_UPDATE fanout stay ordered across concurrent join (command
+    // thread) and leave (webhook/reconcile thread) events — without one channel's key op
+    // blocking another's. Map is grow-only (bounded by distinct channels); entries are
+    // never erased so a held mutex reference can't be invalidated.
+    std::mutex rotation_mutex_map_mutex_;
+    std::unordered_map<ChannelId, std::unique_ptr<std::mutex>> channel_rotation_mutexes_;
 
     std::chrono::seconds reconcile_interval_;
     std::chrono::seconds livekit_missing_clear_ttl_;

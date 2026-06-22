@@ -48,12 +48,13 @@ std::string make_voice_self_revoked() {
 
 std::string make_voice_token_issued(const std::string& token, const std::string& livekit_url,
                                     uint64_t expires_in, const std::string& e2ee_key,
-                                    const std::string& resume_id) {
+                                    uint32_t key_index, const std::string& resume_id) {
     sercom::protocol::event::VoiceTokenIssued issued;
     issued.set_token(token);
     issued.set_livekit_url(livekit_url);
     issued.set_expires_in(expires_in);
     issued.set_e2ee_key(e2ee_key);
+    issued.set_key_index(key_index);
     if (!resume_id.empty()) {
         issued.set_resume_id(resume_id);
     }
@@ -253,8 +254,9 @@ std::vector<net::outbound::OutgoingMessage> JoinVoiceChannelCommand::execute(
             " livekit_url=" + issued.livekit_url,
         utils::LogDest::FILE);
 
-    std::string token_bytes = make_voice_token_issued(
-        issued.token, issued.livekit_url, issued.expires_in, issued.e2ee_key, issued.resume_id);
+    std::string token_bytes =
+        make_voice_token_issued(issued.token, issued.livekit_url, issued.expires_in, issued.e2ee_key,
+                                issued.key_index, issued.resume_id);
     out.push_back(
         make_outgoing_message(net::outbound::Target::one(event->conn_id), std::move(token_bytes)));
 

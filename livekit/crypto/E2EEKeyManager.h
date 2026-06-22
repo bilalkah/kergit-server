@@ -3,6 +3,7 @@
 
 #include "domains/ids/Ids.h"
 
+#include <cstdint>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -21,14 +22,27 @@ namespace livekit {
  */
 class E2EEKeyManager {
    public:
-    /// Returns the current key or creates a new one if none exists.
-    std::string get_or_create_key(const ChannelId& channel);
+    /// LiveKit ExternalE2EEKeyProvider keyring size. Key indices wrap within this so
+    /// recently-rotated keys stay resolvable during the overlap window.
+    static constexpr uint32_t kKeyringSize = 16;
 
-    /// Returns current key if present.
-    std::optional<std::string> get_key(const ChannelId& channel) const;
+    struct ChannelKey {
+        std::string key;
+        uint32_t key_index = 0;
+    };
 
-    /// Set/replace key for channel.
-    void set_key(const ChannelId& channel, std::string key);
+    /// Returns the current key+index, creating a fresh key at index 0 if none exists.
+    ChannelKey get_or_create_key(const ChannelId& channel);
+
+    /// Returns current key+index if present.
+    std::optional<ChannelKey> get_key(const ChannelId& channel) const;
+
+    /// Set/replace key for channel at an explicit index (recovery / load from storage).
+    void set_key(const ChannelId& channel, std::string key, uint32_t key_index);
+
+    /// Generate a new key and advance the index (mod keyring size); creates at index 0
+    /// if the channel had no key. Returns the new key+index. Atomic.
+    ChannelKey rotate_key(const ChannelId& channel);
 
     /// Immediately evict the key for a channel (e.g. when room is forcibly closed).
     void clear_key(const ChannelId& channel);
@@ -36,6 +50,7 @@ class E2EEKeyManager {
    private:
     struct ChannelState {
         std::string key;
+        uint32_t key_index = 0;
     };
 
     std::string generate_key() const;

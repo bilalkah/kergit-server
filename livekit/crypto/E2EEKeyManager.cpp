@@ -6,28 +6,41 @@
 
 namespace livekit {
 
-std::string E2EEKeyManager::get_or_create_key(const ChannelId& channel) {
+E2EEKeyManager::ChannelKey E2EEKeyManager::get_or_create_key(const ChannelId& channel) {
     std::lock_guard lock(mutex_);
 
     auto it = channels_.find(channel);
-    if (it != channels_.end() && !it->second.key.empty()) return it->second.key;
+    if (it != channels_.end() && !it->second.key.empty()) {
+        return {it->second.key, it->second.key_index};
+    }
 
     auto& state = channels_[channel];
     state.key = generate_key();
-    return state.key;
+    state.key_index = 0;
+    return {state.key, state.key_index};
 }
 
-std::optional<std::string> E2EEKeyManager::get_key(const ChannelId& channel) const {
+std::optional<E2EEKeyManager::ChannelKey> E2EEKeyManager::get_key(const ChannelId& channel) const {
     std::lock_guard lock(mutex_);
     const auto it = channels_.find(channel);
     if (it == channels_.end() || it->second.key.empty()) return std::nullopt;
-    return it->second.key;
+    return ChannelKey{it->second.key, it->second.key_index};
 }
 
-void E2EEKeyManager::set_key(const ChannelId& channel, std::string key) {
+void E2EEKeyManager::set_key(const ChannelId& channel, std::string key, uint32_t key_index) {
     std::lock_guard lock(mutex_);
     auto& state = channels_[channel];
     state.key = std::move(key);
+    state.key_index = key_index % kKeyringSize;
+}
+
+E2EEKeyManager::ChannelKey E2EEKeyManager::rotate_key(const ChannelId& channel) {
+    std::lock_guard lock(mutex_);
+    auto& state = channels_[channel];
+    const bool had_key = !state.key.empty();
+    state.key = generate_key();
+    state.key_index = had_key ? (state.key_index + 1) % kKeyringSize : 0;
+    return {state.key, state.key_index};
 }
 
 void E2EEKeyManager::clear_key(const ChannelId& channel) {

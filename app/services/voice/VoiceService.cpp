@@ -65,6 +65,15 @@ std::string make_voice_self_status_disconnected() {
     return serialize_as_envelope(sercom::protocol::Envelope::VOICE_SELF_STATUS, status);
 }
 
+std::string make_voice_key_update(const HubId& hub_id, const ChannelId& channel_id,
+                                  const std::string& key, uint32_t key_index) {
+    sercom::protocol::event::VoiceKeyUpdate update;
+    *update.mutable_channel() = ::app::to_proto_channel_ref(hub_id, channel_id);
+    update.set_e2ee_key(key);
+    update.set_key_index(key_index);
+    return serialize_as_envelope(sercom::protocol::Envelope::VOICE_KEY_UPDATE, update);
+}
+
 bool contains_participant(const std::vector<livekit::cli::ParticipantInfo>& participants,
                           const UserId& user) {
     return std::any_of(participants.begin(), participants.end(),
@@ -367,48 +376,76 @@ VoiceService::JoinVoiceToken VoiceService::join_voice(const ChannelId& channel, 
     if (!node) return response;
     clear_channel_remote_missing_confirmation(channel);
 
-    std::optional<std::string> key = e2ee_keys_.get_key(channel);
-    if (!key.has_value()) {
-        key = load_channel_e2ee_key_from_storage(channel);
-        if (key.has_value()) {
-            e2ee_keys_.set_key(channel, *key);
-            utils::EventLogger::instance().log(utils::EventCategory::VOICE, user.value,
-                                               "e2ee_key_loaded", 0,
-                                               "channel=" + channel.value + " source=redis");
-        }
-    }
+    // A genuine new join into a channel that already has tracked members rotates the
+    // key: the joiner and existing members converge on a fresh key the joiner never saw
+    // used before (backward secrecy), and any key a recent leaver held is replaced.
+    // A resume/reconnect into the same channel, or the first person into an empty
+    // channel, keeps/creates the current key (no rotation).
+    const auto current_channel = sessions_.user_channel(user);
+    const bool already_member = current_channel.has_value() && *current_channel == channel;
+    const bool other_members_present = !already_member && !sessions_.is_empty(channel);
 
-    if (!key.has_value()) {
-        const auto empty_state = is_channel_effectively_empty(channel);
-        if (!empty_state.has_value() || !*empty_state) {
-            utils::EventLogger::instance().log(utils::EventCategory::VOICE, user.value,
-                                               "e2ee_key_missing_active_room", 0,
-                                               "channel=" + channel.value);
-            force_channel_rekey(channel, "missing_or_invalid_key_for_active_room");
-            response.error_reason = "voice_rekey_in_progress";
-            return response;
-        }
+    std::optional<livekit::E2EEKeyManager::ChannelKey> ck;
 
-        try {
-            key = e2ee_keys_.get_or_create_key(channel);
-        } catch (const std::exception& ex) {
-            utils::EventLogger::instance().log(utils::EventCategory::VOICE, user.value,
-                                               "e2ee_key_generate_failed", 0,
-                                               "channel=" + channel.value + " error=" + ex.what());
-            response.error_reason = "voice_key_unavailable";
-            return response;
-        }
-        if (key.has_value()) {
-            (void)persist_channel_e2ee_key_to_storage(channel, *key);
-            utils::EventLogger::instance().log(
-                utils::EventCategory::VOICE, user.value, "e2ee_key_generated", 0,
-                "channel=" + channel.value + " reason=room_effectively_empty");
-        }
+    if (other_members_present) {
+        ck = rotate_and_broadcast_channel_key(channel, "participant_join");
     } else {
-        (void)persist_channel_e2ee_key_to_storage(channel, *key);
+        ck = e2ee_keys_.get_key(channel);
+        if (!ck.has_value()) {
+            // Compute emptiness OUTSIDE the rotation lock (it does LiveKit network I/O),
+            // then mutate key state under the lock so a concurrent on_channel_empty clear
+            // cannot interleave with our create (the create-vs-clear race).
+            const auto empty_state = is_channel_effectively_empty(channel);
+            bool need_force_rekey = false;
+            {
+                std::lock_guard rotation_lock(channel_rotation_mutex(channel));
+                ck = e2ee_keys_.get_key(channel);  // re-check under the lock
+                if (ck.has_value()) {
+                    (void)persist_channel_e2ee_key_to_storage(channel, ck->key, ck->key_index);
+                } else if (empty_state.has_value() && *empty_state) {
+                    // Confirmed empty (server + LiveKit agree): mint a FRESH key. Never
+                    // reuse stored material here — a departed member could otherwise decrypt
+                    // the new session if a prior clear's Redis del had failed.
+                    try {
+                        ck = e2ee_keys_.get_or_create_key(channel);
+                    } catch (const std::exception& ex) {
+                        utils::EventLogger::instance().log(
+                            utils::EventCategory::VOICE, user.value, "e2ee_key_generate_failed", 0,
+                            "channel=" + channel.value + " error=" + ex.what());
+                    }
+                    if (ck.has_value()) {
+                        (void)persist_channel_e2ee_key_to_storage(channel, ck->key, ck->key_index);
+                        utils::EventLogger::instance().log(
+                            utils::EventCategory::VOICE, user.value, "e2ee_key_generated", 0,
+                            "channel=" + channel.value + " reason=room_effectively_empty");
+                    }
+                } else if (auto loaded = load_channel_e2ee_key_from_storage(channel)) {
+                    // Active room (or inconclusive query) with our in-memory key missing:
+                    // restore the live key so the ongoing session keeps decrypting.
+                    e2ee_keys_.set_key(channel, loaded->key, loaded->key_index);
+                    ck = loaded;
+                    (void)persist_channel_e2ee_key_to_storage(channel, ck->key, ck->key_index);
+                    utils::EventLogger::instance().log(utils::EventCategory::VOICE, user.value,
+                                                       "e2ee_key_loaded", 0,
+                                                       "channel=" + channel.value + " source=redis");
+                } else {
+                    need_force_rekey = true;
+                }
+            }
+            if (need_force_rekey) {
+                utils::EventLogger::instance().log(utils::EventCategory::VOICE, user.value,
+                                                   "e2ee_key_missing_active_room", 0,
+                                                   "channel=" + channel.value);
+                force_channel_rekey(channel, "missing_or_invalid_key_for_active_room");
+                response.error_reason = "voice_rekey_in_progress";
+                return response;
+            }
+        } else {
+            (void)persist_channel_e2ee_key_to_storage(channel, ck->key, ck->key_index);
+        }
     }
 
-    if (!key.has_value()) {
+    if (!ck.has_value() || ck->key.empty()) {
         response.error_reason = "voice_key_unavailable";
         return response;
     }
@@ -428,7 +465,8 @@ VoiceService::JoinVoiceToken VoiceService::join_voice(const ChannelId& channel, 
     response.token = token;
     response.livekit_url = node->public_host;
     response.expires_in = 600;
-    response.e2ee_key = *key;
+    response.e2ee_key = ck->key;
+    response.key_index = ck->key_index;
     response.resume_id = rotate_resume_id(user);
 
     return response;
@@ -665,8 +703,13 @@ bool VoiceService::verified_kick_user(const ChannelId& channel, const UserId& ta
 }
 
 void VoiceService::on_channel_empty(const ChannelId& channel) {
-    e2ee_keys_.clear_key(channel);
-    clear_channel_e2ee_key_from_storage(channel);
+    {
+        // Serialize with join-time key acquisition/rotation so this clear cannot
+        // interleave with a concurrent first-join's key create (create-vs-clear race).
+        std::lock_guard rotation_lock(channel_rotation_mutex(channel));
+        e2ee_keys_.clear_key(channel);
+        clear_channel_e2ee_key_from_storage(channel);
+    }
     clear_channel_rekey_guard(channel);
     // Drop the room->node binding too: once our own state agrees the channel is
     // empty (last participant left via an authoritative LiveKit event), there is no
@@ -690,8 +733,11 @@ void VoiceService::on_channel_finish(const ChannelId& channel) {
     }
 
     nodes_.clear_room(channel);
-    e2ee_keys_.clear_key(channel);
-    clear_channel_e2ee_key_from_storage(channel);
+    {
+        std::lock_guard rotation_lock(channel_rotation_mutex(channel));
+        e2ee_keys_.clear_key(channel);
+        clear_channel_e2ee_key_from_storage(channel);
+    }
     clear_channel_rekey_guard(channel);
     clear_channel_started_at_unix(channel);
 }
@@ -716,6 +762,9 @@ void VoiceService::force_local_leave(const UserId& user, const ChannelId& channe
     if (became_empty) {
         clear_channel_started_at_unix(channel);
         on_channel_empty(channel);
+    } else {
+        // Others remain → rotate so the force-removed member can't decrypt future audio.
+        rotate_and_broadcast_channel_key(channel, "participant_force_left");
     }
 }
 
@@ -1296,6 +1345,57 @@ void VoiceService::publish_voice_participant_remove(const HubId& hub, const Chan
     emit(std::move(msg));
 }
 
+void VoiceService::publish_voice_key_update(const HubId& hub, const ChannelId& channel,
+                                            const std::string& key, uint32_t key_index) {
+    // Target each participant's owner session (the one holding the LiveKit transport),
+    // not hub subscribers — only active voice members need the key.
+    for (const auto& participant : sessions_.participants_in_channel(channel)) {
+        const auto owner_session = sessions_.user_session(participant.user_id);
+        if (!owner_session.has_value()) continue;
+
+        auto conns = session_manager_.getSessionIdConnections(*owner_session);
+        if (conns.empty()) continue;
+
+        auto msg = ::app::make_outgoing_message(net::outbound::Target::many(std::move(conns)),
+                                                make_voice_key_update(hub, channel, key, key_index));
+        emit(std::move(msg));
+    }
+}
+
+std::mutex& VoiceService::channel_rotation_mutex(const ChannelId& channel) {
+    std::lock_guard map_lock(rotation_mutex_map_mutex_);
+    auto& slot = channel_rotation_mutexes_[channel];
+    if (!slot) slot = std::make_unique<std::mutex>();
+    return *slot;
+}
+
+livekit::E2EEKeyManager::ChannelKey VoiceService::rotate_and_broadcast_channel_key(
+    const ChannelId& channel, std::string_view reason) {
+    std::lock_guard rotation_lock(channel_rotation_mutex(channel));
+
+    livekit::E2EEKeyManager::ChannelKey rotated;
+    try {
+        rotated = e2ee_keys_.rotate_key(channel);
+    } catch (const std::exception& ex) {
+        utils::EventLogger::instance().log(
+            utils::EventCategory::VOICE, "", "e2ee_rotate_failed", 0,
+            "channel=" + channel.value + " reason=" + std::string(reason) + " error=" + ex.what());
+        return {};
+    }
+
+    (void)persist_channel_e2ee_key_to_storage(channel, rotated.key, rotated.key_index);
+
+    if (const auto channel_info = hub_service_.getChannel(channel)) {
+        publish_voice_key_update(channel_info->hub_id, channel, rotated.key, rotated.key_index);
+    }
+
+    utils::EventLogger::instance().log(
+        utils::EventCategory::VOICE, "", "e2ee_key_rotated", 0,
+        "channel=" + channel.value + " key_index=" + std::to_string(rotated.key_index) +
+            " reason=" + std::string(reason));
+    return rotated;
+}
+
 void VoiceService::publish_self_status(const UserId& user, bool connected,
                                        const std::optional<SessionId>& owner_session_id,
                                        const std::optional<ChannelId>& channel,
@@ -1434,6 +1534,11 @@ void VoiceService::handle_participant_joined(const livekit::webhook::LiveKitEven
 
     publish_self_status(event.user_id, true, intent.session_id, event.channel_id);
 
+    // Re-sync the current key to the just-joined member. Their token carried the key as
+    // of join_voice time; if another join/leave rotated it in the meantime (concurrent
+    // membership change), this delivers the live key so everyone converges.
+    resync_voice_key_for_user(event.user_id);
+
     if (pending_opt.has_value()) {
         if (intent.has_from_channel && intent.from_channel != intent.to_channel) {
             intent.new_join_seen = true;
@@ -1496,6 +1601,9 @@ void VoiceService::handle_participant_left(const livekit::webhook::LiveKitEvent&
         if (became_empty) {
             clear_channel_started_at_unix(event.channel_id);
             on_channel_empty(event.channel_id);
+        } else {
+            // Others remain → rotate so the departed member cannot decrypt future audio.
+            rotate_and_broadcast_channel_key(event.channel_id, "participant_left");
         }
 
         if (old_leave_for_switch) {
@@ -1518,6 +1626,10 @@ void VoiceService::handle_participant_left(const livekit::webhook::LiveKitEvent&
         if (sessions_.is_empty(event.channel_id)) {
             clear_channel_started_at_unix(event.channel_id);
             on_channel_empty(event.channel_id);
+        } else {
+            // The switcher left this (from) channel but others remain → rotate so they
+            // cannot decrypt the channel's future audio.
+            rotate_and_broadcast_channel_key(event.channel_id, "participant_switch_away");
         }
 
         auto intent = *pending_opt;
@@ -1629,8 +1741,9 @@ void VoiceService::recover_from_restart() {
                     continue;
                 }
 
-                e2ee_keys_.set_key(room, *recovered_key);
-                (void)persist_channel_e2ee_key_to_storage(room, *recovered_key);
+                e2ee_keys_.set_key(room, recovered_key->key, recovered_key->key_index);
+                (void)persist_channel_e2ee_key_to_storage(room, recovered_key->key,
+                                                          recovered_key->key_index);
                 clear_channel_rekey_guard(room);
                 utils::EventLogger::instance().log(
                     utils::EventCategory::VOICE, "", "e2ee_key_loaded", 0,
@@ -1886,12 +1999,42 @@ std::optional<VoiceService::ResumeTransferResult> VoiceService::try_resume_voice
     return result;
 }
 
+void VoiceService::resync_voice_key_for_user(const UserId& user) {
+    const auto channel = sessions_.user_channel(user);
+    if (!channel.has_value()) return;
+
+    // Serialize with rotations on this channel so we read a stable key and our send is
+    // ordered relative to any concurrent rotation broadcast for it.
+    std::lock_guard rotation_lock(channel_rotation_mutex(*channel));
+
+    const auto ck = e2ee_keys_.get_key(*channel);
+    if (!ck.has_value()) return;
+
+    const auto channel_info = hub_service_.getChannel(*channel);
+    if (!channel_info) return;
+
+    const auto owner = sessions_.user_session(user);
+    if (!owner.has_value()) return;
+
+    auto conns = session_manager_.getSessionIdConnections(*owner);
+    if (conns.empty()) return;
+
+    auto msg = ::app::make_outgoing_message(
+        net::outbound::Target::many(std::move(conns)),
+        make_voice_key_update(channel_info->hub_id, *channel, ck->key, ck->key_index));
+    emit(std::move(msg));
+}
+
 std::string VoiceService::channel_e2ee_key_storage_key(const ChannelId& channel) {
     return "voice:e2ee:channel:" + channel.value;
 }
 
-std::optional<std::string> VoiceService::load_channel_e2ee_key_from_storage(
-    const ChannelId& channel) {
+std::string VoiceService::channel_e2ee_index_storage_key(const ChannelId& channel) {
+    return "voice:e2ee_idx:channel:" + channel.value;
+}
+
+std::optional<livekit::E2EEKeyManager::ChannelKey>
+VoiceService::load_channel_e2ee_key_from_storage(const ChannelId& channel) {
     if (!e2ee_storage_key_ready_) return std::nullopt;
 
     try {
@@ -1906,8 +2049,23 @@ std::optional<std::string> VoiceService::load_channel_e2ee_key_from_storage(
             return std::nullopt;
         }
 
+        // The key index is not secret and is stored alongside (plain) so a restart
+        // restores the same index the connected clients still hold.
+        uint32_t key_index = 0;
+        try {
+            const auto raw_idx = redis_.get(channel_e2ee_index_storage_key(channel));
+            if (raw_idx.has_value() && !raw_idx->empty()) {
+                key_index = static_cast<uint32_t>(std::stoul(*raw_idx)) %
+                            livekit::E2EEKeyManager::kKeyringSize;
+            }
+        } catch (...) {
+            key_index = 0;
+        }
+
         redis_.setex(channel_e2ee_key_storage_key(channel), e2ee_key_ttl_, *raw);
-        return decrypted_key;
+        redis_.setex(channel_e2ee_index_storage_key(channel), e2ee_key_ttl_,
+                     std::to_string(key_index));
+        return livekit::E2EEKeyManager::ChannelKey{decrypted_key, key_index};
     } catch (const std::exception& ex) {
         utils::EventLogger::instance().log(utils::EventCategory::VOICE, "", "e2ee_key_load_failed",
                                            0, "channel=" + channel.value + " error=" + ex.what());
@@ -1916,7 +2074,7 @@ std::optional<std::string> VoiceService::load_channel_e2ee_key_from_storage(
 }
 
 bool VoiceService::persist_channel_e2ee_key_to_storage(const ChannelId& channel,
-                                                       std::string_view key) {
+                                                       std::string_view key, uint32_t key_index) {
     if (!e2ee_storage_key_ready_ || key.empty()) return false;
 
     try {
@@ -1929,6 +2087,8 @@ bool VoiceService::persist_channel_e2ee_key_to_storage(const ChannelId& channel,
         }
 
         redis_.setex(channel_e2ee_key_storage_key(channel), e2ee_key_ttl_, encrypted_blob);
+        redis_.setex(channel_e2ee_index_storage_key(channel), e2ee_key_ttl_,
+                     std::to_string(key_index));
         return true;
     } catch (const std::exception& ex) {
         utils::EventLogger::instance().log(utils::EventCategory::VOICE, "",
@@ -1941,6 +2101,7 @@ bool VoiceService::persist_channel_e2ee_key_to_storage(const ChannelId& channel,
 void VoiceService::clear_channel_e2ee_key_from_storage(const ChannelId& channel) {
     try {
         redis_.del(channel_e2ee_key_storage_key(channel));
+        redis_.del(channel_e2ee_index_storage_key(channel));
     } catch (const std::exception& ex) {
         utils::EventLogger::instance().log(utils::EventCategory::VOICE, "", "e2ee_key_clear_failed",
                                            0, "channel=" + channel.value + " error=" + ex.what());
