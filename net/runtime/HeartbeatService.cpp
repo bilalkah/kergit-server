@@ -148,7 +148,12 @@ void HeartbeatService::tick() {
             continue;
         }
 
-        if (ctx.heartbeat.rtt_ms > cfg_.timeout) {
+        // Liveness is measured by time since the last pong, NOT by the last
+        // measured RTT. rtt_ms only updates when a pong arrives, so on a dead
+        // connection (no pongs) it stays frozen at its last healthy value and
+        // would never exceed the timeout — leaving frozen/backgrounded clients
+        // (e.g. iOS Safari that never sends a TCP FIN) "online" forever.
+        if (now - ctx.heartbeat.last_pong_at > cfg_.timeout) {
             ctx.handle.end(cfg_.close_code, cfg_.close_reason);
             continue;
         }

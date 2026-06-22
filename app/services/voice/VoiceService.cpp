@@ -2,24 +2,19 @@
 
 #include "app/commands/utils.h"
 #include "app/managers/subscription/Topic.h"
+#include "app/services/voice/ChannelKeyService.h"
+#include "app/services/voice/VoiceNonce.h"
 #include "livekit/cli/LivekitClient.h"
-#include "proto/envelope.pb.h"
-#include "proto/event/activity.pb.h"
 #include "utils/EnvLoader.h"
 #include "utils/EventLogger.h"
 #include "utils/Metrics.h"
 
 #include <algorithm>
-#include <array>
 #include <chrono>
 #include <cstdint>
 #include <memory>
 #include <nlohmann/json.hpp>
-#include <openssl/evp.h>
-#include <openssl/rand.h>
-#include <openssl/sha.h>
 #include <optional>
-#include <random>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -35,253 +30,10 @@ uint64_t unix_now_seconds() {
                                      .count());
 }
 
-template <typename TPayload>
-std::string serialize_as_envelope(const sercom::protocol::Envelope::Type type,
-                                  const TPayload& payload) {
-    sercom::protocol::Envelope env;
-    env.set_version(1);
-    env.set_type(type);
-    payload.SerializeToString(env.mutable_payload());
-    return env.SerializeAsString();
-}
-
-std::string make_voice_self_status_connected(bool is_owner, const HubId& hub_id,
-                                             const ChannelId& channel_id,
-                                             const std::optional<std::string>& resume_id) {
-    sercom::protocol::event::VoiceSelfStatus status;
-    status.set_connected(true);
-    status.set_is_owner(is_owner);
-    *status.mutable_channel() = ::app::to_proto_channel_ref(hub_id, channel_id);
-    if (is_owner && resume_id.has_value() && !resume_id->empty()) {
-        status.set_resume_id(*resume_id);
-    }
-    return serialize_as_envelope(sercom::protocol::Envelope::VOICE_SELF_STATUS, status);
-}
-
-std::string make_voice_self_status_disconnected() {
-    sercom::protocol::event::VoiceSelfStatus status;
-    status.set_connected(false);
-    status.set_is_owner(false);
-    return serialize_as_envelope(sercom::protocol::Envelope::VOICE_SELF_STATUS, status);
-}
-
-std::string make_voice_key_update(const HubId& hub_id, const ChannelId& channel_id,
-                                  const std::string& key, uint32_t key_index) {
-    sercom::protocol::event::VoiceKeyUpdate update;
-    *update.mutable_channel() = ::app::to_proto_channel_ref(hub_id, channel_id);
-    update.set_e2ee_key(key);
-    update.set_key_index(key_index);
-    return serialize_as_envelope(sercom::protocol::Envelope::VOICE_KEY_UPDATE, update);
-}
-
 bool contains_participant(const std::vector<livekit::cli::ParticipantInfo>& participants,
                           const UserId& user) {
     return std::any_of(participants.begin(), participants.end(),
                        [&](const auto& p) { return p.identity == user; });
-}
-
-std::string generate_nonce_hex() {
-    thread_local std::mt19937_64 rng(std::random_device{}());
-    constexpr char kHex[] = "0123456789abcdef";
-
-    std::string out;
-    out.resize(32);
-    for (size_t i = 0; i < 16; ++i) {
-        const uint8_t byte = static_cast<uint8_t>(rng() & 0xFFu);
-        out[i * 2] = kHex[(byte >> 4) & 0x0Fu];
-        out[i * 2 + 1] = kHex[byte & 0x0Fu];
-    }
-    return out;
-}
-
-std::chrono::seconds parse_reconcile_interval_seconds(const std::string& raw,
-                                                      std::chrono::seconds fallback) {
-    if (raw.empty()) return fallback;
-    try {
-        const auto parsed = std::stoll(raw);
-        if (parsed <= 0) return fallback;
-        return std::chrono::seconds(parsed);
-    } catch (...) {
-        return fallback;
-    }
-}
-
-std::chrono::seconds parse_positive_seconds(const std::string& raw, std::chrono::seconds fallback) {
-    if (raw.empty()) return fallback;
-    try {
-        const auto parsed = std::stoll(raw);
-        if (parsed <= 0) return fallback;
-        return std::chrono::seconds(parsed);
-    } catch (...) {
-        return fallback;
-    }
-}
-
-bool derive_master_key(std::string_view secret, std::array<unsigned char, 32>& out_key) {
-    if (secret.empty()) return false;
-
-    unsigned int digest_len = 0;
-    if (EVP_Digest(secret.data(), secret.size(), out_key.data(), &digest_len, EVP_sha256(),
-                   nullptr) != 1) {
-        return false;
-    }
-    return digest_len == out_key.size();
-}
-
-bool base64_encode(std::string_view input, std::string& out) {
-    if (input.empty()) {
-        out.clear();
-        return true;
-    }
-
-    const int encoded_len = 4 * ((static_cast<int>(input.size()) + 2) / 3);
-    out.assign(static_cast<size_t>(encoded_len), '\0');
-    const int actual_len = EVP_EncodeBlock(reinterpret_cast<unsigned char*>(out.data()),
-                                           reinterpret_cast<const unsigned char*>(input.data()),
-                                           static_cast<int>(input.size()));
-    if (actual_len <= 0) return false;
-    out.resize(static_cast<size_t>(actual_len));
-    return true;
-}
-
-bool base64_decode(std::string_view input, std::string& out) {
-    if (input.empty()) {
-        out.clear();
-        return true;
-    }
-
-    if ((input.size() % 4) != 0) return false;
-
-    out.assign((input.size() / 4) * 3, '\0');
-    const int decoded_len = EVP_DecodeBlock(reinterpret_cast<unsigned char*>(out.data()),
-                                            reinterpret_cast<const unsigned char*>(input.data()),
-                                            static_cast<int>(input.size()));
-    if (decoded_len < 0) return false;
-
-    size_t actual_len = static_cast<size_t>(decoded_len);
-    if (!input.empty() && input.back() == '=') actual_len--;
-    if (input.size() > 1 && input[input.size() - 2] == '=') actual_len--;
-    out.resize(actual_len);
-    return true;
-}
-
-bool encrypt_key_blob(const std::array<unsigned char, 32>& master_key, std::string_view plaintext,
-                      std::string& out_b64) {
-    constexpr unsigned char kVersion = 1;
-    constexpr size_t kNonceLen = 12;
-    constexpr size_t kTagLen = 16;
-
-    std::array<unsigned char, kNonceLen> nonce{};
-    if (RAND_bytes(nonce.data(), static_cast<int>(nonce.size())) != 1) {
-        return false;
-    }
-
-    std::unique_ptr<EVP_CIPHER_CTX, decltype(&EVP_CIPHER_CTX_free)> ctx(EVP_CIPHER_CTX_new(),
-                                                                        &EVP_CIPHER_CTX_free);
-    if (!ctx) return false;
-
-    if (EVP_EncryptInit_ex(ctx.get(), EVP_aes_256_gcm(), nullptr, nullptr, nullptr) != 1) {
-        return false;
-    }
-    if (EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_IVLEN, static_cast<int>(kNonceLen),
-                            nullptr) != 1) {
-        return false;
-    }
-    if (EVP_EncryptInit_ex(ctx.get(), nullptr, nullptr, master_key.data(), nonce.data()) != 1) {
-        return false;
-    }
-
-    std::string ciphertext;
-    ciphertext.assign(plaintext.size(), '\0');
-
-    int written = 0;
-    if (!plaintext.empty() &&
-        EVP_EncryptUpdate(ctx.get(), reinterpret_cast<unsigned char*>(ciphertext.data()), &written,
-                          reinterpret_cast<const unsigned char*>(plaintext.data()),
-                          static_cast<int>(plaintext.size())) != 1) {
-        return false;
-    }
-    int total = written;
-
-    int final_written = 0;
-    if (EVP_EncryptFinal_ex(ctx.get(), reinterpret_cast<unsigned char*>(ciphertext.data() + total),
-                            &final_written) != 1) {
-        return false;
-    }
-    total += final_written;
-    ciphertext.resize(static_cast<size_t>(total));
-
-    std::array<unsigned char, kTagLen> tag{};
-    if (EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_GET_TAG, static_cast<int>(kTagLen),
-                            tag.data()) != 1) {
-        return false;
-    }
-
-    std::string packed;
-    packed.reserve(1 + kNonceLen + ciphertext.size() + kTagLen);
-    packed.push_back(static_cast<char>(kVersion));
-    packed.append(reinterpret_cast<const char*>(nonce.data()), nonce.size());
-    packed.append(ciphertext);
-    packed.append(reinterpret_cast<const char*>(tag.data()), tag.size());
-
-    return base64_encode(packed, out_b64);
-}
-
-bool decrypt_key_blob(const std::array<unsigned char, 32>& master_key, std::string_view encoded,
-                      std::string& out_plaintext) {
-    constexpr unsigned char kVersion = 1;
-    constexpr size_t kNonceLen = 12;
-    constexpr size_t kTagLen = 16;
-
-    std::string packed;
-    if (!base64_decode(encoded, packed)) return false;
-    if (packed.size() < (1 + kNonceLen + kTagLen)) return false;
-    if (static_cast<unsigned char>(packed[0]) != kVersion) return false;
-
-    const auto* nonce = reinterpret_cast<const unsigned char*>(packed.data() + 1);
-    const size_t ciphertext_len = packed.size() - (1 + kNonceLen + kTagLen);
-    const auto* ciphertext = reinterpret_cast<const unsigned char*>(packed.data() + 1 + kNonceLen);
-    const auto* tag =
-        reinterpret_cast<const unsigned char*>(packed.data() + packed.size() - kTagLen);
-
-    std::unique_ptr<EVP_CIPHER_CTX, decltype(&EVP_CIPHER_CTX_free)> ctx(EVP_CIPHER_CTX_new(),
-                                                                        &EVP_CIPHER_CTX_free);
-    if (!ctx) return false;
-
-    if (EVP_DecryptInit_ex(ctx.get(), EVP_aes_256_gcm(), nullptr, nullptr, nullptr) != 1) {
-        return false;
-    }
-    if (EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_IVLEN, static_cast<int>(kNonceLen),
-                            nullptr) != 1) {
-        return false;
-    }
-    if (EVP_DecryptInit_ex(ctx.get(), nullptr, nullptr, master_key.data(), nonce) != 1) {
-        return false;
-    }
-
-    out_plaintext.assign(ciphertext_len, '\0');
-    int written = 0;
-    if (ciphertext_len > 0 &&
-        EVP_DecryptUpdate(ctx.get(), reinterpret_cast<unsigned char*>(out_plaintext.data()),
-                          &written, ciphertext, static_cast<int>(ciphertext_len)) != 1) {
-        return false;
-    }
-    int total = written;
-
-    if (EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_TAG, static_cast<int>(kTagLen),
-                            const_cast<unsigned char*>(tag)) != 1) {
-        return false;
-    }
-
-    int final_written = 0;
-    if (EVP_DecryptFinal_ex(ctx.get(),
-                            reinterpret_cast<unsigned char*>(out_plaintext.data() + total),
-                            &final_written) != 1) {
-        return false;
-    }
-    total += final_written;
-    out_plaintext.resize(static_cast<size_t>(total));
-    return true;
 }
 
 SessionId next_recovery_session_id() {
@@ -304,26 +56,12 @@ VoiceService::VoiceService(std::string api_key, std::string api_secret,
       hub_service_(hub_service),
       outbound_sink_(outbound_sink),
       token_service_(std::move(api_key), std::move(api_secret)),
-      e2ee_key_ttl_(parse_positive_seconds(utils::EnvLoader::get_env("VOICE_E2EE_KEY_TTL_SEC", ""),
-                                           kDefaultE2EEKeyTtl)),
-      e2ee_rekey_guard_ttl_(parse_positive_seconds(
-          utils::EnvLoader::get_env("VOICE_E2EE_REKEY_GUARD_SEC", ""), kDefaultE2EERekeyGuardTtl)),
-      reconcile_interval_(parse_reconcile_interval_seconds(
-          utils::EnvLoader::get_env("LIVEKIT_RECONCILE_INTERVAL_SEC", ""),
-          kDefaultReconcileInterval)),
-      livekit_missing_clear_ttl_(
-          parse_positive_seconds(utils::EnvLoader::get_env("LIVEKIT_MISSING_CLEAR_SEC", ""),
-                                 kDefaultLivekitMissingClearTtl)),
-      remote_missing_evidence_(livekit_missing_clear_ttl_) {
-    const auto storage_secret = utils::EnvLoader::get_env(
-        "VOICE_E2EE_STORAGE_SECRET", utils::EnvLoader::get_env("LIVEKIT_API_SECRET", ""));
-    e2ee_storage_key_ready_ = derive_master_key(storage_secret, e2ee_storage_master_key_);
-    if (!e2ee_storage_key_ready_) {
-        utils::EventLogger::instance().log(utils::EventCategory::VOICE, "",
-                                           "e2ee_storage_master_key_unavailable", 0,
-                                           "reason=missing_or_invalid_secret");
-    }
-
+      pending_intents_(redis),
+      resume_registry_(redis),
+      publisher_(outbound_sink_, subscription_manager_, session_manager_, hub_service_, sessions_,
+                 resume_registry_),
+      channel_keys_(redis_, nodes_, token_service_, sessions_, publisher_, hub_service_),
+      reconciler_(*this) {
     for (const auto& node : nodes) {
         nodes_.register_node({node.id, node.public_url, node.private_url});
     }
@@ -331,38 +69,22 @@ VoiceService::VoiceService(std::string api_key, std::string api_secret,
 
 VoiceService::~VoiceService() { stop_reconcile_loop(); }
 
-void VoiceService::start_reconcile_loop() {
-    if (reconcile_running_.exchange(true)) return;
-    reconcile_stop_requested_.store(false, std::memory_order_release);
-    try {
-        reconcile_full_state("startup");
-    } catch (const std::exception& ex) {
-        utils::EventLogger::instance().log(utils::EventCategory::VOICE, "",
-                                           "reconcile_startup_failed", 0,
-                                           std::string("error=") + ex.what());
-    }
-    reconcile_thread_ = std::thread(&VoiceService::run_reconcile_loop, this);
+void VoiceService::start_reconcile_loop() { reconciler_.start(); }
+
+void VoiceService::stop_reconcile_loop() { reconciler_.stop(); }
+
+void VoiceService::reconcile_channel(const ChannelId& channel, std::string_view reason) {
+    reconcile_channel_state(channel, reason);
 }
 
-void VoiceService::stop_reconcile_loop() {
-    if (!reconcile_running_.exchange(false)) return;
-    reconcile_stop_requested_.store(true, std::memory_order_release);
-    {
-        std::lock_guard lock(reconcile_mutex_);
-        pending_reconcile_channels_.clear();
-    }
-    reconcile_cv_.notify_all();
-    if (reconcile_thread_.joinable()) {
-        reconcile_thread_.join();
-    }
-}
+void VoiceService::reconcile_full(std::string_view reason) { reconcile_full_state(reason); }
 
 VoiceService::JoinVoiceToken VoiceService::join_voice(const ChannelId& channel, const UserId& user,
                                                       SessionId app_session_id,
                                                       std::string_view intent_nonce) {
     JoinVoiceToken response;
 
-    if (is_channel_rekey_in_progress(channel) && !clear_channel_rekey_if_empty(channel)) {
+    if (channel_keys_.rekey_blocks_join(channel)) {
         response.error_reason = "voice_rekey_in_progress";
         return response;
     }
@@ -374,81 +96,14 @@ VoiceService::JoinVoiceToken VoiceService::join_voice(const ChannelId& channel, 
     }
 
     if (!node) return response;
-    clear_channel_remote_missing_confirmation(channel);
+    reconciler_.clear_channel_remote_missing_confirmation(channel);
 
-    // A genuine new join into a channel that already has tracked members rotates the
-    // key: the joiner and existing members converge on a fresh key the joiner never saw
-    // used before (backward secrecy), and any key a recent leaver held is replaced.
-    // A resume/reconnect into the same channel, or the first person into an empty
-    // channel, keeps/creates the current key (no rotation).
-    const auto current_channel = sessions_.user_channel(user);
-    const bool already_member = current_channel.has_value() && *current_channel == channel;
-    const bool other_members_present = !already_member && !sessions_.is_empty(channel);
-
-    std::optional<livekit::E2EEKeyManager::ChannelKey> ck;
-
-    if (other_members_present) {
-        ck = rotate_and_broadcast_channel_key(channel, "participant_join");
-    } else {
-        ck = e2ee_keys_.get_key(channel);
-        if (!ck.has_value()) {
-            // Compute emptiness OUTSIDE the rotation lock (it does LiveKit network I/O),
-            // then mutate key state under the lock so a concurrent on_channel_empty clear
-            // cannot interleave with our create (the create-vs-clear race).
-            const auto empty_state = is_channel_effectively_empty(channel);
-            bool need_force_rekey = false;
-            {
-                std::lock_guard rotation_lock(channel_rotation_mutex(channel));
-                ck = e2ee_keys_.get_key(channel);  // re-check under the lock
-                if (ck.has_value()) {
-                    (void)persist_channel_e2ee_key_to_storage(channel, ck->key, ck->key_index);
-                } else if (empty_state.has_value() && *empty_state) {
-                    // Confirmed empty (server + LiveKit agree): mint a FRESH key. Never
-                    // reuse stored material here — a departed member could otherwise decrypt
-                    // the new session if a prior clear's Redis del had failed.
-                    try {
-                        ck = e2ee_keys_.get_or_create_key(channel);
-                    } catch (const std::exception& ex) {
-                        utils::EventLogger::instance().log(
-                            utils::EventCategory::VOICE, user.value, "e2ee_key_generate_failed", 0,
-                            "channel=" + channel.value + " error=" + ex.what());
-                    }
-                    if (ck.has_value()) {
-                        (void)persist_channel_e2ee_key_to_storage(channel, ck->key, ck->key_index);
-                        utils::EventLogger::instance().log(
-                            utils::EventCategory::VOICE, user.value, "e2ee_key_generated", 0,
-                            "channel=" + channel.value + " reason=room_effectively_empty");
-                    }
-                } else if (auto loaded = load_channel_e2ee_key_from_storage(channel)) {
-                    // Active room (or inconclusive query) with our in-memory key missing:
-                    // restore the live key so the ongoing session keeps decrypting.
-                    e2ee_keys_.set_key(channel, loaded->key, loaded->key_index);
-                    ck = loaded;
-                    (void)persist_channel_e2ee_key_to_storage(channel, ck->key, ck->key_index);
-                    utils::EventLogger::instance().log(utils::EventCategory::VOICE, user.value,
-                                                       "e2ee_key_loaded", 0,
-                                                       "channel=" + channel.value + " source=redis");
-                } else {
-                    need_force_rekey = true;
-                }
-            }
-            if (need_force_rekey) {
-                utils::EventLogger::instance().log(utils::EventCategory::VOICE, user.value,
-                                                   "e2ee_key_missing_active_room", 0,
-                                                   "channel=" + channel.value);
-                force_channel_rekey(channel, "missing_or_invalid_key_for_active_room");
-                response.error_reason = "voice_rekey_in_progress";
-                return response;
-            }
-        } else {
-            (void)persist_channel_e2ee_key_to_storage(channel, ck->key, ck->key_index);
-        }
-    }
-
-    if (!ck.has_value() || ck->key.empty()) {
-        response.error_reason = "voice_key_unavailable";
+    auto acquired = channel_keys_.acquire_for_join(channel, user);
+    if (!acquired.key.has_value()) {
+        response.error_reason = acquired.error_reason;
         return response;
     }
+    const auto& ck = *acquired.key;
 
     livekit::LiveKitTokenService::ParticipantTokenRequest req{
         .identity = user,
@@ -465,136 +120,19 @@ VoiceService::JoinVoiceToken VoiceService::join_voice(const ChannelId& channel, 
     response.token = token;
     response.livekit_url = node->public_host;
     response.expires_in = 600;
-    response.e2ee_key = ck->key;
-    response.key_index = ck->key_index;
-    response.resume_id = rotate_resume_id(user);
+    response.e2ee_key = ck.key;
+    response.key_index = ck.key_index;
+    response.resume_id = resume_registry_.rotate(user);
 
     return response;
 }
 
 bool VoiceService::stage_pending_join_intent(const UserId& user, const PendingJoinIntent& intent,
                                              uint64_t expires_in_seconds) {
-    const auto ttl = std::chrono::seconds(expires_in_seconds + 10);
-
-    try {
-        json doc;
-        doc["user_id"] = user.value;
-        doc["session_id"] = intent.session_id;
-        doc["intent_nonce"] = intent.intent_nonce;
-        doc["to_channel"] = intent.to_channel.value;
-        doc["from_channel"] = intent.has_from_channel ? intent.from_channel.value : "";
-        doc["has_from_channel"] = intent.has_from_channel;
-        doc["muted"] = intent.muted;
-        doc["deafened"] = intent.deafened;
-        doc["old_leave_seen"] = intent.old_leave_seen;
-        doc["new_join_seen"] = intent.new_join_seen;
-        doc["expires_at_unix"] = unix_now_seconds() + static_cast<uint64_t>(ttl.count());
-
-        redis_.setex(pending_join_key(user), ttl, doc.dump());
-        return true;
-    } catch (const std::exception& ex) {
-        utils::EventLogger::instance().log(utils::EventCategory::VOICE, user.value,
-                                           "pending_join_write_failed", 0,
-                                           std::string("error=") + ex.what());
-        return false;
-    }
+    return pending_intents_.stage(user, intent, expires_in_seconds);
 }
 
-void VoiceService::clear_pending_join_intent(const UserId& user) {
-    try {
-        redis_.del(pending_join_key(user));
-    } catch (...) {
-    }
-}
-
-std::optional<VoiceService::PendingJoinIntent> VoiceService::read_pending_join_intent(
-    const UserId& user) const {
-    try {
-        const auto raw = redis_.get(pending_join_key(user));
-        if (!raw.has_value()) return std::nullopt;
-
-        const auto doc = json::parse(*raw, nullptr, false);
-        if (!doc.is_object()) return std::nullopt;
-
-        PendingJoinIntent intent;
-
-        if (doc.contains("session_id")) {
-            if (doc["session_id"].is_number_unsigned()) {
-                intent.session_id = static_cast<SessionId>(doc["session_id"].get<uint64_t>());
-            } else if (doc["session_id"].is_string()) {
-                intent.session_id =
-                    static_cast<SessionId>(std::stoull(doc["session_id"].get<std::string>()));
-            }
-        }
-
-        if (doc.contains("intent_nonce") && doc["intent_nonce"].is_string()) {
-            intent.intent_nonce = doc["intent_nonce"].get<std::string>();
-        }
-
-        if (!doc.contains("to_channel") || !doc["to_channel"].is_string()) {
-            return std::nullopt;
-        }
-        intent.to_channel = ChannelId(doc["to_channel"].get<std::string>());
-
-        if (doc.contains("has_from_channel") && doc["has_from_channel"].is_boolean()) {
-            intent.has_from_channel = doc["has_from_channel"].get<bool>();
-        }
-        if (doc.contains("from_channel") && doc["from_channel"].is_string()) {
-            const auto from = doc["from_channel"].get<std::string>();
-            if (!from.empty()) {
-                intent.from_channel = ChannelId(from);
-                intent.has_from_channel = true;
-            }
-        }
-
-        if (doc.contains("muted") && doc["muted"].is_boolean()) {
-            intent.muted = doc["muted"].get<bool>();
-        }
-        if (doc.contains("deafened") && doc["deafened"].is_boolean()) {
-            intent.deafened = doc["deafened"].get<bool>();
-        }
-        if (doc.contains("old_leave_seen") && doc["old_leave_seen"].is_boolean()) {
-            intent.old_leave_seen = doc["old_leave_seen"].get<bool>();
-        }
-        if (doc.contains("new_join_seen") && doc["new_join_seen"].is_boolean()) {
-            intent.new_join_seen = doc["new_join_seen"].get<bool>();
-        }
-        if (doc.contains("expires_at_unix") && doc["expires_at_unix"].is_number_unsigned()) {
-            intent.expires_at_unix = doc["expires_at_unix"].get<uint64_t>();
-        }
-
-        return intent;
-    } catch (...) {
-        return std::nullopt;
-    }
-}
-
-bool VoiceService::update_pending_join_intent(const UserId& user, const PendingJoinIntent& intent) {
-    try {
-        const auto ttl = redis_.ttl(pending_join_key(user));
-        if (!ttl.has_value() || ttl->count() <= 0) {
-            return false;
-        }
-
-        json doc;
-        doc["user_id"] = user.value;
-        doc["session_id"] = intent.session_id;
-        doc["intent_nonce"] = intent.intent_nonce;
-        doc["to_channel"] = intent.to_channel.value;
-        doc["from_channel"] = intent.has_from_channel ? intent.from_channel.value : "";
-        doc["has_from_channel"] = intent.has_from_channel;
-        doc["muted"] = intent.muted;
-        doc["deafened"] = intent.deafened;
-        doc["old_leave_seen"] = intent.old_leave_seen;
-        doc["new_join_seen"] = intent.new_join_seen;
-        doc["expires_at_unix"] = intent.expires_at_unix;
-
-        redis_.setex(pending_join_key(user), *ttl, doc.dump());
-        return true;
-    } catch (...) {
-        return false;
-    }
-}
+void VoiceService::clear_pending_join_intent(const UserId& user) { pending_intents_.clear(user); }
 
 VoiceService::ParticipantMetadata VoiceService::parse_participant_metadata(
     std::string_view metadata_raw) {
@@ -703,14 +241,7 @@ bool VoiceService::verified_kick_user(const ChannelId& channel, const UserId& ta
 }
 
 void VoiceService::on_channel_empty(const ChannelId& channel) {
-    {
-        // Serialize with join-time key acquisition/rotation so this clear cannot
-        // interleave with a concurrent first-join's key create (create-vs-clear race).
-        std::lock_guard rotation_lock(channel_rotation_mutex(channel));
-        e2ee_keys_.clear_key(channel);
-        clear_channel_e2ee_key_from_storage(channel);
-    }
-    clear_channel_rekey_guard(channel);
+    channel_keys_.clear_channel(channel);
     // Drop the room->node binding too: once our own state agrees the channel is
     // empty (last participant left via an authoritative LiveKit event), there is no
     // disagreement left to reconcile. Keeping the binding would make the reconcile
@@ -720,31 +251,26 @@ void VoiceService::on_channel_empty(const ChannelId& channel) {
 }
 
 void VoiceService::on_channel_finish(const ChannelId& channel) {
-    reset_remote_missing_confirmations(channel);
+    reconciler_.reset_remote_missing_confirmations(channel);
 
     const auto removed_users = sessions_.clear_channel(channel);
     const auto channel_info = hub_service_.getChannel(channel);
     for (const auto& user : removed_users) {
         if (channel_info.has_value()) {
-            publish_voice_participant_remove(channel_info->hub_id, channel, user);
+            publisher_.publish_voice_participant_remove(channel_info->hub_id, channel, user);
         }
-        publish_self_status(user, false, std::nullopt, std::nullopt);
-        clear_resume_id(user);
+        publisher_.publish_self_status(user, false, std::nullopt, std::nullopt);
+        resume_registry_.clear(user);
     }
 
     nodes_.clear_room(channel);
-    {
-        std::lock_guard rotation_lock(channel_rotation_mutex(channel));
-        e2ee_keys_.clear_key(channel);
-        clear_channel_e2ee_key_from_storage(channel);
-    }
-    clear_channel_rekey_guard(channel);
+    channel_keys_.clear_channel(channel);
     clear_channel_started_at_unix(channel);
 }
 
 void VoiceService::force_local_leave(const UserId& user, const ChannelId& channel,
                                      std::string_view reason) {
-    clear_participant_remote_missing_confirmation(channel, user);
+    reconciler_.clear_participant_remote_missing_confirmation(channel, user);
 
     const bool became_empty = sessions_.leave(channel, user);
 
@@ -753,18 +279,18 @@ void VoiceService::force_local_leave(const UserId& user, const ChannelId& channe
         "channel=" + channel.value + " reason=" + std::string(reason));
 
     if (auto channel_info = hub_service_.getChannel(channel)) {
-        publish_voice_participant_remove(channel_info->hub_id, channel, user);
+        publisher_.publish_voice_participant_remove(channel_info->hub_id, channel, user);
     }
 
-    publish_self_status(user, false, std::nullopt, std::nullopt);
-    clear_resume_id(user);
+    publisher_.publish_self_status(user, false, std::nullopt, std::nullopt);
+    resume_registry_.clear(user);
 
     if (became_empty) {
         clear_channel_started_at_unix(channel);
         on_channel_empty(channel);
     } else {
         // Others remain → rotate so the force-removed member can't decrypt future audio.
-        rotate_and_broadcast_channel_key(channel, "participant_force_left");
+        channel_keys_.rotate_and_broadcast(channel, "participant_force_left");
     }
 }
 
@@ -846,66 +372,6 @@ bool VoiceService::is_stale_room_event(const livekit::webhook::LiveKitEvent& eve
     return false;
 }
 
-void VoiceService::request_channel_reconcile(const ChannelId& channel, std::string_view reason) {
-    if (channel.value.empty()) return;
-
-    bool inserted = false;
-    {
-        std::lock_guard lock(reconcile_mutex_);
-        inserted = pending_reconcile_channels_.insert(channel).second;
-    }
-
-    if (inserted) {
-        utils::EventLogger::instance().log(
-            utils::EventCategory::VOICE, "", "reconcile_channel_requested", 0,
-            "channel=" + channel.value + " reason=" + std::string(reason));
-        reconcile_cv_.notify_one();
-    }
-}
-
-bool VoiceService::confirm_channel_remote_missing(const ChannelId& channel,
-                                                  std::string_view reason) {
-    const auto result = remote_missing_evidence_.observe_channel_missing(channel, reason);
-
-    utils::EventLogger::instance().log(
-        utils::EventCategory::VOICE, "",
-        result.confirmed ? "reconcile_room_missing_remote_confirmed"
-                         : "reconcile_room_missing_remote_suspected",
-        0,
-        "channel=" + channel.value + " reason=" + std::string(reason) + " first_reason=" +
-            result.first_reason + " first_seen=" + (result.first_observation ? "1" : "0") +
-            " missing_clear_sec=" + std::to_string(livekit_missing_clear_ttl_.count()));
-    return result.confirmed;
-}
-
-void VoiceService::clear_channel_remote_missing_confirmation(const ChannelId& channel) {
-    remote_missing_evidence_.clear_channel_missing(channel);
-}
-
-bool VoiceService::confirm_participant_remote_missing(const ChannelId& channel, const UserId& user,
-                                                      std::string_view reason) {
-    const auto result = remote_missing_evidence_.observe_participant_missing(channel, user, reason);
-
-    utils::EventLogger::instance().log(
-        utils::EventCategory::VOICE, user.value,
-        result.confirmed ? "reconcile_participant_missing_remote_confirmed"
-                         : "reconcile_participant_missing_remote_suspected",
-        0,
-        "channel=" + channel.value + " reason=" + std::string(reason) + " first_reason=" +
-            result.first_reason + " first_seen=" + (result.first_observation ? "1" : "0") +
-            " missing_clear_sec=" + std::to_string(livekit_missing_clear_ttl_.count()));
-    return result.confirmed;
-}
-
-void VoiceService::clear_participant_remote_missing_confirmation(const ChannelId& channel,
-                                                                 const UserId& user) {
-    remote_missing_evidence_.clear_participant_missing(channel, user);
-}
-
-void VoiceService::reset_remote_missing_confirmations(const ChannelId& channel) {
-    remote_missing_evidence_.reset_channel(channel);
-}
-
 bool VoiceService::has_active_owner_connection(const UserId& user, const ChannelId& channel) const {
     const auto current_channel = sessions_.user_channel(user);
     if (!current_channel.has_value() || *current_channel != channel) {
@@ -926,57 +392,12 @@ std::size_t VoiceService::active_owner_connection_count(const ChannelId& channel
     return count;
 }
 
-void VoiceService::run_reconcile_loop() {
-    auto next_full_run = std::chrono::steady_clock::now() + reconcile_interval_;
-
-    while (!reconcile_stop_requested_.load(std::memory_order_acquire)) {
-        std::vector<ChannelId> channels_to_reconcile;
-        {
-            std::unique_lock lock(reconcile_mutex_);
-            reconcile_cv_.wait_until(lock, next_full_run, [this]() {
-                return reconcile_stop_requested_.load(std::memory_order_acquire) ||
-                       !pending_reconcile_channels_.empty();
-            });
-
-            if (reconcile_stop_requested_.load(std::memory_order_acquire)) {
-                break;
-            }
-
-            channels_to_reconcile.assign(pending_reconcile_channels_.begin(),
-                                         pending_reconcile_channels_.end());
-            pending_reconcile_channels_.clear();
-        }
-
-        for (const auto& channel : channels_to_reconcile) {
-            try {
-                reconcile_channel_state(channel, "on_demand");
-            } catch (const std::exception& ex) {
-                utils::EventLogger::instance().log(
-                    utils::EventCategory::VOICE, "", "reconcile_channel_failed", 0,
-                    "channel=" + channel.value + " error=" + ex.what());
-            }
-        }
-
-        const auto now = std::chrono::steady_clock::now();
-        if (now >= next_full_run) {
-            try {
-                reconcile_full_state("periodic");
-            } catch (const std::exception& ex) {
-                utils::EventLogger::instance().log(utils::EventCategory::VOICE, "",
-                                                   "reconcile_periodic_failed", 0,
-                                                   std::string("error=") + ex.what());
-            }
-            next_full_run = std::chrono::steady_clock::now() + reconcile_interval_;
-        }
-    }
-}
-
 void VoiceService::reconcile_full_state(std::string_view reason) {
     std::unordered_set<ChannelId> channels;
     for (const auto& channel : sessions_.active_channels()) {
         channels.insert(channel);
     }
-    for (const auto& channel : remote_missing_evidence_.tracked_missing_channels()) {
+    for (const auto& channel : reconciler_.tracked_missing_channels()) {
         channels.insert(channel);
     }
 
@@ -1064,7 +485,7 @@ void VoiceService::reconcile_channel_state(const ChannelId& channel, std::string
         " participant_count=" + std::to_string(query_summary.participant_count);
     const bool all_queries_succeeded = query_summary.all_queries_succeeded();
     if (!all_queries_succeeded) {
-        reset_remote_missing_confirmations(channel);
+        reconciler_.reset_remote_missing_confirmations(channel);
         utils::EventLogger::instance().log(
             utils::EventCategory::VOICE, "", "reconcile_participants_inconclusive", 0,
             "channel=" + channel.value + " reason=" + std::string(reason) + query_details);
@@ -1075,7 +496,7 @@ void VoiceService::reconcile_channel_state(const ChannelId& channel, std::string
             return;
         }
         if (!query_summary.unanimously_absent()) {
-            clear_channel_remote_missing_confirmation(channel);
+            reconciler_.clear_channel_remote_missing_confirmation(channel);
             utils::EventLogger::instance().log(
                 utils::EventCategory::VOICE, "", "reconcile_participants_unusable", 0,
                 "channel=" + channel.value + " reason=" + std::string(reason) + query_details);
@@ -1087,7 +508,7 @@ void VoiceService::reconcile_channel_state(const ChannelId& channel, std::string
         // confirmation cycle (and on_channel_finish) every interval against a room
         // LiveKit keeps listing while it lingers post-emptying.
         if (sessions_.is_empty(channel) && nodes_.get_room_node(channel) == nullptr) {
-            clear_channel_remote_missing_confirmation(channel);
+            reconciler_.clear_channel_remote_missing_confirmation(channel);
             return;
         }
 
@@ -1096,7 +517,7 @@ void VoiceService::reconcile_channel_state(const ChannelId& channel, std::string
             "channel=" + channel.value + " reason=" + std::string(reason) + query_details);
         const auto active_owner_count = active_owner_connection_count(channel);
         if (active_owner_count > 0) {
-            if (confirm_channel_remote_missing(channel, "room_missing_with_active_owner")) {
+            if (reconciler_.confirm_channel_remote_missing(channel, "room_missing_with_active_owner")) {
                 utils::EventLogger::instance().log(
                     utils::EventCategory::VOICE, "",
                     "reconcile_room_missing_active_owner_confirmed", 0,
@@ -1112,13 +533,13 @@ void VoiceService::reconcile_channel_state(const ChannelId& channel, std::string
                         " active_owner_connections=" + std::to_string(active_owner_count) +
                         query_details);
             }
-        } else if (confirm_channel_remote_missing(channel, reason)) {
+        } else if (reconciler_.confirm_channel_remote_missing(channel, reason)) {
             on_channel_finish(channel);
         }
         return;
     }
 
-    clear_channel_remote_missing_confirmation(channel);
+    reconciler_.clear_channel_remote_missing_confirmation(channel);
 
     const auto metadata_node_id =
         resolve_participant_node_assignment(channel, remote_by_user, "reconcile");
@@ -1173,7 +594,7 @@ void VoiceService::reconcile_channel_state(const ChannelId& channel, std::string
         for (const auto& participant : local_participants) {
             if (remote_users.find(participant.user_id) != remote_users.end()) continue;
             if (has_active_owner_connection(participant.user_id, channel)) {
-                if (confirm_participant_remote_missing(channel, participant.user_id,
+                if (reconciler_.confirm_participant_remote_missing(channel, participant.user_id,
                                                        "participant_missing_with_active_owner")) {
                     utils::EventLogger::instance().log(
                         utils::EventCategory::VOICE, participant.user_id.value,
@@ -1193,7 +614,7 @@ void VoiceService::reconcile_channel_state(const ChannelId& channel, std::string
                 continue;
             }
 
-            if (confirm_participant_remote_missing(channel, participant.user_id,
+            if (reconciler_.confirm_participant_remote_missing(channel, participant.user_id,
                                                    "participant_missing_in_livekit")) {
                 force_local_leave(participant.user_id, channel, "participant_missing_in_livekit");
             }
@@ -1204,11 +625,11 @@ void VoiceService::reconcile_channel_state(const ChannelId& channel, std::string
         !assigned_private_host.empty() ? assigned_private_host : first_remote_private_host;
     livekit::cli::LivekitClient remove_client(remove_private_host, token_service_);
     for (const auto& [user_id, participant] : remote_by_user) {
-        clear_participant_remote_missing_confirmation(channel, user_id);
+        reconciler_.clear_participant_remote_missing_confirmation(channel, user_id);
         if (local_users.find(user_id) != local_users.end()) continue;
 
         const auto metadata = parse_participant_metadata(participant.metadata);
-        const auto pending = read_pending_join_intent(user_id);
+        const auto pending = pending_intents_.read(user_id);
 
         bool correlation_valid = false;
         if (pending.has_value() && pending->to_channel == channel) {
@@ -1270,171 +691,11 @@ void VoiceService::reconcile_channel_state(const ChannelId& channel, std::string
     }
 }
 
-void VoiceService::emit(net::outbound::OutgoingMessage msg) {
-    (void)outbound_sink_.push(std::move(msg));
-    utils::metrics::counters().outbound_msgs_total.fetch_add(1, std::memory_order_relaxed);
-}
-
-void VoiceService::publish_voice_snapshot(const HubId& hub, const ChannelId& channel,
-                                          uint64_t started_at_unix) {
-    utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(
-        1, std::memory_order_relaxed);
-    auto subs = subscription_manager_.getSubscribers(Topic::HubTopic(hub));
-    if (!subs || subs->empty()) return;
-
-    sercom::protocol::event::StateDelta delta;
-    auto* hub_delta = delta.add_hubs();
-    hub_delta->set_hub_id(hub.value);
-    auto* channel_delta = hub_delta->add_channels();
-    channel_delta->set_channel_id(channel.value);
-    auto* snapshot = channel_delta->add_voice_ops()->mutable_snapshot()->mutable_state();
-    snapshot->set_started_at_unix(started_at_unix);
-    for (const auto& participant : sessions_.participants_in_channel(channel)) {
-        auto* out_participant = snapshot->add_participants();
-        out_participant->set_user_id(participant.user_id.value);
-        out_participant->set_muted(participant.muted);
-        out_participant->set_deafened(participant.deafened);
-    }
-
-    std::vector<GlobalConnId> conns{subs->begin(), subs->end()};
-    auto msg = ::app::make_outgoing_message(net::outbound::Target::many(std::move(conns)),
-                                            ::app::make_state_delta(delta));
-    emit(std::move(msg));
-}
-
-void VoiceService::publish_voice_participant_upsert(const HubId& hub, const ChannelId& channel,
-                                                    const UserId& user, bool muted, bool deafened) {
-    utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(
-        1, std::memory_order_relaxed);
-    auto subs = subscription_manager_.getSubscribers(Topic::HubTopic(hub));
-    if (!subs || subs->empty()) return;
-
-    sercom::protocol::event::StateDelta delta;
-    auto* hub_delta = delta.add_hubs();
-    hub_delta->set_hub_id(hub.value);
-    auto* channel_delta = hub_delta->add_channels();
-    channel_delta->set_channel_id(channel.value);
-    auto* upsert = channel_delta->add_voice_ops()->mutable_upsert()->mutable_participant();
-    upsert->set_user_id(user.value);
-    upsert->set_muted(muted);
-    upsert->set_deafened(deafened);
-
-    std::vector<GlobalConnId> conns{subs->begin(), subs->end()};
-    auto msg = ::app::make_outgoing_message(net::outbound::Target::many(std::move(conns)),
-                                            ::app::make_state_delta(delta));
-    emit(std::move(msg));
-}
-
-void VoiceService::publish_voice_participant_remove(const HubId& hub, const ChannelId& channel,
-                                                    const UserId& user) {
-    utils::metrics::counters().fanout_subscriber_snapshot_total.fetch_add(
-        1, std::memory_order_relaxed);
-    auto subs = subscription_manager_.getSubscribers(Topic::HubTopic(hub));
-    if (!subs || subs->empty()) return;
-
-    sercom::protocol::event::StateDelta delta;
-    auto* hub_delta = delta.add_hubs();
-    hub_delta->set_hub_id(hub.value);
-    auto* channel_delta = hub_delta->add_channels();
-    channel_delta->set_channel_id(channel.value);
-    channel_delta->add_voice_ops()->mutable_remove()->set_user_id(user.value);
-
-    std::vector<GlobalConnId> conns{subs->begin(), subs->end()};
-    auto msg = ::app::make_outgoing_message(net::outbound::Target::many(std::move(conns)),
-                                            ::app::make_state_delta(delta));
-    emit(std::move(msg));
-}
-
-void VoiceService::publish_voice_key_update(const HubId& hub, const ChannelId& channel,
-                                            const std::string& key, uint32_t key_index) {
-    // Target each participant's owner session (the one holding the LiveKit transport),
-    // not hub subscribers — only active voice members need the key.
-    for (const auto& participant : sessions_.participants_in_channel(channel)) {
-        const auto owner_session = sessions_.user_session(participant.user_id);
-        if (!owner_session.has_value()) continue;
-
-        auto conns = session_manager_.getSessionIdConnections(*owner_session);
-        if (conns.empty()) continue;
-
-        auto msg = ::app::make_outgoing_message(net::outbound::Target::many(std::move(conns)),
-                                                make_voice_key_update(hub, channel, key, key_index));
-        emit(std::move(msg));
-    }
-}
-
-std::mutex& VoiceService::channel_rotation_mutex(const ChannelId& channel) {
-    std::lock_guard map_lock(rotation_mutex_map_mutex_);
-    auto& slot = channel_rotation_mutexes_[channel];
-    if (!slot) slot = std::make_unique<std::mutex>();
-    return *slot;
-}
-
-livekit::E2EEKeyManager::ChannelKey VoiceService::rotate_and_broadcast_channel_key(
-    const ChannelId& channel, std::string_view reason) {
-    std::lock_guard rotation_lock(channel_rotation_mutex(channel));
-
-    livekit::E2EEKeyManager::ChannelKey rotated;
-    try {
-        rotated = e2ee_keys_.rotate_key(channel);
-    } catch (const std::exception& ex) {
-        utils::EventLogger::instance().log(
-            utils::EventCategory::VOICE, "", "e2ee_rotate_failed", 0,
-            "channel=" + channel.value + " reason=" + std::string(reason) + " error=" + ex.what());
-        return {};
-    }
-
-    (void)persist_channel_e2ee_key_to_storage(channel, rotated.key, rotated.key_index);
-
-    if (const auto channel_info = hub_service_.getChannel(channel)) {
-        publish_voice_key_update(channel_info->hub_id, channel, rotated.key, rotated.key_index);
-    }
-
-    utils::EventLogger::instance().log(
-        utils::EventCategory::VOICE, "", "e2ee_key_rotated", 0,
-        "channel=" + channel.value + " key_index=" + std::to_string(rotated.key_index) +
-            " reason=" + std::string(reason));
-    return rotated;
-}
-
-void VoiceService::publish_self_status(const UserId& user, bool connected,
-                                       const std::optional<SessionId>& owner_session_id,
-                                       const std::optional<ChannelId>& channel,
-                                       std::optional<SessionId> only_session_id) {
-    std::optional<HubId> hub_id;
-    if (connected && channel.has_value()) {
-        if (const auto channel_info = hub_service_.getChannel(*channel)) {
-            hub_id = channel_info->hub_id;
-        }
-    }
-
-    const auto resume_id = connected ? read_resume_id(user) : std::nullopt;
-
-    for (const auto& session_id : session_manager_.getUserSessionIds(user)) {
-        if (only_session_id.has_value() && *only_session_id != session_id) continue;
-
-        auto session_conns = session_manager_.getSessionIdConnections(session_id);
-        if (session_conns.empty()) continue;
-
-        const bool is_owner =
-            connected && owner_session_id.has_value() && owner_session_id.value() == session_id;
-
-        std::string bytes = make_voice_self_status_disconnected();
-        if (connected && channel.has_value() && hub_id.has_value()) {
-            bytes = make_voice_self_status_connected(is_owner, *hub_id, *channel,
-                                                     is_owner ? resume_id : std::nullopt);
-        }
-
-        auto msg = ::app::make_outgoing_message(
-            net::outbound::Target::many(std::move(session_conns)), std::move(bytes));
-        emit(std::move(msg));
-    }
-}
-
 void VoiceService::handle_participant_joined(const livekit::webhook::LiveKitEvent& event) {
-    clear_channel_remote_missing_confirmation(event.channel_id);
-    clear_participant_remote_missing_confirmation(event.channel_id, event.user_id);
+    reconciler_.clear_channel_remote_missing_confirmation(event.channel_id);
+    reconciler_.clear_participant_remote_missing_confirmation(event.channel_id, event.user_id);
 
-    const auto pending_opt = read_pending_join_intent(event.user_id);
+    const auto pending_opt = pending_intents_.read(event.user_id);
 
     PendingJoinIntent intent;
     bool has_correlated_intent = false;
@@ -1486,7 +747,7 @@ void VoiceService::handle_participant_joined(const livekit::webhook::LiveKitEven
             utils::EventCategory::VOICE, event.user_id.value, "join_intent_mismatch", 0,
             "event_channel=" + event.channel_id.value +
                 " event_session=" + std::to_string(event.app_session_id));
-        request_channel_reconcile(event.channel_id, "join_intent_mismatch");
+        reconciler_.request(event.channel_id, "join_intent_mismatch");
         (void)kick_user(event.channel_id, event.user_id);
         return;
     }
@@ -1519,20 +780,20 @@ void VoiceService::handle_participant_joined(const livekit::webhook::LiveKitEven
     utils::EventLogger::instance().voice_join(event.user_id.value, event.channel_id.value,
                                               join_source);
 
-    if (!read_resume_id(event.user_id).has_value()) {
-        (void)rotate_resume_id(event.user_id);
+    if (!resume_registry_.read(event.user_id).has_value()) {
+        (void)resume_registry_.rotate(event.user_id);
     }
 
     if (auto channel = hub_service_.getChannel(event.channel_id)) {
         if (first_join_in_channel) {
-            publish_voice_snapshot(channel->hub_id, event.channel_id,
+            publisher_.publish_voice_snapshot(channel->hub_id, event.channel_id,
                                    read_channel_started_at_unix(event.channel_id));
         }
-        publish_voice_participant_upsert(channel->hub_id, event.channel_id, event.user_id,
+        publisher_.publish_voice_participant_upsert(channel->hub_id, event.channel_id, event.user_id,
                                          final_muted, final_deafened);
     }
 
-    publish_self_status(event.user_id, true, intent.session_id, event.channel_id);
+    publisher_.publish_self_status(event.user_id, true, intent.session_id, event.channel_id);
 
     // Re-sync the current key to the just-joined member. Their token carried the key as
     // of join_voice time; if another join/leave rotated it in the meantime (concurrent
@@ -1545,7 +806,7 @@ void VoiceService::handle_participant_joined(const livekit::webhook::LiveKitEven
             if (intent.old_leave_seen) {
                 clear_pending_join_intent(event.user_id);
             } else {
-                (void)update_pending_join_intent(event.user_id, intent);
+                (void)pending_intents_.update(event.user_id, intent);
             }
         } else {
             clear_pending_join_intent(event.user_id);
@@ -1554,7 +815,7 @@ void VoiceService::handle_participant_joined(const livekit::webhook::LiveKitEven
 }
 
 void VoiceService::handle_participant_left(const livekit::webhook::LiveKitEvent& event) {
-    const auto pending_opt = read_pending_join_intent(event.user_id);
+    const auto pending_opt = pending_intents_.read(event.user_id);
 
     const auto current_channel = sessions_.user_channel(event.user_id);
     const auto current_owner = sessions_.user_session(event.user_id);
@@ -1577,7 +838,7 @@ void VoiceService::handle_participant_left(const livekit::webhook::LiveKitEvent&
                                       pending_opt->from_channel != pending_opt->to_channel;
 
     if (leaving_current_voice || old_leave_for_switch) {
-        clear_participant_remote_missing_confirmation(event.channel_id, event.user_id);
+        reconciler_.clear_participant_remote_missing_confirmation(event.channel_id, event.user_id);
     }
 
     bool became_empty = false;
@@ -1589,13 +850,13 @@ void VoiceService::handle_participant_left(const livekit::webhook::LiveKitEvent&
         utils::EventLogger::instance().voice_leave(event.user_id.value, event.channel_id.value);
 
         if (auto channel = hub_service_.getChannel(event.channel_id)) {
-            publish_voice_participant_remove(channel->hub_id, event.channel_id, event.user_id);
+            publisher_.publish_voice_participant_remove(channel->hub_id, event.channel_id, event.user_id);
         }
 
-        publish_self_status(event.user_id, false, std::nullopt, std::nullopt);
+        publisher_.publish_self_status(event.user_id, false, std::nullopt, std::nullopt);
 
         if (!old_leave_for_switch) {
-            clear_resume_id(event.user_id);
+            resume_registry_.clear(event.user_id);
         }
 
         if (became_empty) {
@@ -1603,7 +864,7 @@ void VoiceService::handle_participant_left(const livekit::webhook::LiveKitEvent&
             on_channel_empty(event.channel_id);
         } else {
             // Others remain → rotate so the departed member cannot decrypt future audio.
-            rotate_and_broadcast_channel_key(event.channel_id, "participant_left");
+            channel_keys_.rotate_and_broadcast(event.channel_id, "participant_left");
         }
 
         if (old_leave_for_switch) {
@@ -1612,7 +873,7 @@ void VoiceService::handle_participant_left(const livekit::webhook::LiveKitEvent&
             if (intent.new_join_seen) {
                 clear_pending_join_intent(event.user_id);
             } else {
-                (void)update_pending_join_intent(event.user_id, intent);
+                (void)pending_intents_.update(event.user_id, intent);
             }
         }
         return;
@@ -1620,7 +881,7 @@ void VoiceService::handle_participant_left(const livekit::webhook::LiveKitEvent&
 
     if (old_leave_for_switch) {
         if (auto channel = hub_service_.getChannel(event.channel_id)) {
-            publish_voice_participant_remove(channel->hub_id, event.channel_id, event.user_id);
+            publisher_.publish_voice_participant_remove(channel->hub_id, event.channel_id, event.user_id);
         }
 
         if (sessions_.is_empty(event.channel_id)) {
@@ -1629,7 +890,7 @@ void VoiceService::handle_participant_left(const livekit::webhook::LiveKitEvent&
         } else {
             // The switcher left this (from) channel but others remain → rotate so they
             // cannot decrypt the channel's future audio.
-            rotate_and_broadcast_channel_key(event.channel_id, "participant_switch_away");
+            channel_keys_.rotate_and_broadcast(event.channel_id, "participant_switch_away");
         }
 
         auto intent = *pending_opt;
@@ -1637,7 +898,7 @@ void VoiceService::handle_participant_left(const livekit::webhook::LiveKitEvent&
         if (intent.new_join_seen) {
             clear_pending_join_intent(event.user_id);
         } else {
-            (void)update_pending_join_intent(event.user_id, intent);
+            (void)pending_intents_.update(event.user_id, intent);
         }
         return;
     }
@@ -1646,7 +907,7 @@ void VoiceService::handle_participant_left(const livekit::webhook::LiveKitEvent&
         utils::EventCategory::VOICE, event.user_id.value, "ignored_participant_left", 0,
         "channel=" + event.channel_id.value +
             " event_session=" + std::to_string(event.app_session_id));
-    request_channel_reconcile(event.channel_id, "ignored_participant_left");
+    reconciler_.request(event.channel_id, "ignored_participant_left");
 }
 
 void VoiceService::recover_from_restart() {
@@ -1663,15 +924,7 @@ void VoiceService::recover_from_restart() {
         user_last_event_ts_ms_.clear();
         channel_last_room_event_ts_ms_.clear();
     }
-    {
-        std::lock_guard lock(resume_id_mutex_);
-        user_resume_ids_.clear();
-    }
-    {
-        std::lock_guard lock(e2ee_rekey_mutex_);
-        e2ee_rekey_guard_until_.clear();
-    }
-    remote_missing_evidence_.reset_all();
+    resume_registry_.clear_all();
 
     std::unordered_set<ChannelId> recovered_rooms;
     std::unordered_map<UserId, ChannelId> recovered_users;
@@ -1732,24 +985,11 @@ void VoiceService::recover_from_restart() {
             }
 
             if (!participants.empty()) {
-                const auto recovered_key = load_channel_e2ee_key_from_storage(room);
-                if (!recovered_key.has_value()) {
-                    utils::EventLogger::instance().log(
-                        utils::EventCategory::VOICE, "", "e2ee_key_missing_active_room", 0,
-                        "channel=" + room.value + " reason=recovery_missing_or_invalid");
-                    force_channel_rekey(room, "recovery_missing_or_invalid");
-                    continue;
+                if (!channel_keys_.restore_key_for_recovery(room)) {
+                    continue;  // no valid stored key → force-rekeyed; skip registering
                 }
-
-                e2ee_keys_.set_key(room, recovered_key->key, recovered_key->key_index);
-                (void)persist_channel_e2ee_key_to_storage(room, recovered_key->key,
-                                                          recovered_key->key_index);
-                clear_channel_rekey_guard(room);
-                utils::EventLogger::instance().log(
-                    utils::EventCategory::VOICE, "", "e2ee_key_loaded", 0,
-                    "channel=" + room.value + " source=redis_recovery");
             } else {
-                clear_channel_rekey_guard(room);
+                channel_keys_.clear_rekey_guard(room);
             }
 
             for (const auto& p : participants) {
@@ -1788,9 +1028,9 @@ void VoiceService::recover_from_restart() {
                     nodes_.increment_user(effective_node_id);
                 }
 
-                if (!read_resume_id(p.identity).has_value()) {
-                    if (!load_resume_id_from_storage(p.identity).has_value()) {
-                        (void)rotate_resume_id(p.identity);
+                if (!resume_registry_.read(p.identity).has_value()) {
+                    if (!resume_registry_.load_from_storage(p.identity).has_value()) {
+                        (void)resume_registry_.rotate(p.identity);
                     }
                 }
 
@@ -1822,7 +1062,7 @@ void VoiceService::on_livekit_event(const livekit::webhook::LiveKitEvent& event)
             utils::EventCategory::VOICE, event.user_id.value, "stale_participant_event", 0,
             "event_id=" + event.event_id + " raw_event=" + event.raw_event_name + " channel=" +
                 event.channel_id.value + " timestamp_ms=" + std::to_string(event.timestamp_ms));
-        request_channel_reconcile(event.channel_id, "stale_participant_event");
+        reconciler_.request(event.channel_id, "stale_participant_event");
         return;
     }
 
@@ -1832,7 +1072,7 @@ void VoiceService::on_livekit_event(const livekit::webhook::LiveKitEvent& event)
             utils::EventCategory::VOICE, "", "stale_room_event", 0,
             "event_id=" + event.event_id + " raw_event=" + event.raw_event_name + " channel=" +
                 event.channel_id.value + " timestamp_ms=" + std::to_string(event.timestamp_ms));
-        request_channel_reconcile(event.channel_id, "stale_room_event");
+        reconciler_.request(event.channel_id, "stale_room_event");
         return;
     }
 
@@ -1857,8 +1097,8 @@ void VoiceService::on_livekit_event(const livekit::webhook::LiveKitEvent& event)
             utils::EventLogger::instance().log(utils::EventCategory::VOICE, "",
                                                "room_finished_requires_reconcile", 0,
                                                "channel=" + event.channel_id.value);
-            reset_remote_missing_confirmations(event.channel_id);
-            request_channel_reconcile(event.channel_id, "room_finished");
+            reconciler_.reset_remote_missing_confirmations(event.channel_id);
+            reconciler_.request(event.channel_id, "room_finished");
             break;
 
         case Type::PARTICIPANT_JOINED: {
@@ -1916,7 +1156,7 @@ void VoiceService::on_livekit_event(const livekit::webhook::LiveKitEvent& event)
                 }
             }
             if (node_mismatch) {
-                request_channel_reconcile(event.channel_id, "participant_left_node_mismatch");
+                reconciler_.request(event.channel_id, "participant_left_node_mismatch");
             }
             break;
         }
@@ -1950,7 +1190,7 @@ void VoiceService::on_livekit_event(const livekit::webhook::LiveKitEvent& event)
 void VoiceService::on_session_destroyed(const UserId& user) {
     const auto voice_channel = sessions_.user_channel(user);
     if (!voice_channel.has_value()) return;
-    request_channel_reconcile(*voice_channel, "session_destroyed");
+    reconciler_.request(*voice_channel, "session_destroyed");
 }
 
 std::string VoiceService::generate_intent_nonce() const { return generate_nonce_hex(); }
@@ -1960,7 +1200,7 @@ std::uint64_t VoiceService::active_voice_user_count() const {
 }
 
 std::optional<std::string> VoiceService::current_resume_id(const UserId& user) const {
-    return read_resume_id(user);
+    return resume_registry_.read(user);
 }
 
 std::optional<VoiceService::ResumeTransferResult> VoiceService::try_resume_voice_ownership(
@@ -1983,7 +1223,7 @@ std::optional<VoiceService::ResumeTransferResult> VoiceService::try_resume_voice
         return std::nullopt;
     }
 
-    const auto current_resume = read_resume_id(user);
+    const auto current_resume = resume_registry_.read(user);
     if (!current_resume.has_value() || *current_resume != resume_id) {
         return std::nullopt;
     }
@@ -1995,285 +1235,16 @@ std::optional<VoiceService::ResumeTransferResult> VoiceService::try_resume_voice
     ResumeTransferResult result;
     result.previous_owner_session = *owner_session;
     result.channel = *active_channel;
-    result.resume_id = rotate_resume_id(user);
+    result.resume_id = resume_registry_.rotate(user);
     return result;
 }
 
 void VoiceService::resync_voice_key_for_user(const UserId& user) {
-    const auto channel = sessions_.user_channel(user);
-    if (!channel.has_value()) return;
-
-    // Serialize with rotations on this channel so we read a stable key and our send is
-    // ordered relative to any concurrent rotation broadcast for it.
-    std::lock_guard rotation_lock(channel_rotation_mutex(*channel));
-
-    const auto ck = e2ee_keys_.get_key(*channel);
-    if (!ck.has_value()) return;
-
-    const auto channel_info = hub_service_.getChannel(*channel);
-    if (!channel_info) return;
-
-    const auto owner = sessions_.user_session(user);
-    if (!owner.has_value()) return;
-
-    auto conns = session_manager_.getSessionIdConnections(*owner);
-    if (conns.empty()) return;
-
-    auto msg = ::app::make_outgoing_message(
-        net::outbound::Target::many(std::move(conns)),
-        make_voice_key_update(channel_info->hub_id, *channel, ck->key, ck->key_index));
-    emit(std::move(msg));
-}
-
-std::string VoiceService::channel_e2ee_key_storage_key(const ChannelId& channel) {
-    return "voice:e2ee:channel:" + channel.value;
-}
-
-std::string VoiceService::channel_e2ee_index_storage_key(const ChannelId& channel) {
-    return "voice:e2ee_idx:channel:" + channel.value;
-}
-
-std::optional<livekit::E2EEKeyManager::ChannelKey>
-VoiceService::load_channel_e2ee_key_from_storage(const ChannelId& channel) {
-    if (!e2ee_storage_key_ready_) return std::nullopt;
-
-    try {
-        const auto raw = redis_.get(channel_e2ee_key_storage_key(channel));
-        if (!raw.has_value() || raw->empty()) return std::nullopt;
-
-        std::string decrypted_key;
-        if (!decrypt_key_blob(e2ee_storage_master_key_, *raw, decrypted_key)) {
-            utils::EventLogger::instance().log(utils::EventCategory::VOICE, "",
-                                               "e2ee_key_decrypt_failed", 0,
-                                               "channel=" + channel.value);
-            return std::nullopt;
-        }
-
-        // The key index is not secret and is stored alongside (plain) so a restart
-        // restores the same index the connected clients still hold.
-        uint32_t key_index = 0;
-        try {
-            const auto raw_idx = redis_.get(channel_e2ee_index_storage_key(channel));
-            if (raw_idx.has_value() && !raw_idx->empty()) {
-                key_index = static_cast<uint32_t>(std::stoul(*raw_idx)) %
-                            livekit::E2EEKeyManager::kKeyringSize;
-            }
-        } catch (...) {
-            key_index = 0;
-        }
-
-        redis_.setex(channel_e2ee_key_storage_key(channel), e2ee_key_ttl_, *raw);
-        redis_.setex(channel_e2ee_index_storage_key(channel), e2ee_key_ttl_,
-                     std::to_string(key_index));
-        return livekit::E2EEKeyManager::ChannelKey{decrypted_key, key_index};
-    } catch (const std::exception& ex) {
-        utils::EventLogger::instance().log(utils::EventCategory::VOICE, "", "e2ee_key_load_failed",
-                                           0, "channel=" + channel.value + " error=" + ex.what());
-        return std::nullopt;
-    }
-}
-
-bool VoiceService::persist_channel_e2ee_key_to_storage(const ChannelId& channel,
-                                                       std::string_view key, uint32_t key_index) {
-    if (!e2ee_storage_key_ready_ || key.empty()) return false;
-
-    try {
-        std::string encrypted_blob;
-        if (!encrypt_key_blob(e2ee_storage_master_key_, key, encrypted_blob)) {
-            utils::EventLogger::instance().log(utils::EventCategory::VOICE, "",
-                                               "e2ee_key_encrypt_failed", 0,
-                                               "channel=" + channel.value);
-            return false;
-        }
-
-        redis_.setex(channel_e2ee_key_storage_key(channel), e2ee_key_ttl_, encrypted_blob);
-        redis_.setex(channel_e2ee_index_storage_key(channel), e2ee_key_ttl_,
-                     std::to_string(key_index));
-        return true;
-    } catch (const std::exception& ex) {
-        utils::EventLogger::instance().log(utils::EventCategory::VOICE, "",
-                                           "e2ee_key_persist_failed", 0,
-                                           "channel=" + channel.value + " error=" + ex.what());
-        return false;
-    }
-}
-
-void VoiceService::clear_channel_e2ee_key_from_storage(const ChannelId& channel) {
-    try {
-        redis_.del(channel_e2ee_key_storage_key(channel));
-        redis_.del(channel_e2ee_index_storage_key(channel));
-    } catch (const std::exception& ex) {
-        utils::EventLogger::instance().log(utils::EventCategory::VOICE, "", "e2ee_key_clear_failed",
-                                           0, "channel=" + channel.value + " error=" + ex.what());
-    }
-}
-
-std::optional<bool> VoiceService::is_channel_effectively_empty(const ChannelId& channel) {
-    if (!sessions_.is_empty(channel)) return false;
-
-    // Sweep every configured node, not just the bound one: a participant can be live
-    // on a different node than the current room binding (stale/repaired binding). If we
-    // only checked the bound node we could wrongly conclude "empty" and mint a fresh
-    // E2EE key while that participant still holds the old one -> two keys in one channel.
-    const auto configured_nodes = nodes_.list_nodes();
-    if (configured_nodes.empty()) return true;
-
-    std::size_t successful_queries = 0;
-    for (const auto& node : configured_nodes) {
-        try {
-            livekit::cli::LivekitClient client(node.private_host, token_service_);
-            const auto participants = client.ListParticipants(channel);
-            ++successful_queries;
-            if (!participants.empty()) return false;
-        } catch (const std::exception& ex) {
-            utils::EventLogger::instance().log(
-                utils::EventCategory::VOICE, "", "e2ee_empty_check_failed", 0,
-                "channel=" + channel.value + " node=" + node.node_id + " error=" + ex.what());
-        }
-    }
-
-    // Only conclude "empty" when every node confirmed zero participants. A partial
-    // sweep is inconclusive: returning nullopt makes the caller fail safe (force rekey)
-    // rather than mint a divergent key for a room that may be live on an unreachable node.
-    if (successful_queries != configured_nodes.size()) return std::nullopt;
-    return true;
-}
-
-void VoiceService::mark_channel_rekey_in_progress(const ChannelId& channel) {
-    std::lock_guard lock(e2ee_rekey_mutex_);
-    e2ee_rekey_guard_until_[channel] = std::chrono::steady_clock::now() + e2ee_rekey_guard_ttl_;
-}
-
-bool VoiceService::is_channel_rekey_in_progress(const ChannelId& channel) {
-    std::lock_guard lock(e2ee_rekey_mutex_);
-    auto it = e2ee_rekey_guard_until_.find(channel);
-    if (it == e2ee_rekey_guard_until_.end()) return false;
-
-    if (it->second <= std::chrono::steady_clock::now()) {
-        e2ee_rekey_guard_until_.erase(it);
-        return false;
-    }
-
-    return true;
-}
-
-bool VoiceService::clear_channel_rekey_if_empty(const ChannelId& channel) {
-    const auto empty = is_channel_effectively_empty(channel);
-    if (!empty.has_value() || !*empty) return false;
-
-    clear_channel_rekey_guard(channel);
-    return true;
-}
-
-void VoiceService::clear_channel_rekey_guard(const ChannelId& channel) {
-    std::lock_guard lock(e2ee_rekey_mutex_);
-    e2ee_rekey_guard_until_.erase(channel);
-}
-
-void VoiceService::force_channel_rekey(const ChannelId& channel, std::string_view reason) {
-    mark_channel_rekey_in_progress(channel);
-
-    e2ee_keys_.clear_key(channel);
-    clear_channel_e2ee_key_from_storage(channel);
-
-    auto node = nodes_.get_room_node(channel);
-    if (!node) {
-        utils::EventLogger::instance().log(
-            utils::EventCategory::VOICE, "", "e2ee_forced_rekey", 0,
-            "channel=" + channel.value + " removed_participants=0 reason=" + std::string(reason) +
-                " node=unknown");
-        return;
-    }
-
-    livekit::cli::LivekitClient client(node->private_host, token_service_);
-    std::vector<livekit::cli::ParticipantInfo> participants;
-    try {
-        participants = client.ListParticipants(channel);
-    } catch (const std::exception& ex) {
-        utils::EventLogger::instance().log(
-            utils::EventCategory::VOICE, "", "e2ee_forced_rekey_list_failed", 0,
-            "channel=" + channel.value + " reason=" + std::string(reason) + " error=" + ex.what());
-        return;
-    }
-
-    std::size_t removed_count = 0;
-    for (const auto& participant : participants) {
-        if (participant.identity.value.empty()) continue;
-        if (client.RemoveParticipant(channel, participant.identity)) {
-            removed_count++;
-        }
-    }
-
-    utils::EventLogger::instance().log(
-        utils::EventCategory::VOICE, "", "e2ee_forced_rekey", 0,
-        "channel=" + channel.value + " node=" + node->node_id + " removed_participants=" +
-            std::to_string(removed_count) + " reason=" + std::string(reason));
-}
-
-std::string VoiceService::pending_join_key(const UserId& user) {
-    return "voice:pending_join:" + user.value;
+    channel_keys_.resync_to_user(user);
 }
 
 std::string VoiceService::webhook_seen_key(const std::string& event_id) {
     return "voice:webhook_seen:" + event_id;
-}
-
-std::string VoiceService::resume_key(const UserId& user) { return "voice:resume_id:" + user.value; }
-
-std::string VoiceService::rotate_resume_id(const UserId& user) {
-    const auto next = generate_nonce_hex();
-    {
-        std::lock_guard lock(resume_id_mutex_);
-        user_resume_ids_[user] = next;
-    }
-
-    try {
-        redis_.setex(resume_key(user), kResumeIdTtl, next);
-    } catch (const std::exception& ex) {
-        utils::EventLogger::instance().log(utils::EventCategory::VOICE, user.value,
-                                           "resume_id_persist_failed", 0,
-                                           std::string("error=") + ex.what());
-    }
-
-    return next;
-}
-
-std::optional<std::string> VoiceService::load_resume_id_from_storage(const UserId& user) {
-    try {
-        const auto stored = redis_.get(resume_key(user));
-        if (!stored.has_value() || stored->empty()) return std::nullopt;
-
-        std::lock_guard lock(resume_id_mutex_);
-        user_resume_ids_[user] = *stored;
-        return stored;
-    } catch (const std::exception& ex) {
-        utils::EventLogger::instance().log(utils::EventCategory::VOICE, user.value,
-                                           "resume_id_load_failed", 0,
-                                           std::string("error=") + ex.what());
-        return std::nullopt;
-    }
-}
-
-std::optional<std::string> VoiceService::read_resume_id(const UserId& user) const {
-    std::lock_guard lock(resume_id_mutex_);
-    auto it = user_resume_ids_.find(user);
-    if (it == user_resume_ids_.end()) return std::nullopt;
-    return it->second;
-}
-
-void VoiceService::clear_resume_id(const UserId& user) {
-    {
-        std::lock_guard lock(resume_id_mutex_);
-        user_resume_ids_.erase(user);
-    }
-
-    try {
-        redis_.del(resume_key(user));
-    } catch (const std::exception& ex) {
-        utils::EventLogger::instance().log(utils::EventCategory::VOICE, user.value,
-                                           "resume_id_clear_failed", 0,
-                                           std::string("error=") + ex.what());
-    }
 }
 
 }  // namespace app::services::voice

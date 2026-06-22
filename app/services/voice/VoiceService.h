@@ -4,31 +4,29 @@
 #include "app/managers/session/SessionManager.h"
 #include "app/managers/subscription/SubscriptionManager.h"
 #include "app/services/hub/HubService.h"
-#include "app/services/voice/ReconcileEvidenceTracker.h"
+#include "app/services/voice/ChannelKeyService.h"
+#include "app/services/voice/PendingJoinIntentStore.h"
+#include "app/services/voice/VoicePublisher.h"
+#include "app/services/voice/VoiceReconciler.h"
+#include "app/services/voice/VoiceResumeRegistry.h"
 #include "app/services/voice/VoiceSessionManager.h"
 #include "core/LivekitClusterConfig.h"
 #include "domains/ids/Ids.h"
 #include "infra/redis/RedisClient.h"
 #include "livekit/cli/LivekitClient.h"
-#include "livekit/crypto/E2EEKeyManager.h"
 #include "livekit/routing/LivekitNodeRegistry.h"
 #include "livekit/token/LiveKitTokenService.h"
 #include "livekit/webhook/LivekitEvent.h"
 #include "net/outbound/IOutBoundSink.h"
 
-#include <array>
-#include <atomic>
 #include <chrono>
-#include <condition_variable>
 #include <cstdint>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
-#include <thread>
 #include <unordered_map>
-#include <unordered_set>
 
 namespace app::services::voice {
 
@@ -46,7 +44,7 @@ namespace app::services::voice {
  *  - persist DB state
  *  - fanout participants/activity/self-status
  */
-class VoiceService {
+class VoiceService : public ReconcileTarget {
    public:
     struct JoinVoiceToken {
         std::string token;
@@ -64,22 +62,9 @@ class VoiceService {
         std::string resume_id;
     };
 
-    struct PendingJoinIntent {
-        SessionId session_id = 0;
-        std::string intent_nonce;
-
-        ChannelId to_channel;
-        ChannelId from_channel;
-        bool has_from_channel = false;
-
-        bool muted = false;
-        bool deafened = false;
-
-        bool old_leave_seen = false;
-        bool new_join_seen = false;
-
-        uint64_t expires_at_unix = 0;
-    };
+    // PendingJoinIntent now lives in PendingJoinIntentStore; alias kept so existing
+    // callers (and this class) can keep using VoiceService::PendingJoinIntent.
+    using PendingJoinIntent = ::app::services::voice::PendingJoinIntent;
 
     VoiceService(std::string api_key, std::string api_secret, infra::redis::RedisClient& redis,
                  SessionManager& session_manager, SubscriptionManager& subscription_manager,
@@ -161,9 +146,6 @@ class VoiceService {
     bool is_stale_participant_event(const livekit::webhook::LiveKitEvent& event);
     bool is_stale_room_event(const livekit::webhook::LiveKitEvent& event);
 
-    std::optional<PendingJoinIntent> read_pending_join_intent(const UserId& user) const;
-    bool update_pending_join_intent(const UserId& user, const PendingJoinIntent& intent);
-
     void handle_participant_joined(const livekit::webhook::LiveKitEvent& event);
     void handle_participant_left(const livekit::webhook::LiveKitEvent& event);
     void force_local_leave(const UserId& user, const ChannelId& channel, std::string_view reason);
@@ -180,73 +162,19 @@ class VoiceService {
         const std::unordered_map<UserId, livekit::cli::ParticipantInfo>& participants,
         std::string_view reason) const;
 
-    void run_reconcile_loop();
+    // ReconcileTarget — invoked by VoiceReconciler on its schedule.
+    void reconcile_channel(const ChannelId& channel, std::string_view reason) override;
+    void reconcile_full(std::string_view reason) override;
     void reconcile_full_state(std::string_view reason);
     void reconcile_channel_state(const ChannelId& channel, std::string_view reason);
-    void request_channel_reconcile(const ChannelId& channel, std::string_view reason);
-    bool confirm_channel_remote_missing(const ChannelId& channel, std::string_view reason);
-    void clear_channel_remote_missing_confirmation(const ChannelId& channel);
-    bool confirm_participant_remote_missing(const ChannelId& channel, const UserId& user,
-                                            std::string_view reason);
-    void clear_participant_remote_missing_confirmation(const ChannelId& channel,
-                                                       const UserId& user);
-    void reset_remote_missing_confirmations(const ChannelId& channel);
     bool has_active_owner_connection(const UserId& user, const ChannelId& channel) const;
     std::size_t active_owner_connection_count(const ChannelId& channel) const;
-
-    void publish_voice_snapshot(const HubId& hub, const ChannelId& channel,
-                                uint64_t started_at_unix);
-    void publish_voice_participant_upsert(const HubId& hub, const ChannelId& channel,
-                                          const UserId& user, bool muted, bool deafened);
-    void publish_voice_participant_remove(const HubId& hub, const ChannelId& channel,
-                                          const UserId& user);
-    // Pushes the channel's current E2EE key+index to all current participants' owner
-    // sessions (used after a rotation). The just-joined user is reached via their token
-    // instead, so a join-time rotation broadcasts only to the pre-existing members.
-    void publish_voice_key_update(const HubId& hub, const ChannelId& channel,
-                                  const std::string& key, uint32_t key_index);
-    // Rotates the channel key, persists it, and broadcasts it to current participants.
-    // Serialized via the per-channel rotation mutex so the new index and its broadcast
-    // stay ordered. Returns the new key+index (empty key on failure).
-    livekit::E2EEKeyManager::ChannelKey rotate_and_broadcast_channel_key(
-        const ChannelId& channel, std::string_view reason);
-    // Returns the per-channel key-lifecycle mutex, creating it on first use. The returned
-    // reference is stable for the process lifetime (entries are never erased).
-    std::mutex& channel_rotation_mutex(const ChannelId& channel);
-    void publish_self_status(const UserId& user, bool connected,
-                             const std::optional<SessionId>& owner_session_id,
-                             const std::optional<ChannelId>& channel,
-                             std::optional<SessionId> only_session_id = std::nullopt);
 
     void set_channel_started_at_unix(const ChannelId& channel, uint64_t started_at_unix);
     void clear_channel_started_at_unix(const ChannelId& channel);
     uint64_t read_channel_started_at_unix(const ChannelId& channel) const;
 
-    // Webhook-only fanout. Guarded at runtime; calls outside LiveKit event dispatch are rejected.
-    void emit(net::outbound::OutgoingMessage msg);
-
-    static std::string pending_join_key(const UserId& user);
     static std::string webhook_seen_key(const std::string& event_id);
-    static std::string resume_key(const UserId& user);
-
-    std::string rotate_resume_id(const UserId& user);
-    std::optional<std::string> load_resume_id_from_storage(const UserId& user);
-    std::optional<std::string> read_resume_id(const UserId& user) const;
-    void clear_resume_id(const UserId& user);
-
-    static std::string channel_e2ee_key_storage_key(const ChannelId& channel);
-    static std::string channel_e2ee_index_storage_key(const ChannelId& channel);
-    std::optional<livekit::E2EEKeyManager::ChannelKey> load_channel_e2ee_key_from_storage(
-        const ChannelId& channel);
-    bool persist_channel_e2ee_key_to_storage(const ChannelId& channel, std::string_view key,
-                                             uint32_t key_index);
-    void clear_channel_e2ee_key_from_storage(const ChannelId& channel);
-    std::optional<bool> is_channel_effectively_empty(const ChannelId& channel);
-    void mark_channel_rekey_in_progress(const ChannelId& channel);
-    bool is_channel_rekey_in_progress(const ChannelId& channel);
-    bool clear_channel_rekey_if_empty(const ChannelId& channel);
-    void clear_channel_rekey_guard(const ChannelId& channel);
-    void force_channel_rekey(const ChannelId& channel, std::string_view reason);
 
     infra::redis::RedisClient& redis_;
     SessionManager& session_manager_;
@@ -256,48 +184,26 @@ class VoiceService {
 
     livekit::LiveKitTokenService token_service_;
     livekit::LivekitNodeRegistry nodes_;
-    livekit::E2EEKeyManager e2ee_keys_;
     VoiceSessionManager sessions_;
+    PendingJoinIntentStore pending_intents_;
+    VoiceResumeRegistry resume_registry_;
+    VoicePublisher publisher_;
+    ChannelKeyService channel_keys_;
 
     std::mutex takeover_guard_mutex_;
     std::unordered_map<ChannelId, std::chrono::steady_clock::time_point> channel_takeover_guard_;
     mutable std::mutex channel_started_mutex_;
     std::unordered_map<ChannelId, uint64_t> channel_started_at_unix_;
-    mutable std::mutex resume_id_mutex_;
-    std::unordered_map<UserId, std::string> user_resume_ids_;
     mutable std::mutex event_order_mutex_;
     std::unordered_map<UserId, uint64_t> user_last_event_ts_ms_;
     std::unordered_map<ChannelId, uint64_t> channel_last_room_event_ts_ms_;
-    std::array<unsigned char, 32> e2ee_storage_master_key_{};
-    bool e2ee_storage_key_ready_ = false;
-    std::chrono::seconds e2ee_key_ttl_;
-    std::chrono::seconds e2ee_rekey_guard_ttl_;
-    mutable std::mutex e2ee_rekey_mutex_;
-    std::unordered_map<ChannelId, std::chrono::steady_clock::time_point> e2ee_rekey_guard_until_;
-    // Per-channel serialization of key lifecycle (acquire/rotate/clear) so the assigned
-    // index and the VOICE_KEY_UPDATE fanout stay ordered across concurrent join (command
-    // thread) and leave (webhook/reconcile thread) events — without one channel's key op
-    // blocking another's. Map is grow-only (bounded by distinct channels); entries are
-    // never erased so a held mutex reference can't be invalidated.
-    std::mutex rotation_mutex_map_mutex_;
-    std::unordered_map<ChannelId, std::unique_ptr<std::mutex>> channel_rotation_mutexes_;
 
-    std::chrono::seconds reconcile_interval_;
-    std::chrono::seconds livekit_missing_clear_ttl_;
-    ReconcileEvidenceTracker remote_missing_evidence_;
-    std::thread reconcile_thread_;
-    std::atomic<bool> reconcile_running_{false};
-    std::atomic<bool> reconcile_stop_requested_{false};
-    mutable std::mutex reconcile_mutex_;
-    std::condition_variable reconcile_cv_;
-    std::unordered_set<ChannelId> pending_reconcile_channels_;
+    // Declared last so its destructor (which joins the reconcile thread) runs before the
+    // members the thread's callbacks touch.
+    VoiceReconciler reconciler_;
+
     static constexpr std::chrono::seconds kTakeoverGuardTtl{45};
     static constexpr std::chrono::seconds kWebhookDedupTtl{24 * 60 * 60};
-    static constexpr std::chrono::seconds kResumeIdTtl{24 * 60 * 60};
-    static constexpr std::chrono::seconds kDefaultReconcileInterval{60};
-    static constexpr std::chrono::seconds kDefaultLivekitMissingClearTtl{60};
-    static constexpr std::chrono::seconds kDefaultE2EEKeyTtl{24 * 60 * 60};
-    static constexpr std::chrono::seconds kDefaultE2EERekeyGuardTtl{30};
 };
 
 }  // namespace app::services::voice
