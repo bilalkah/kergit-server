@@ -30,6 +30,11 @@ services:
     security_opt:
       - seccomp:unconfined
     command: bash -lc "sleep infinity"
+    # Container-level resilience (OOM kill / daemon or host restart). NOTE: the C++ server
+    # runs as an exec'd process (exec-server.sh), not this container's main process, so a
+    # server *crash* is not auto-recovered by this policy — see exec-server.sh for the
+    # supervised run loop that handles that.
+    restart: unless-stopped
 
   caddy-node:
     image: caddy:2
@@ -56,6 +61,7 @@ services:
     volumes:
       - ./caddy/${CADDY_CONF_DIR:-conf.dev}:/etc/caddy:ro
       - ./caddy/generated/livekit_routes.caddy:/etc/caddy-generated/livekit_routes.caddy:ro
+      - ./caddy/maintenance:/srv/maintenance:ro
       - ./caddy/data:/data
       - ../certs:/certs:ro
     restart: unless-stopped
