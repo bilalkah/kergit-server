@@ -9,6 +9,7 @@ cc_library(
         "@nlohmann_json",
         "//domains/ids:domain_ids",
         "//livekit/token:livekit_token_service",
+        "//utils:loggable",
     ],
     visibility = ["//visibility:public"],
 )

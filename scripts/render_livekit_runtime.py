@@ -168,7 +168,7 @@ def render_compose(nodes: list[dict], config_dir: Path) -> str:
                 f"      - {json.dumps(config_path + ':/config/livekit.yaml:ro')}",
                 "    restart: unless-stopped",
                 "    depends_on:",
-                "      - redis-node",
+                "      - livekit-redis",
             ]
         )
     return "\n".join(lines) + "\n"
@@ -176,18 +176,24 @@ def render_compose(nodes: list[dict], config_dir: Path) -> str:
 
 def render_caddy_routes(nodes: list[dict]) -> str:
     blocks: list[str] = []
+    # Per-node metrics routes — admin needs per-node visibility.
     for node in nodes:
         node_id = node["id"]
         blocks.append(
             f"""handle_path /admin-livekit-metrics/{node_id}* {{
   rewrite * /metrics
   reverse_proxy {node_id}:{node["prometheus_port"]}
-}}
-
-handle_path /livekit/{node_id}* {{
-  import livekit_gateway {node_id}:{node["signal_port"]}
 }}"""
         )
+    # Single client-facing LiveKit endpoint, load-balanced across all nodes. LiveKit
+    # (shared Redis) owns room→node placement and bridges signaling, so any node can
+    # terminate a client's signal WebSocket. Clients no longer pin a node-specific path.
+    upstreams = " ".join(f"{node['id']}:{node['signal_port']}" for node in nodes)
+    blocks.append(
+        f"""handle_path /livekit* {{
+  import livekit_gateway {upstreams}
+}}"""
+    )
     return "\n\n".join(blocks) + "\n"
 
 

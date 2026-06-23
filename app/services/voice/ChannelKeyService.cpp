@@ -537,7 +537,8 @@ void ChannelKeyService::force_rekey(const ChannelId& channel, std::string_view r
     e2ee_keys_.clear_key(channel);
     clear_storage(channel);
 
-    auto node = nodes_.get_room_node(channel);
+    // Any node answers for any room (one logical cluster, shared Redis routing).
+    auto node = nodes_.any_node();
     if (!node) {
         utils::EventLogger::instance().log(
             utils::EventCategory::VOICE, "", "e2ee_forced_rekey", 0,

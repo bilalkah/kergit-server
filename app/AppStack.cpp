@@ -107,7 +107,8 @@ void AppStack::init_services() {
 
         voice_service_ = std::make_unique<services::voice::VoiceService>(
             livekit_key, livekit_secret, *redis_client_, *session_manager_, *subscription_manager_,
-            *hub_service_, *out_queue_, config_.livekit_cluster.nodes());
+            *hub_service_, *out_queue_, config_.livekit_cluster.nodes(),
+            config_.public_endpoints.livekit_cluster_url());
 
         webhook_server_.set_signing_credentials(livekit_key, livekit_secret);
 

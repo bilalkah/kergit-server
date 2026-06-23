@@ -70,7 +70,8 @@ class VoiceService : public ReconcileTarget {
                  SessionManager& session_manager, SubscriptionManager& subscription_manager,
                  app::services::HubService& hub_service,
                  net::outbound::IOutboundSink& outbound_sink,
-                 const std::vector<core::LivekitNodeConfig>& nodes);
+                 const std::vector<core::LivekitNodeConfig>& nodes,
+                 std::string livekit_cluster_url);
     ~VoiceService();
 
     /// Start/stop periodic LiveKit state reconciliation loop.
@@ -184,6 +185,8 @@ class VoiceService : public ReconcileTarget {
 
     livekit::LiveKitTokenService token_service_;
     livekit::LivekitNodeRegistry nodes_;
+    // Single client-facing LiveKit endpoint (Caddy load-balances it across all nodes).
+    std::string livekit_cluster_url_;
     VoiceSessionManager sessions_;
     PendingJoinIntentStore pending_intents_;
     VoiceResumeRegistry resume_registry_;

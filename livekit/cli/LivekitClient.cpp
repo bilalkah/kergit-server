@@ -1,5 +1,7 @@
 #include "livekit/cli/LivekitClient.h"
 
+#include "utils/EventLogger.h"
+
 #include <cctype>
 #include <cpr/cpr.h>
 #include <nlohmann/json.hpp>
@@ -66,15 +68,34 @@ std::vector<ParticipantInfo> LivekitClient::ListParticipants(const ChannelId& ro
     json data = json::parse(res);
 
     std::vector<ParticipantInfo> out;
-    if (!data.contains("participants")) return out;
+    const bool has_array = data.contains("participants") && data["participants"].is_array();
+    if (has_array) {
+        for (const auto& p : data["participants"]) {
+            ParticipantInfo info;
+            info.sid = p.value("sid", "");
+            info.identity = UserId(p.value("identity", ""));
+            info.metadata = p.value("metadata", "");
+            // This LiveKit (v1.9) Twirp emits proto names (snake_case) in JSON, e.g.
+            // is_publisher/num_participants — NOT camelCase. Read snake_case first and fall
+            // back to camelCase so we stay correct if a future build flips the JSON casing.
+            info.is_publisher = p.contains("is_publisher") ? p.value("is_publisher", false)
+                                                           : p.value("isPublisher", false);
+            out.push_back(info);
+        }
+    }
 
-    for (const auto& p : data["participants"]) {
-        ParticipantInfo info;
-        info.sid = p.value("sid", "");
-        info.identity = UserId(p.value("identity", ""));
-        info.metadata = p.value("metadata", "");
-        info.is_publisher = p.value("isPublisher", false);
-        out.push_back(info);
+    // Log ONLY the anomaly: a node returning zero participants. The reconcile loop polls
+    // every few seconds, so logging successful (non-empty) results would spam the log with
+    // no diagnostic value. On empty we surface the raw body (sanitized + truncated) so we
+    // can tell an actually-empty room apart from a parse mismatch or an error-shaped 200.
+    if (out.empty()) {
+        utils::EventLogger::instance().log(
+            utils::EventCategory::VOICE, "", "livekit_list_participants_empty", 0,
+            "host=" + host_ + " channel=" + room.value +
+                " has_participants_key=" + (data.contains("participants") ? "1" : "0") +
+                " is_array=" + (has_array ? "1" : "0") +
+                " raw_len=" + std::to_string(res.size()) +
+                " raw=" + summarize_error_body(res));
     }
 
     return out;
@@ -125,7 +146,11 @@ std::vector<RoomInfo> LivekitClient::ListRooms() {
             if (name.empty()) continue;
             RoomInfo info;
             info.room = ChannelId(name);
-            info.num_participants = r.value("num_participants", 0);
+            // This LiveKit (v1.9) Twirp emits proto names (snake_case): num_participants.
+            // Read snake_case first, fall back to camelCase in case a future build flips it.
+            info.num_participants = r.contains("num_participants")
+                                        ? r.value("num_participants", 0)
+                                        : r.value("numParticipants", 0);
             rooms.push_back(std::move(info));
         }
     }

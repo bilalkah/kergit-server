@@ -53,6 +53,11 @@ class LivekitNodeRegistry {
 
     std::shared_ptr<const LivekitNode> pick_node() const;
 
+    // Any healthy node for a cluster-wide Twirp call (ListParticipants/RemoveParticipant).
+    // With shared Redis, every node answers for every room, so we just round-robin across
+    // the configured nodes for load spreading and resilience to a single node being busy.
+    std::shared_ptr<const LivekitNode> any_node() const;
+
     std::vector<LivekitNode> list_nodes() const;
 
    private:
@@ -62,6 +67,7 @@ class LivekitNodeRegistry {
     std::vector<std::string> node_order_;
     std::unordered_map<ChannelId, std::string> room_to_node_;
     std::unordered_map<ChannelId, std::string> counted_room_to_node_;
+    mutable size_t round_robin_cursor_ = 0;
 };
 
 }  // namespace livekit

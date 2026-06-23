@@ -17,6 +17,9 @@ class PublicEndpointConfig {
     std::string websocket_origin() const;
     std::string invite_base_url() const;
     std::string livekit_node_url(std::string_view node_id) const;
+    // Single client-facing LiveKit endpoint. Caddy load-balances this across all nodes;
+    // LiveKit (shared Redis) owns host placement, so clients no longer pin a node.
+    std::string livekit_cluster_url() const;
     std::string supabase_issuer() const;
 
    private:

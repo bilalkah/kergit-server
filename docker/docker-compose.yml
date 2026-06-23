@@ -64,9 +64,20 @@ services:
     container_name: redis-node
     ports:
       - "6379:6379"
-    # Redis holds ephemeral coordination and LiveKit cluster state. Persisting it
-    # across a full-stack restart can resurrect stale rooms and participants.
+    # App-only ephemeral coordination (invites, pending voice intents, resume ids).
+    # Persistence disabled: it must not resurrect stale state across a restart.
     command: ["redis-server", "--save", "", "--appendonly", "no"]
+    restart: unless-stopped
+
+  # Dedicated Redis for the LiveKit cluster's room/node registry + message bus. Isolated
+  # from redis-node so app coordination churn and LiveKit churn can't interfere, and so a
+  # registry hiccup on one can't desync the other. Persistence/forking disabled (LiveKit
+  # treats this as ephemeral coordination only); noeviction so registry keys are never
+  # dropped under memory pressure.
+  livekit-redis:
+    image: redis:8.6.1-alpine
+    container_name: livekit-redis
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory-policy", "noeviction"]
     restart: unless-stopped
 
 volumes:

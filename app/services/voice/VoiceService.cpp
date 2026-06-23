@@ -49,13 +49,15 @@ VoiceService::VoiceService(std::string api_key, std::string api_secret,
                            SubscriptionManager& subscription_manager,
                            app::services::HubService& hub_service,
                            net::outbound::IOutboundSink& outbound_sink,
-                           const std::vector<core::LivekitNodeConfig>& nodes)
+                           const std::vector<core::LivekitNodeConfig>& nodes,
+                           std::string livekit_cluster_url)
     : redis_(redis),
       session_manager_(session_manager),
       subscription_manager_(subscription_manager),
       hub_service_(hub_service),
       outbound_sink_(outbound_sink),
       token_service_(std::move(api_key), std::move(api_secret)),
+      livekit_cluster_url_(std::move(livekit_cluster_url)),
       pending_intents_(redis),
       resume_registry_(redis),
       publisher_(outbound_sink_, subscription_manager_, session_manager_, hub_service_, sessions_,
@@ -89,12 +91,10 @@ VoiceService::JoinVoiceToken VoiceService::join_voice(const ChannelId& channel, 
         return response;
     }
 
-    auto node = nodes_.get_room_node(channel);
-    if (!node) {
-        node = nodes_.pick_node();
-        if (node) nodes_.bind_room(channel, node->node_id);
-    }
-
+    // We no longer pick/pin a node ourselves. The cluster is one logical LiveKit (shared
+    // Redis); the client connects to the single load-balanced endpoint and LiveKit decides
+    // which node hosts the room. We only need a configured node to exist.
+    auto node = nodes_.any_node();
     if (!node) return response;
     reconciler_.clear_channel_remote_missing_confirmation(channel);
 
@@ -108,6 +108,8 @@ VoiceService::JoinVoiceToken VoiceService::join_voice(const ChannelId& channel, 
     livekit::LiveKitTokenService::ParticipantTokenRequest req{
         .identity = user,
         .room = channel,
+        // node_id stays in participant metadata for diagnostics only; it no longer drives
+        // routing (LiveKit owns host placement via shared Redis).
         .node_id = node->node_id,
         .app_session_id = app_session_id,
         .intent_nonce = std::string(intent_nonce),
@@ -118,7 +120,7 @@ VoiceService::JoinVoiceToken VoiceService::join_voice(const ChannelId& channel, 
     const std::string token = token_service_.mint_participant_token(req);
 
     response.token = token;
-    response.livekit_url = node->public_host;
+    response.livekit_url = livekit_cluster_url_;
     response.expires_in = 600;
     response.e2ee_key = ck.key;
     response.key_index = ck.key_index;
@@ -209,7 +211,7 @@ bool VoiceService::mark_webhook_event_seen(const std::string& event_id) {
 }
 
 bool VoiceService::verified_kick_user(const ChannelId& channel, const UserId& target) {
-    auto node = nodes_.get_room_node(channel);
+    auto node = nodes_.any_node();
     if (!node) return true;
 
     livekit::cli::LivekitClient client(node->private_host, token_service_);
@@ -295,7 +297,7 @@ void VoiceService::force_local_leave(const UserId& user, const ChannelId& channe
 }
 
 bool VoiceService::kick_user(const ChannelId& channel, const UserId& target) {
-    auto node = nodes_.get_room_node(channel);
+    auto node = nodes_.any_node();
     if (!node) return false;
 
     livekit::cli::LivekitClient client(node->private_host, token_service_);
@@ -401,29 +403,22 @@ void VoiceService::reconcile_full_state(std::string_view reason) {
         channels.insert(channel);
     }
 
-    for (const auto& node : nodes_.list_nodes()) {
-        livekit::cli::LivekitClient client(node.private_host, token_service_);
-
-        std::vector<livekit::cli::RoomInfo> rooms;
+    // One logical cluster: a single node answers for every room (shared Redis), so query
+    // one node rather than fanning out. ListRooms surfaces rooms LiveKit knows about that we
+    // may not track yet (e.g. a missed webhook); fold in any with participants or local state.
+    if (auto node = nodes_.any_node()) {
+        livekit::cli::LivekitClient client(node->private_host, token_service_);
         try {
-            rooms = client.ListRooms();
+            for (const auto& room : client.ListRooms()) {
+                if (room.num_participants > 0 || !sessions_.is_empty(room.room)) {
+                    channels.insert(room.room);
+                }
+            }
         } catch (const std::exception& ex) {
             utils::EventLogger::instance().log(
                 utils::EventCategory::VOICE, "", "reconcile_list_rooms_failed", 0,
-                "node=" + node.node_id + " method=ListRooms endpoint=" + node.private_host +
+                "node=" + node->node_id + " method=ListRooms endpoint=" + node->private_host +
                     " error=" + ex.what());
-            continue;
-        }
-
-        // Only reconcile a remote room if it has participants or we hold local state
-        // for it. An empty room we don't track has nothing to clean up, and LiveKit
-        // keeps empty rooms listed for departure_timeout/empty_timeout seconds, so
-        // skipping them avoids re-scanning a lingering empty room every interval.
-        for (const auto& room : rooms) {
-            if (room.num_participants > 0 || !sessions_.is_empty(room.room) ||
-                nodes_.get_room_node(room.room) != nullptr) {
-                channels.insert(room.room);
-            }
         }
     }
 
@@ -434,47 +429,37 @@ void VoiceService::reconcile_full_state(std::string_view reason) {
 
 void VoiceService::reconcile_channel_state(const ChannelId& channel, std::string_view reason) {
     std::unordered_map<UserId, livekit::cli::ParticipantInfo> remote_by_user;
-    auto assigned_node = nodes_.get_room_node(channel);
-    std::string assigned_node_id = assigned_node ? assigned_node->node_id : "";
-    std::string assigned_private_host = assigned_node ? assigned_node->private_host : "";
-    std::string first_remote_node_id;
-    std::string first_remote_private_host;
     ReconcileQuerySummary query_summary;
-    const auto configured_nodes = nodes_.list_nodes();
-    query_summary.configured_queries = configured_nodes.size();
 
-    for (const auto& node : configured_nodes) {
-        livekit::cli::LivekitClient client(node.private_host, token_service_);
+    // Single cluster query: any node answers for any room via shared Redis. Fanning out to
+    // every node was useless (N reads of the same Redis record → N identical answers) and
+    // gave false confidence; one query is the cluster's answer.
+    auto node = nodes_.any_node();
+    const std::string query_private_host = node ? node->private_host : "";
+    query_summary.configured_queries = node ? 1 : 0;
 
-        std::vector<livekit::cli::ParticipantInfo> participants;
+    if (node) {
+        livekit::cli::LivekitClient client(query_private_host, token_service_);
         try {
-            participants = client.ListParticipants(channel);
+            const auto participants = client.ListParticipants(channel);
             ++query_summary.successful_queries;
             query_summary.participant_count += participants.size();
+            for (const auto& participant : participants) {
+                if (participant.identity.value.empty()) continue;
+                remote_by_user.emplace(participant.identity, participant);
+            }
         } catch (const std::exception& ex) {
             ++query_summary.failed_queries;
             utils::EventLogger::instance().log(
                 utils::EventCategory::VOICE, "", "reconcile_list_participants_failed", 0,
-                "node=" + node.node_id + " method=ListParticipants endpoint=" + node.private_host +
-                    " channel=" + channel.value + " error=" + ex.what());
-            continue;
+                "node=" + node->node_id + " method=ListParticipants endpoint=" +
+                    query_private_host + " channel=" + channel.value + " error=" + ex.what());
         } catch (...) {
             ++query_summary.failed_queries;
             utils::EventLogger::instance().log(
                 utils::EventCategory::VOICE, "", "reconcile_list_participants_failed", 0,
-                "node=" + node.node_id + " method=ListParticipants endpoint=" + node.private_host +
-                    " channel=" + channel.value + " error=unknown");
-            continue;
-        }
-
-        if (!participants.empty() && first_remote_node_id.empty()) {
-            first_remote_node_id = node.node_id;
-            first_remote_private_host = node.private_host;
-        }
-
-        for (const auto& participant : participants) {
-            if (participant.identity.value.empty()) continue;
-            remote_by_user.emplace(participant.identity, participant);
+                "node=" + node->node_id + " method=ListParticipants endpoint=" +
+                    query_private_host + " channel=" + channel.value + " error=unknown");
         }
     }
     const auto local_participants = sessions_.participants_in_channel(channel);
@@ -507,7 +492,7 @@ void VoiceService::reconcile_channel_state(const ChannelId& channel, std::string
         // there is nothing to tear down. Returning here avoids re-running the missing
         // confirmation cycle (and on_channel_finish) every interval against a room
         // LiveKit keeps listing while it lingers post-emptying.
-        if (sessions_.is_empty(channel) && nodes_.get_room_node(channel) == nullptr) {
+        if (sessions_.is_empty(channel)) {
             reconciler_.clear_channel_remote_missing_confirmation(channel);
             return;
         }
@@ -517,68 +502,30 @@ void VoiceService::reconcile_channel_state(const ChannelId& channel, std::string
             "channel=" + channel.value + " reason=" + std::string(reason) + query_details);
         const auto active_owner_count = active_owner_connection_count(channel);
         if (active_owner_count > 0) {
-            if (reconciler_.confirm_channel_remote_missing(channel, "room_missing_with_active_owner")) {
-                utils::EventLogger::instance().log(
-                    utils::EventCategory::VOICE, "",
-                    "reconcile_room_missing_active_owner_confirmed", 0,
-                    "channel=" + channel.value + " reason=" + std::string(reason) +
-                        " active_owner_connections=" + std::to_string(active_owner_count) +
-                        query_details);
-
-                on_channel_finish(channel);
-            } else {
-                utils::EventLogger::instance().log(
-                    utils::EventCategory::VOICE, "", "reconcile_room_missing_remote_deferred", 0,
-                    "channel=" + channel.value + " reason=" + std::string(reason) +
-                        " active_owner_connections=" + std::to_string(active_owner_count) +
-                        query_details);
-            }
-        } else if (reconciler_.confirm_channel_remote_missing(channel, reason)) {
+            // Active owner connections are authoritative local state: these users' control
+            // sessions are alive and we still track them as joined. A remote query reporting
+            // the room empty contradicts that, and LiveKit membership is NOT ground truth — a
+            // ListParticipants returning empty can be a node hiccup, a room that briefly moved
+            // nodes, or a query that reached the wrong node (ListParticipants returns an empty
+            // list rather than an error when a node does not host the room). NEVER tear down a
+            // channel that still has active owners: doing so kicked whole channels of connected
+            // users on a transient false-positive. Genuine individual departures are handled by
+            // the per-participant participant_left path; here we hold and wait for owners to drop.
+            reconciler_.clear_channel_remote_missing_confirmation(channel);
+            utils::EventLogger::instance().log(
+                utils::EventCategory::VOICE, "", "reconcile_room_missing_remote_held", 0,
+                "channel=" + channel.value + " reason=" + std::string(reason) +
+                    " active_owner_connections=" + std::to_string(active_owner_count) +
+                    query_details);
+            return;
+        }
+        if (reconciler_.confirm_channel_remote_missing(channel, reason)) {
             on_channel_finish(channel);
         }
         return;
     }
 
     reconciler_.clear_channel_remote_missing_confirmation(channel);
-
-    const auto metadata_node_id =
-        resolve_participant_node_assignment(channel, remote_by_user, "reconcile");
-    if (metadata_node_id.has_value()) {
-        auto metadata_node = nodes_.get_node(*metadata_node_id);
-        if (metadata_node) {
-            if (assigned_node_id.empty()) {
-                utils::EventLogger::instance().log(
-                    utils::EventCategory::VOICE, "", "reconcile_room_assignment_recovered", 0,
-                    "channel=" + channel.value + " assigned_node=" + metadata_node->node_id +
-                        " source=participant_metadata");
-            } else if (assigned_node_id != metadata_node->node_id) {
-                utils::EventLogger::instance().log(
-                    utils::EventCategory::VOICE, "", "reconcile_room_assignment_repaired", 0,
-                    "channel=" + channel.value + " previous_node=" + assigned_node_id +
-                        " assigned_node=" + metadata_node->node_id +
-                        " source=participant_metadata");
-            }
-            assigned_node_id = metadata_node->node_id;
-            assigned_private_host = metadata_node->private_host;
-            nodes_.bind_room(channel, assigned_node_id);
-        }
-    }
-
-    if (assigned_node_id.empty()) {
-        if (!first_remote_node_id.empty()) {
-            assigned_node_id = first_remote_node_id;
-            assigned_private_host = first_remote_private_host;
-            utils::EventLogger::instance().log(
-                utils::EventCategory::VOICE, "", "reconcile_room_assignment_recovered", 0,
-                "channel=" + channel.value + " assigned_node=" + assigned_node_id +
-                    " source=cluster_endpoint_fallback");
-            nodes_.bind_room(channel, assigned_node_id);
-        }
-    }
-
-    if (!assigned_node_id.empty()) {
-        nodes_.increment_room(channel, assigned_node_id);
-    }
 
     std::unordered_set<UserId> local_users;
     for (const auto& participant : local_participants) {
@@ -594,26 +541,21 @@ void VoiceService::reconcile_channel_state(const ChannelId& channel, std::string
         for (const auto& participant : local_participants) {
             if (remote_users.find(participant.user_id) != remote_users.end()) continue;
             if (has_active_owner_connection(participant.user_id, channel)) {
-                if (reconciler_.confirm_participant_remote_missing(channel, participant.user_id,
-                                                       "participant_missing_with_active_owner")) {
-                    utils::EventLogger::instance().log(
-                        utils::EventCategory::VOICE, participant.user_id.value,
-                        "reconcile_participant_missing_active_owner_confirmed", 0,
-                        "channel=" + channel.value +
-                            " reason=participant_missing_in_livekit active_owner_connection=1");
-
-                    force_local_leave(participant.user_id, channel,
-                                      "participant_missing_with_active_owner");
-                } else {
-                    utils::EventLogger::instance().log(
-                        utils::EventCategory::VOICE, participant.user_id.value,
-                        "reconcile_participant_missing_remote_deferred", 0,
-                        "channel=" + channel.value +
-                            " reason=participant_missing_in_livekit active_owner_connection=1");
-                }
+                // The user's control session is alive — that is authoritative. A poll absence
+                // is NOT grounds to eject them: the client is our live sensor and a genuine
+                // media drop arrives as a participant_left webhook. Hold; never force a leave
+                // for a user who still holds a live owner connection.
+                reconciler_.clear_participant_remote_missing_confirmation(channel,
+                                                                         participant.user_id);
+                utils::EventLogger::instance().log(
+                    utils::EventCategory::VOICE, participant.user_id.value,
+                    "reconcile_participant_missing_held", 0,
+                    "channel=" + channel.value +
+                        " reason=participant_missing_in_livekit active_owner_connection=1");
                 continue;
             }
 
+            // No active owner connection → the user is genuinely gone; safe to clean up.
             if (reconciler_.confirm_participant_remote_missing(channel, participant.user_id,
                                                    "participant_missing_in_livekit")) {
                 force_local_leave(participant.user_id, channel, "participant_missing_in_livekit");
@@ -621,9 +563,7 @@ void VoiceService::reconcile_channel_state(const ChannelId& channel, std::string
         }
     }
 
-    const std::string remove_private_host =
-        !assigned_private_host.empty() ? assigned_private_host : first_remote_private_host;
-    livekit::cli::LivekitClient remove_client(remove_private_host, token_service_);
+    livekit::cli::LivekitClient remove_client(query_private_host, token_service_);
     for (const auto& [user_id, participant] : remote_by_user) {
         reconciler_.clear_participant_remote_missing_confirmation(channel, user_id);
         if (local_users.find(user_id) != local_users.end()) continue;
@@ -649,7 +589,7 @@ void VoiceService::reconcile_channel_state(const ChannelId& channel, std::string
 
         if (!correlation_valid) {
             bool removed = false;
-            if (all_queries_succeeded && !remove_private_host.empty()) {
+            if (all_queries_succeeded && !query_private_host.empty()) {
                 removed = remove_client.RemoveParticipant(channel, user_id);
             }
             utils::EventLogger::instance().log(
@@ -672,22 +612,15 @@ void VoiceService::reconcile_channel_state(const ChannelId& channel, std::string
         synthetic_event.participant_metadata = participant.metadata;
         synthetic_event.app_session_id = metadata.app_session_id;
         synthetic_event.intent_nonce = metadata.intent_nonce;
-        synthetic_event.node_id = metadata.node_id.empty() ? assigned_node_id : metadata.node_id;
+        synthetic_event.node_id = metadata.node_id;  // informational only
         synthetic_event.timestamp_ms =
             static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
                                       std::chrono::system_clock::now().time_since_epoch())
                                       .count());
 
+        // Additive recovery (safe direction): LiveKit shows a correlated participant we don't
+        // track yet (e.g. a missed join webhook) → adopt them. The harmless false-positive.
         handle_participant_joined(synthetic_event);
-
-        const auto active_channel = sessions_.user_channel(user_id);
-        if (active_channel.has_value() && *active_channel == channel) {
-            const std::string node_id =
-                assigned_node_id.empty() ? synthetic_event.node_id : assigned_node_id;
-            if (!node_id.empty()) {
-                nodes_.increment_user(node_id);
-            }
-        }
     }
 }
 

@@ -178,6 +178,22 @@ std::shared_ptr<const LivekitNode> LivekitNodeRegistry::pick_node() const {
     return best;
 }
 
+std::shared_ptr<const LivekitNode> LivekitNodeRegistry::any_node() const {
+    std::lock_guard lock(mutex_);
+
+    if (node_order_.empty()) return nullptr;
+
+    // Round-robin across configured nodes. Every node can answer a Twirp request about any
+    // room (shared Redis routing), so this is purely for load spreading / resilience.
+    for (size_t attempt = 0; attempt < node_order_.size(); ++attempt) {
+        const auto& node_id = node_order_[round_robin_cursor_ % node_order_.size()];
+        ++round_robin_cursor_;
+        const auto it = nodes_.find(node_id);
+        if (it != nodes_.end()) return it->second;
+    }
+    return nullptr;
+}
+
 std::vector<LivekitNode> LivekitNodeRegistry::list_nodes() const {
     std::lock_guard lock(mutex_);
 

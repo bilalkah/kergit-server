@@ -93,6 +93,10 @@ std::string PublicEndpointConfig::livekit_node_url(std::string_view node_id) con
     return append_path(app_origin_, "/livekit/" + std::string(node_id));
 }
 
+std::string PublicEndpointConfig::livekit_cluster_url() const {
+    return append_path(app_origin_, "/livekit");
+}
+
 std::string PublicEndpointConfig::supabase_issuer() const {
     return append_path(supabase_origin_, "/auth/v1");
 }

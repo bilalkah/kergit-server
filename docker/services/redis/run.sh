@@ -13,5 +13,5 @@ load_runtime_env_strict "$RUNTIME_MODE"
 source "$DOCKER_DIR/lib/compose.sh"
 
 ensure_compose_network
-echo "[+] Starting Redis..."
-docker compose "${COMPOSE_ARGS[@]}" up -d redis-node
+echo "[+] Starting Redis (app coordination + dedicated LiveKit registry)..."
+docker compose "${COMPOSE_ARGS[@]}" up -d redis-node livekit-redis
