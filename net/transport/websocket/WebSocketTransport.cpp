@@ -2,6 +2,8 @@
 
 #include "net/transport/websocket/WsAppFactory.h"
 #include "net/transport/websocket/utils.h"
+#include "proto/command/ack.pb.h"
+#include "proto/command/heartbeat.pb.h"
 #include "utils/EventLogger.h"
 #include "utils/Metrics.h"
 
@@ -282,9 +284,26 @@ void TextWSServer::wire() {
                         return;
                     }
 
-                    // FAST-PATH: application-level PING (only after auth)
+                    // FAST-PATH: application-level PING (only after auth). A Ping may
+                    // carry a backstop cumulative ack for reliable delivery, so apply it
+                    // before responding.
                     if (env.type() == sercom::protocol::Envelope::PING) {
+                        sercom::protocol::command::Ping ping;
+                        if (ping.ParseFromString(env.payload()) && ping.last_recv_seq() > 0) {
+                            out_worker_.on_ack(psd->conn_id, ping.last_recv_seq());
+                        }
                         ws->send(app_pong_response_bytes(), uWS::OpCode::BINARY);
+                        return;
+                    }
+
+                    // FAST-PATH: reliable-delivery ACK. Runs on the loop thread so it
+                    // shares the unacked buffer/index with the OutgoingWorker without
+                    // extra locking. Clears acked frames from the retransmit buffer.
+                    if (env.type() == sercom::protocol::Envelope::ACK) {
+                        sercom::protocol::command::Ack ack;
+                        if (ack.ParseFromString(env.payload())) {
+                            out_worker_.on_ack(psd->conn_id, ack.ack_seq());
+                        }
                         return;
                     }
 

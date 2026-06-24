@@ -57,8 +57,8 @@ std::string make_voice_key_update(const HubId& hub_id, const ChannelId& channel_
 VoicePublisher::VoicePublisher(net::outbound::IOutboundSink& outbound_sink,
                                SubscriptionManager& subscription_manager,
                                SessionManager& session_manager,
-                               app::services::HubService& hub_service, VoiceSessionManager& sessions,
-                               VoiceResumeRegistry& resume_registry)
+                               app::services::HubService& hub_service,
+                               VoiceSessionManager& sessions, VoiceResumeRegistry& resume_registry)
     : outbound_sink_(outbound_sink),
       subscription_manager_(subscription_manager),
       session_manager_(session_manager),
@@ -93,8 +93,9 @@ void VoicePublisher::publish_voice_snapshot(const HubId& hub, const ChannelId& c
     }
 
     std::vector<GlobalConnId> conns{subs->begin(), subs->end()};
-    auto msg = ::app::make_outgoing_message(net::outbound::Target::many(std::move(conns)),
-                                            ::app::make_state_delta(delta));
+    // Reliable: a missed voice snapshot leaves the roster desynced while still connected.
+    auto msg = ::app::make_reliable_outgoing_message(net::outbound::Target::many(std::move(conns)),
+                                                     ::app::make_state_delta(delta));
     emit(std::move(msg));
 }
 
@@ -117,8 +118,9 @@ void VoicePublisher::publish_voice_participant_upsert(const HubId& hub, const Ch
     upsert->set_deafened(deafened);
 
     std::vector<GlobalConnId> conns{subs->begin(), subs->end()};
-    auto msg = ::app::make_outgoing_message(net::outbound::Target::many(std::move(conns)),
-                                            ::app::make_state_delta(delta));
+    // Reliable: mute/deafen/join updates must not be silently lost mid-session.
+    auto msg = ::app::make_reliable_outgoing_message(net::outbound::Target::many(std::move(conns)),
+                                                     ::app::make_state_delta(delta));
     emit(std::move(msg));
 }
 
@@ -137,8 +139,9 @@ void VoicePublisher::publish_voice_participant_remove(const HubId& hub, const Ch
     channel_delta->add_voice_ops()->mutable_remove()->set_user_id(user.value);
 
     std::vector<GlobalConnId> conns{subs->begin(), subs->end()};
-    auto msg = ::app::make_outgoing_message(net::outbound::Target::many(std::move(conns)),
-                                            ::app::make_state_delta(delta));
+    // Reliable: a missed leave would leave a ghost participant in the roster.
+    auto msg = ::app::make_reliable_outgoing_message(net::outbound::Target::many(std::move(conns)),
+                                                     ::app::make_state_delta(delta));
     emit(std::move(msg));
 }
 
@@ -160,8 +163,10 @@ void VoicePublisher::publish_voice_key_update_to_user(const HubId& hub, const Ch
     auto conns = session_manager_.getSessionIdConnections(*owner_session);
     if (conns.empty()) return;
 
-    auto msg = ::app::make_outgoing_message(net::outbound::Target::many(std::move(conns)),
-                                            make_voice_key_update(hub, channel, key, key_index));
+    // Reliable: a missed E2EE key rotation leaves the participant unable to decrypt audio.
+    auto msg =
+        ::app::make_reliable_outgoing_message(net::outbound::Target::many(std::move(conns)),
+                                              make_voice_key_update(hub, channel, key, key_index));
     emit(std::move(msg));
 }
 
@@ -193,7 +198,9 @@ void VoicePublisher::publish_self_status(const UserId& user, bool connected,
                                                      is_owner ? resume_id : std::nullopt);
         }
 
-        auto msg = ::app::make_outgoing_message(
+        // Reliable: own voice connection/ownership status drives the local UI; a miss
+        // would strand the client showing the wrong voice state.
+        auto msg = ::app::make_reliable_outgoing_message(
             net::outbound::Target::many(std::move(session_conns)), std::move(bytes));
         emit(std::move(msg));
     }

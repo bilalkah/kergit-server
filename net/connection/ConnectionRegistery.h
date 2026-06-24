@@ -6,9 +6,11 @@
 #include "net/outbound/Msg.h"
 #include "net/transport/Handle.h"
 
+#include <chrono>
 #include <cstdint>
 #include <deque>
 #include <expected>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <shared_mutex>
@@ -78,6 +80,30 @@ struct ConnectionContext {
     };
 
     PerConnectionOutbox outbox{};
+
+    // Reliable (at-least-once) outbound delivery state.
+    //
+    // Sequenced frames are stamped with a per-connection monotonic `seq`, sent, and
+    // retained here until the client acknowledges them (cumulative ack). The server
+    // retransmits unacked frames on timeout and drops the connection if a frame is
+    // never acked. All fields are mutated only on the event-loop thread (OutgoingWorker
+    // flush/retransmit and the transport ACK fast-path), so they need no extra locking
+    // beyond the registry mutate() that guards the surrounding ConnectionContext.
+    struct ReliableOutbound {
+        struct Pending {
+            uint64_t seq{0};
+            std::shared_ptr<const std::string> bytes;  // exact wire bytes (seq included)
+            std::chrono::steady_clock::time_point last_sent_at{};
+            uint16_t attempts{0};
+        };
+
+        uint64_t next_seq{0};        // highest seq assigned so far (++ before use)
+        uint64_t acked_seq{0};       // highest cumulative ack received from the client
+        std::deque<Pending> buffer;  // unacked frames, ascending by seq
+        std::size_t capacity{256};   // hard cap; overflow => drop+reconnect+resync
+    };
+
+    ReliableOutbound reliable{};
 };
 
 /**

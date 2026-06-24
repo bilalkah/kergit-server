@@ -3,4 +3,9 @@ syntax = "proto3";
 package sercom.protocol.command;
 
 // Client -> Server heartbeat request.
-message Ping {}
+message Ping {
+    // Backstop cumulative ack: the highest contiguous reliable `seq` the client has
+    // received. Lets the server reconcile its retransmit buffer even if a dedicated
+    // ACK frame was lost. 0 means "no reliable frames received yet".
+    uint64 last_recv_seq = 1;
+}

@@ -49,6 +49,13 @@ inline const T& require_parsed(const queue::MessageEvent& event) {
 
 net::outbound::OutgoingMessage make_outgoing_message(net::outbound::Target target,
                                                      std::string bytes);
+
+// Reliable (at-least-once) variant: the wire bytes are delivered with per-connection
+// sequencing, server-side buffering, and retransmit-until-acked. Use for events whose
+// loss would leave the client silently out of sync while still connected (e.g. voice
+// mute/deafen/join/leave). `bytes` must be a base Envelope WITHOUT a seq field.
+net::outbound::OutgoingMessage make_reliable_outgoing_message(net::outbound::Target target,
+                                                              std::string bytes);
 net::outbound::OutgoingMessage make_command_error(const GlobalConnId& conn,
                                                   sercom::protocol::Envelope::Type type,
                                                   sercom::protocol::event::CommandErrorCode code,

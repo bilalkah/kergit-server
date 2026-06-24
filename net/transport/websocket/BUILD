@@ -85,6 +85,8 @@ cc_library(
         "//net/security/transport:ws_origin_policy",
         "//net/transport:i_transport",
         "//net/transport:outbound_transport_iface",
+        "//proto/command:ack_cc_proto",
+        "//proto/command:heartbeat_cc_proto",
         "//proto/command:session_cc_proto",
         "//utils:loggable",
         "//utils:metrics",

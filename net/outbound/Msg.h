@@ -43,6 +43,13 @@ struct Target {
 
 struct SendPayload {
     Payload payload;  // serialized, wire-ready
+
+    // When true the payload is delivered reliably (at-least-once): the OutgoingWorker
+    // stamps a per-connection Envelope.seq onto these wire bytes at send time, buffers
+    // them until the client acks, and retransmits on timeout. The `payload` here is the
+    // base Envelope WITHOUT a seq field (seq is stamped per connection). Reliable
+    // sends are never silently dropped under backpressure — they force a reconnect.
+    bool reliable{false};
 };
 
 struct UpdateAuthState {

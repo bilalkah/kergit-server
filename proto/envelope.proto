@@ -26,6 +26,12 @@ message Envelope {
         // When: server heartbeat response to PING.
         PONG = 11;
 
+        // Direction: C->S
+        // Payload: sercom.protocol.command.Ack
+        // When: client acknowledges the highest contiguous reliable `seq` it has
+        // received, so the server can drop those frames from its retransmit buffer.
+        ACK = 12;
+
         // Session / state sync
         // Direction: C->S
         // Payload: sercom.protocol.command.Authenticate
@@ -181,5 +187,13 @@ message Envelope {
     }
 
     Type type = 3;
+
+    // Per-connection monotonic sequence for reliable (at-least-once) S->C delivery.
+    // 0 (unset) means the frame is unsequenced/fire-and-forget. When > 0 the client
+    // must process frames in contiguous order and acknowledge the highest contiguous
+    // value it has seen (see ACK / Ping.last_recv_seq); the server buffers each
+    // sequenced frame until acked and retransmits on timeout.
+    uint64 seq = 4;
+
     bytes payload = 100;
 }

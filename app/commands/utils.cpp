@@ -30,6 +30,16 @@ net::outbound::OutgoingMessage make_outgoing_message(net::outbound::Target targe
             net::outbound::SendPayload{.payload = net::outbound::Payload{std::move(bytes), true}}}};
 }
 
+net::outbound::OutgoingMessage make_reliable_outgoing_message(net::outbound::Target target,
+                                                              std::string bytes) {
+    return net::outbound::OutgoingMessage{
+        .target = std::move(target),
+        .action = net::outbound::Action{
+            std::in_place_type<net::outbound::SendPayload>,
+            net::outbound::SendPayload{.payload = net::outbound::Payload{std::move(bytes), true},
+                                       .reliable = true}}};
+}
+
 net::outbound::OutgoingMessage make_command_error(const GlobalConnId& conn,
                                                   sercom::protocol::Envelope::Type type,
                                                   sercom::protocol::event::CommandErrorCode code,

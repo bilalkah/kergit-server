@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package sercom.protocol.command;
+
+// Client -> Server cumulative acknowledgement for reliable S->C delivery.
+// Sent immediately whenever the client processes a sequenced frame, carrying the
+// highest contiguous `seq` it has received. The server drops every buffered frame
+// with seq <= ack_seq from that connection's retransmit buffer.
+message Ack {
+    uint64 ack_seq = 1;
+}

@@ -50,6 +50,14 @@ struct Counters {
     std::atomic<uint64_t> outbound_update_auth_state_total{0};
     std::atomic<uint64_t> outbound_drop_connection_total{0};
     std::atomic<uint64_t> outbound_backpressured_total{0};
+
+    // Reliable (at-least-once) S->C delivery
+    std::atomic<uint64_t> reliable_sent_total{0};
+    std::atomic<uint64_t> reliable_acked_total{0};
+    std::atomic<uint64_t> reliable_retransmit_total{0};
+    std::atomic<uint64_t> reliable_drop_connection_total{0};
+    std::atomic<uint64_t> reliable_buffer_highwater{0};
+
     std::atomic<uint64_t> db_write_enqueued_total{0};
     std::atomic<uint64_t> db_write_dropped_total{0};
     std::atomic<uint64_t> db_write_retry_total{0};

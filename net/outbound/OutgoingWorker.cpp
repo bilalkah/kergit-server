@@ -1,11 +1,17 @@
 #include "net/outbound/OutgoingWorker.h"
 
+#include "net/outbound/ReliableSeq.h"
 #include "utils/Metrics.h"
 
 #include <algorithm>
 #include <cassert>
+#include <chrono>
 #include <deque>
+#include <memory>
+#include <optional>
 #include <unordered_set>
+#include <utility>
+#include <vector>
 
 namespace net::outbound {
 
@@ -209,8 +215,22 @@ void OutgoingWorker::tick() {
                 1, std::memory_order_relaxed);
             ob.slow_hits += 1;
             if (ob.slow_hits >= 4) {
-                ob.drop_pending = true;
+                // The connection can't keep up. Silently clearing the backlog would lose
+                // frames undetectably (fatal for reliable sends, which never get a seq if
+                // dropped here). Instead replace the backlog with a single drop so the
+                // client reconnects and resyncs — the durable recovery path. (4409 is
+                // mapped to "recoverable -> reconnect" on the client.)
                 ob.q.clear();
+                ob.slow_hits = 0;
+                ob.drop_pending = true;
+                OutgoingMessage drop;
+                drop.priority = OutboundPriority::High;
+                drop.target = Target::one(global_id);
+                drop.action = Action{std::in_place_type<DropConnection>, 4409,
+                                     std::string("slow_outbox_overflow")};
+                ob.q.push_back(std::move(drop));
+                utils::metrics::counters().slow_connection_dropped_total.fetch_add(
+                    1, std::memory_order_relaxed);
             }
         });
 
@@ -280,8 +300,33 @@ void OutgoingWorker::tick() {
                                 processed = true;
                                 return;
                             }
-                            if (transport_.send(ctx.handle, *action.payload.data,
-                                                action.payload.is_binary)) {
+                            if (action.reliable) {
+                                // Stamp a per-connection seq, send, and retain the exact
+                                // wire bytes until acked (see retransmit_sweep/on_ack).
+                                const uint64_t seq = ctx.reliable.next_seq + 1;
+                                auto wire = std::make_shared<const std::string>(
+                                    stamp_envelope_seq(*action.payload.data, seq));
+                                if (transport_.send(ctx.handle, *wire, action.payload.is_binary)) {
+                                    ctx.reliable.next_seq = seq;
+                                    ctx.reliable.buffer.push_back({seq, std::move(wire),
+                                                                   std::chrono::steady_clock::now(),
+                                                                   static_cast<uint16_t>(1)});
+                                    pending_unacked_conns_.insert(conn_id);
+                                    auto& m = utils::metrics::counters();
+                                    m.reliable_sent_total.fetch_add(1, std::memory_order_relaxed);
+                                    m.outbound_flush_total.fetch_add(1, std::memory_order_relaxed);
+                                    const uint64_t depth = ctx.reliable.buffer.size();
+                                    if (depth > m.reliable_buffer_highwater.load(
+                                                    std::memory_order_relaxed)) {
+                                        m.reliable_buffer_highwater.store(
+                                            depth, std::memory_order_relaxed);
+                                    }
+                                    processed = true;
+                                }
+                                // send failed (backpressure race): leave seq unconsumed
+                                // and retry next tick — no gap is created.
+                            } else if (transport_.send(ctx.handle, *action.payload.data,
+                                                       action.payload.is_binary)) {
                                 utils::metrics::counters().outbound_flush_total.fetch_add(
                                     1, std::memory_order_relaxed);
                                 processed = true;
@@ -329,8 +374,115 @@ void OutgoingWorker::tick() {
         }
     }
 
+    retransmit_sweep();
+
     utils::metrics::observe_outbound_msgs_per_tick(processed);
     utils::metrics::maybe_log();
+}
+
+void OutgoingWorker::on_ack(const ConnId& conn_id, uint64_t ack_seq) {
+    bool drained = false;
+    auto res = conns_.mutate(conn_id, [&](connection::ConnectionContext& ctx) {
+        auto& r = ctx.reliable;
+        if (ack_seq > r.acked_seq) {
+            r.acked_seq = ack_seq;
+        }
+        uint64_t popped = 0;
+        while (!r.buffer.empty() && r.buffer.front().seq <= ack_seq) {
+            r.buffer.pop_front();
+            ++popped;
+        }
+        if (popped > 0) {
+            utils::metrics::counters().reliable_acked_total.fetch_add(popped,
+                                                                      std::memory_order_relaxed);
+        }
+        drained = r.buffer.empty();
+    });
+
+    // Drop the index entry once the buffer is empty (or the connection is gone).
+    if (!res.has_value() || drained) {
+        pending_unacked_conns_.erase(conn_id);
+    }
+}
+
+void OutgoingWorker::retransmit_sweep() {
+    if (pending_unacked_conns_.empty()) {
+        return;
+    }
+
+    const auto now = std::chrono::steady_clock::now();
+    std::vector<ConnId> to_erase;
+    // Connections that exhausted retries / overflowed their buffer: end them outside the
+    // registry lock (handle.end() triggers the close->detach path).
+    std::vector<std::pair<transport::WsHandle, DropConnection>> drops;
+
+    for (const auto& conn_id : pending_unacked_conns_) {
+        bool drained = false;
+        std::optional<DropConnection> drop;
+        transport::WsHandle drop_handle{};
+
+        auto res = conns_.mutate(conn_id, [&](connection::ConnectionContext& ctx) {
+            auto& buf = ctx.reliable.buffer;
+            if (buf.empty()) {
+                drained = true;
+                return;
+            }
+            // Client is not draining fast enough — force reconnect + resync rather than
+            // grow the buffer unboundedly.
+            if (buf.size() > ctx.reliable.capacity) {
+                drop = DropConnection{4409, "reliable_buffer_overflow"};
+                drop_handle = ctx.handle;
+                return;
+            }
+            if (!ctx.handle.valid()) {
+                return;
+            }
+            // Resend in seq order any frame whose ack is overdue.
+            for (auto& p : buf) {
+                if (now - p.last_sent_at < cfg_.retransmit_timeout) {
+                    continue;
+                }
+                if (p.attempts >= cfg_.max_retransmits) {
+                    drop = DropConnection{4409, "reliable_ack_timeout"};
+                    drop_handle = ctx.handle;
+                    return;
+                }
+                if (transport_.is_backpressured(ctx.handle)) {
+                    break;
+                }
+                if (transport_.send(ctx.handle, *p.bytes, true)) {
+                    p.last_sent_at = now;
+                    p.attempts = static_cast<uint16_t>(p.attempts + 1);
+                    utils::metrics::counters().reliable_retransmit_total.fetch_add(
+                        1, std::memory_order_relaxed);
+                }
+            }
+        });
+
+        if (!res.has_value()) {
+            to_erase.push_back(conn_id);  // connection gone
+            continue;
+        }
+        if (drop.has_value()) {
+            drops.emplace_back(drop_handle, *drop);
+            to_erase.push_back(conn_id);
+            continue;
+        }
+        if (drained) {
+            to_erase.push_back(conn_id);
+        }
+    }
+
+    for (const auto& conn_id : to_erase) {
+        pending_unacked_conns_.erase(conn_id);
+    }
+    for (auto& [handle, d] : drops) {
+        if (handle.valid()) {
+            handle.end(d.code, d.reason);
+            utils::metrics::counters().reliable_drop_connection_total.fetch_add(
+                1, std::memory_order_relaxed);
+        }
+    }
 }
 
 }  // namespace net::outbound

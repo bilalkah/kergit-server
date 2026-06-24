@@ -27,6 +27,17 @@ cc_proto_library(
 )
 
 proto_library(
+    name = "ack_proto",
+    srcs = ["ack.proto"],
+)
+
+cc_proto_library(
+    name = "ack_cc_proto",
+    deps = [":ack_proto"],
+    visibility = ["//visibility:public"],
+)
+
+proto_library(
     name = "activity_proto",
     srcs = ["activity.proto"],
     deps = [
