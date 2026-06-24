@@ -4,11 +4,10 @@
 #include "utils/EnvLoader.h"
 #include "utils/EventLogger.h"
 
+#include <array>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 #include <openssl/sha.h>
-
-#include <array>
 #include <vector>
 
 namespace app::services::voice {
@@ -207,8 +206,9 @@ ChannelKeyService::ChannelKeyService(infra::redis::RedisClient& redis,
       hub_service_(hub_service),
       key_ttl_(parse_positive_seconds(utils::EnvLoader::get_env("VOICE_E2EE_KEY_TTL_SEC", ""),
                                       kDefaultKeyTtl)),
-      rekey_guard_ttl_(parse_positive_seconds(
-          utils::EnvLoader::get_env("VOICE_E2EE_REKEY_GUARD_SEC", ""), kDefaultRekeyGuardTtl)) {
+      join_rotate_debounce_ttl_(parse_positive_seconds(
+          utils::EnvLoader::get_env("VOICE_E2EE_JOIN_ROTATE_DEBOUNCE_SEC", ""),
+          kDefaultJoinRotateDebounceTtl)) {
     const auto storage_secret = utils::EnvLoader::get_env(
         "VOICE_E2EE_STORAGE_SECRET", utils::EnvLoader::get_env("LIVEKIT_API_SECRET", ""));
     storage_key_ready_ = derive_master_key(storage_secret, storage_master_key_);
@@ -224,10 +224,6 @@ std::mutex& ChannelKeyService::channel_rotation_mutex(const ChannelId& channel) 
     auto& slot = channel_rotation_mutexes_[channel];
     if (!slot) slot = std::make_unique<std::mutex>();
     return *slot;
-}
-
-bool ChannelKeyService::rekey_blocks_join(const ChannelId& channel) {
-    return is_rekey_in_progress(channel) && !clear_rekey_if_empty(channel);
 }
 
 ChannelKeyService::AcquireResult ChannelKeyService::acquire_for_join(const ChannelId& channel,
@@ -246,7 +242,28 @@ ChannelKeyService::AcquireResult ChannelKeyService::acquire_for_join(const Chann
     std::optional<livekit::E2EEKeyManager::ChannelKey> ck;
 
     if (other_members_present) {
-        ck = rotate_and_broadcast(channel, "participant_join");
+        if (record_join_and_should_debounce_rotation(channel, user)) {
+            // This same user already triggered a join rotation moments ago. A client that
+            // keeps re-issuing JoinVoiceChannelRequest without ever landing in LiveKit (no
+            // participant_joined webhook) would otherwise re-rotate on every retry, churning
+            // keys for the members already in the room. The joiner already holds the freshest
+            // key, so reuse the current one instead of rotating again.
+            // get_key is internally atomic; no persist here — the key was already persisted
+            // when it was rotated/created, and an unlocked re-write could race a concurrent
+            // rotation's persist and clobber storage with a stale key.
+            ck = e2ee_keys_.get_key(channel);
+            if (ck.has_value()) {
+                utils::EventLogger::instance().log(utils::EventCategory::VOICE, user.value,
+                                                   "e2ee_join_rotation_debounced", 0,
+                                                   "channel=" + channel.value);
+            } else {
+                // No live key despite members being present — fall back to a rotation to
+                // establish one rather than failing the join.
+                ck = rotate_and_broadcast(channel, "participant_join");
+            }
+        } else {
+            ck = rotate_and_broadcast(channel, "participant_join");
+        }
     } else {
         ck = e2ee_keys_.get_key(channel);
         if (!ck.has_value()) {
@@ -254,7 +271,6 @@ ChannelKeyService::AcquireResult ChannelKeyService::acquire_for_join(const Chann
             // then mutate key state under the lock so a concurrent clear_channel cannot
             // interleave with our create (the create-vs-clear race).
             const auto empty_state = is_channel_effectively_empty(channel);
-            bool need_force_rekey = false;
             {
                 std::lock_guard rotation_lock(channel_rotation_mutex(channel));
                 ck = e2ee_keys_.get_key(channel);  // re-check under the lock
@@ -283,20 +299,49 @@ ChannelKeyService::AcquireResult ChannelKeyService::acquire_for_join(const Chann
                     e2ee_keys_.set_key(channel, loaded->key, loaded->key_index);
                     ck = loaded;
                     (void)persist_to_storage(channel, ck->key, ck->key_index);
-                    utils::EventLogger::instance().log(utils::EventCategory::VOICE, user.value,
-                                                       "e2ee_key_loaded", 0,
-                                                       "channel=" + channel.value + " source=redis");
+                    utils::EventLogger::instance().log(
+                        utils::EventCategory::VOICE, user.value, "e2ee_key_loaded", 0,
+                        "channel=" + channel.value + " source=redis");
                 } else {
-                    need_force_rekey = true;
+                    // Active room (or inconclusive query) with the key gone from BOTH memory
+                    // and storage. Instead of kicking everyone (a hard drop), recover
+                    // seamlessly: mint a fresh key and broadcast it to the members already in
+                    // the channel. They install it via the LiveKit key provider and KEEP their
+                    // transport; the joiner receives the same key in their token. No one is
+                    // dropped. Broadcasting only to server-tracked members also excludes any
+                    // untrusted LiveKit ghost (it never receives the new key). The
+                    // restart-recovery path (restore_key_for_recovery) likewise never kicks —
+                    // it defers re-keying to the next membership change.
+                    try {
+                        ck = e2ee_keys_.get_or_create_key(channel);
+                    } catch (const std::exception& ex) {
+                        utils::EventLogger::instance().log(
+                            utils::EventCategory::VOICE, user.value, "e2ee_key_generate_failed", 0,
+                            "channel=" + channel.value + " error=" + ex.what());
+                    }
+                    if (ck.has_value()) {
+                        (void)persist_to_storage(channel, ck->key, ck->key_index);
+                        utils::EventLogger::instance().log(
+                            utils::EventCategory::VOICE, user.value,
+                            "e2ee_key_recovered_active_room", 0,
+                            "channel=" + channel.value +
+                                " key_index=" + std::to_string(ck->key_index));
+                        if (const auto channel_info = hub_service_.getChannel(channel)) {
+                            publisher_.publish_voice_key_update(channel_info->hub_id, channel,
+                                                                ck->key, ck->key_index);
+                        } else {
+                            // Recovered the key but couldn't fan it out (hub lookup failed):
+                            // existing members would silently fail to decrypt. Make it
+                            // traceable instead of a silent desync.
+                            utils::EventLogger::instance().log(
+                                utils::EventCategory::VOICE, user.value,
+                                "e2ee_key_broadcast_skipped", 0,
+                                "channel=" + channel.value +
+                                    " key_index=" + std::to_string(ck->key_index) +
+                                    " reason=recovered_active_room cause=channel_lookup_failed");
+                        }
+                    }
                 }
-            }
-            if (need_force_rekey) {
-                utils::EventLogger::instance().log(utils::EventCategory::VOICE, user.value,
-                                                   "e2ee_key_missing_active_room", 0,
-                                                   "channel=" + channel.value);
-                force_rekey(channel, "missing_or_invalid_key_for_active_room");
-                result.error_reason = "voice_rekey_in_progress";
-                return result;
             }
         } else {
             (void)persist_to_storage(channel, ck->key, ck->key_index);
@@ -331,12 +376,20 @@ livekit::E2EEKeyManager::ChannelKey ChannelKeyService::rotate_and_broadcast(
     if (const auto channel_info = hub_service_.getChannel(channel)) {
         publisher_.publish_voice_key_update(channel_info->hub_id, channel, rotated.key,
                                             rotated.key_index);
+    } else {
+        // The key rotated but we couldn't resolve the hub to fan it out — members keep the
+        // OLD key while the store advances, so they silently fail to decrypt new audio (looks
+        // like a drop). Surface it loudly so it is traceable rather than a mystery.
+        utils::EventLogger::instance().log(
+            utils::EventCategory::VOICE, "", "e2ee_key_broadcast_skipped", 0,
+            "channel=" + channel.value + " key_index=" + std::to_string(rotated.key_index) +
+                " reason=" + std::string(reason) + " cause=channel_lookup_failed");
     }
 
-    utils::EventLogger::instance().log(
-        utils::EventCategory::VOICE, "", "e2ee_key_rotated", 0,
-        "channel=" + channel.value + " key_index=" + std::to_string(rotated.key_index) +
-            " reason=" + std::string(reason));
+    utils::EventLogger::instance().log(utils::EventCategory::VOICE, "", "e2ee_key_rotated", 0,
+                                       "channel=" + channel.value +
+                                           " key_index=" + std::to_string(rotated.key_index) +
+                                           " reason=" + std::string(reason));
     return rotated;
 }
 
@@ -366,26 +419,31 @@ void ChannelKeyService::clear_channel(const ChannelId& channel) {
         e2ee_keys_.clear_key(channel);
         clear_storage(channel);
     }
-    clear_rekey_guard(channel);
+    clear_join_rotation_debounce(channel);
 }
 
-bool ChannelKeyService::restore_key_for_recovery(const ChannelId& channel) {
+void ChannelKeyService::restore_key_for_recovery(const ChannelId& channel) {
     const auto recovered_key = load_from_storage(channel);
-    if (!recovered_key.has_value()) {
-        utils::EventLogger::instance().log(utils::EventCategory::VOICE, "",
-                                           "e2ee_key_missing_active_room", 0,
-                                           "channel=" + channel.value +
-                                               " reason=recovery_missing_or_invalid");
-        force_rekey(channel, "recovery_missing_or_invalid");
-        return false;
+    if (recovered_key.has_value()) {
+        e2ee_keys_.set_key(channel, recovered_key->key, recovered_key->key_index);
+        (void)persist_to_storage(channel, recovered_key->key, recovered_key->key_index);
+        utils::EventLogger::instance().log(utils::EventCategory::VOICE, "", "e2ee_key_loaded", 0,
+                                           "channel=" + channel.value + " source=redis_recovery");
+        return;
     }
 
-    e2ee_keys_.set_key(channel, recovered_key->key, recovered_key->key_index);
-    (void)persist_to_storage(channel, recovered_key->key, recovered_key->key_index);
-    clear_rekey_guard(channel);
-    utils::EventLogger::instance().log(utils::EventCategory::VOICE, "", "e2ee_key_loaded", 0,
-                                       "channel=" + channel.value + " source=redis_recovery");
-    return true;
+    // No stored key for a still-active room. Do NOT kick the participants: a control-plane
+    // restart does not disconnect them from LiveKit's media plane, so they remain connected
+    // holding the key they already have and keep talking to each other — the server losing
+    // its copy doesn't break their media. Re-keying here would be actively harmful: clients'
+    // WebSocket sessions reconnect at staggered times, so a broadcast would reach some
+    // members and not others, splitting the room. Instead leave the key absent and let it be
+    // re-established seamlessly on the next membership change — the normal rotate path mints a
+    // fresh key (index 0 when none exists) and broadcasts it to all members, who are present
+    // together by then. Kicking here dropped healthy users over a server-side bookkeeping gap.
+    utils::EventLogger::instance().log(
+        utils::EventCategory::VOICE, "", "e2ee_key_recovery_deferred", 0,
+        "channel=" + channel.value + " reason=no_stored_key_active_room");
 }
 
 std::string ChannelKeyService::key_storage_key(const ChannelId& channel) {
@@ -500,76 +558,22 @@ std::optional<bool> ChannelKeyService::is_channel_effectively_empty(const Channe
     return true;
 }
 
-void ChannelKeyService::mark_rekey_in_progress(const ChannelId& channel) {
-    std::lock_guard lock(rekey_mutex_);
-    rekey_guard_until_[channel] = std::chrono::steady_clock::now() + rekey_guard_ttl_;
+bool ChannelKeyService::record_join_and_should_debounce_rotation(const ChannelId& channel,
+                                                                 const UserId& user) {
+    const auto now = std::chrono::steady_clock::now();
+    std::lock_guard lock(join_rotate_mutex_);
+    auto& last = join_rotate_seen_[channel][user];
+    const bool debounce =
+        last.time_since_epoch().count() != 0 && now < last + join_rotate_debounce_ttl_;
+    // Always refresh so a continuing retry storm keeps sliding the window forward and stays
+    // suppressed; the first (genuine) join records the timestamp without debouncing.
+    last = now;
+    return debounce;
 }
 
-bool ChannelKeyService::is_rekey_in_progress(const ChannelId& channel) {
-    std::lock_guard lock(rekey_mutex_);
-    auto it = rekey_guard_until_.find(channel);
-    if (it == rekey_guard_until_.end()) return false;
-
-    if (it->second <= std::chrono::steady_clock::now()) {
-        rekey_guard_until_.erase(it);
-        return false;
-    }
-
-    return true;
-}
-
-bool ChannelKeyService::clear_rekey_if_empty(const ChannelId& channel) {
-    const auto empty = is_channel_effectively_empty(channel);
-    if (!empty.has_value() || !*empty) return false;
-
-    clear_rekey_guard(channel);
-    return true;
-}
-
-void ChannelKeyService::clear_rekey_guard(const ChannelId& channel) {
-    std::lock_guard lock(rekey_mutex_);
-    rekey_guard_until_.erase(channel);
-}
-
-void ChannelKeyService::force_rekey(const ChannelId& channel, std::string_view reason) {
-    mark_rekey_in_progress(channel);
-
-    e2ee_keys_.clear_key(channel);
-    clear_storage(channel);
-
-    // Any node answers for any room (one logical cluster, shared Redis routing).
-    auto node = nodes_.any_node();
-    if (!node) {
-        utils::EventLogger::instance().log(
-            utils::EventCategory::VOICE, "", "e2ee_forced_rekey", 0,
-            "channel=" + channel.value + " removed_participants=0 reason=" + std::string(reason) +
-                " node=unknown");
-        return;
-    }
-
-    livekit::cli::LivekitClient client(node->private_host, token_service_);
-    std::vector<livekit::cli::ParticipantInfo> participants;
-    try {
-        participants = client.ListParticipants(channel);
-    } catch (const std::exception& ex) {
-        utils::EventLogger::instance().log(
-            utils::EventCategory::VOICE, "", "e2ee_forced_rekey_list_failed", 0,
-            "channel=" + channel.value + " reason=" + std::string(reason) + " error=" + ex.what());
-        return;
-    }
-
-    std::size_t removed_count = 0;
-    for (const auto& participant : participants) {
-        if (participant.identity.value.empty()) continue;
-        if (client.RemoveParticipant(channel, participant.identity)) {
-            removed_count++;
-        }
-    }
-
-    utils::EventLogger::instance().log(
-        utils::EventCategory::VOICE, "", "e2ee_forced_rekey", 0,
-        "channel=" + channel.value + " node=" + node->node_id + " removed_participants=" +
-            std::to_string(removed_count) + " reason=" + std::string(reason));
+void ChannelKeyService::clear_join_rotation_debounce(const ChannelId& channel) {
+    std::lock_guard lock(join_rotate_mutex_);
+    join_rotate_seen_.erase(channel);
 }
 
 }  // namespace app::services::voice

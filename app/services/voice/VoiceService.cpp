@@ -86,11 +86,6 @@ VoiceService::JoinVoiceToken VoiceService::join_voice(const ChannelId& channel, 
                                                       std::string_view intent_nonce) {
     JoinVoiceToken response;
 
-    if (channel_keys_.rekey_blocks_join(channel)) {
-        response.error_reason = "voice_rekey_in_progress";
-        return response;
-    }
-
     // We no longer pick/pin a node ourselves. The cluster is one logical LiveKit (shared
     // Redis); the client connects to the single load-balanced endpoint and LiveKit decides
     // which node hosts the room. We only need a configured node to exist.
@@ -212,11 +207,22 @@ bool VoiceService::mark_webhook_event_seen(const std::string& event_id) {
 
 bool VoiceService::verified_kick_user(const ChannelId& channel, const UserId& target) {
     auto node = nodes_.any_node();
-    if (!node) return true;
+    if (!node) {
+        // No node to issue the removal against. We optimistically report success (callers
+        // proceed with the takeover/kick), but the participant was NOT actually removed —
+        // log it so an unexpectedly-lingering participant is traceable to this gap.
+        utils::EventLogger::instance().log(utils::EventCategory::VOICE, target.value,
+                                           "kick_no_node", 0,
+                                           "channel=" + channel.value + " removed=optimistic");
+        return true;
+    }
 
     livekit::cli::LivekitClient client(node->private_host, token_service_);
 
     if (client.RemoveParticipant(channel, target)) {
+        utils::EventLogger::instance().log(utils::EventCategory::VOICE, target.value,
+                                           "voice_participant_removed", 0,
+                                           "channel=" + channel.value + " node=" + node->node_id);
         return true;
     }
 
@@ -546,7 +552,7 @@ void VoiceService::reconcile_channel_state(const ChannelId& channel, std::string
                 // media drop arrives as a participant_left webhook. Hold; never force a leave
                 // for a user who still holds a live owner connection.
                 reconciler_.clear_participant_remote_missing_confirmation(channel,
-                                                                         participant.user_id);
+                                                                          participant.user_id);
                 utils::EventLogger::instance().log(
                     utils::EventCategory::VOICE, participant.user_id.value,
                     "reconcile_participant_missing_held", 0,
@@ -557,7 +563,7 @@ void VoiceService::reconcile_channel_state(const ChannelId& channel, std::string
 
             // No active owner connection → the user is genuinely gone; safe to clean up.
             if (reconciler_.confirm_participant_remote_missing(channel, participant.user_id,
-                                                   "participant_missing_in_livekit")) {
+                                                               "participant_missing_in_livekit")) {
                 force_local_leave(participant.user_id, channel, "participant_missing_in_livekit");
             }
         }
@@ -720,10 +726,10 @@ void VoiceService::handle_participant_joined(const livekit::webhook::LiveKitEven
     if (auto channel = hub_service_.getChannel(event.channel_id)) {
         if (first_join_in_channel) {
             publisher_.publish_voice_snapshot(channel->hub_id, event.channel_id,
-                                   read_channel_started_at_unix(event.channel_id));
+                                              read_channel_started_at_unix(event.channel_id));
         }
-        publisher_.publish_voice_participant_upsert(channel->hub_id, event.channel_id, event.user_id,
-                                         final_muted, final_deafened);
+        publisher_.publish_voice_participant_upsert(channel->hub_id, event.channel_id,
+                                                    event.user_id, final_muted, final_deafened);
     }
 
     publisher_.publish_self_status(event.user_id, true, intent.session_id, event.channel_id);
@@ -783,7 +789,8 @@ void VoiceService::handle_participant_left(const livekit::webhook::LiveKitEvent&
         utils::EventLogger::instance().voice_leave(event.user_id.value, event.channel_id.value);
 
         if (auto channel = hub_service_.getChannel(event.channel_id)) {
-            publisher_.publish_voice_participant_remove(channel->hub_id, event.channel_id, event.user_id);
+            publisher_.publish_voice_participant_remove(channel->hub_id, event.channel_id,
+                                                        event.user_id);
         }
 
         publisher_.publish_self_status(event.user_id, false, std::nullopt, std::nullopt);
@@ -814,7 +821,8 @@ void VoiceService::handle_participant_left(const livekit::webhook::LiveKitEvent&
 
     if (old_leave_for_switch) {
         if (auto channel = hub_service_.getChannel(event.channel_id)) {
-            publisher_.publish_voice_participant_remove(channel->hub_id, event.channel_id, event.user_id);
+            publisher_.publish_voice_participant_remove(channel->hub_id, event.channel_id,
+                                                        event.user_id);
         }
 
         if (sessions_.is_empty(event.channel_id)) {
@@ -918,11 +926,11 @@ void VoiceService::recover_from_restart() {
             }
 
             if (!participants.empty()) {
-                if (!channel_keys_.restore_key_for_recovery(room)) {
-                    continue;  // no valid stored key → force-rekeyed; skip registering
-                }
-            } else {
-                channel_keys_.clear_rekey_guard(room);
+                // Restore the stored key, or (when none is stored) leave it absent without
+                // kicking — clients keep the key they already hold and the server re-keys
+                // seamlessly on the next membership change. Either way we register the
+                // recovered participants below; we never drop a healthy user on restart.
+                channel_keys_.restore_key_for_recovery(room);
             }
 
             for (const auto& p : participants) {

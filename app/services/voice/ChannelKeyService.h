@@ -37,16 +37,13 @@ class ChannelKeyService {
     struct AcquireResult {
         // Present on success.
         std::optional<livekit::E2EEKeyManager::ChannelKey> key;
-        // Set on failure: "voice_rekey_in_progress" or "voice_key_unavailable".
+        // Set on failure: "voice_key_unavailable".
         std::string error_reason;
     };
 
     ChannelKeyService(infra::redis::RedisClient& redis, livekit::LivekitNodeRegistry& nodes,
                       livekit::LiveKitTokenService& token_service, VoiceSessionManager& sessions,
                       VoicePublisher& publisher, app::services::HubService& hub_service);
-
-    /// True if a rekey is in progress and the channel isn't empty yet (the join must wait).
-    bool rekey_blocks_join(const ChannelId& channel);
 
     /// Resolve the key a joining user should receive: rotates when other members are
     /// present (forward/backward secrecy), else loads/creates the channel key.
@@ -59,25 +56,26 @@ class ChannelKeyService {
     /// Re-send the current key to a user's owner session (resume re-sync).
     void resync_to_user(const UserId& user);
 
-    /// Forget the channel key everywhere (memory + storage + rekey guard).
+    /// Forget the channel key everywhere (memory + storage).
     void clear_channel(const ChannelId& channel);
 
-    /// Kick all participants and drop the key so they rejoin with a fresh one.
-    void force_rekey(const ChannelId& channel, std::string_view reason);
-
-    /// Restart recovery: reload an active room's key from storage. Returns false (after
-    /// forcing a rekey) when no valid key is stored.
-    bool restore_key_for_recovery(const ChannelId& channel);
-
-    /// Drop the rekey guard for a channel (used on restart for empty rooms).
-    void clear_rekey_guard(const ChannelId& channel);
+    /// Restart recovery: reload an active room's key from storage. When nothing is stored,
+    /// the key is left absent (NOT a kick) — clients keep the key they already hold and the
+    /// server re-establishes one seamlessly on the next membership change.
+    void restore_key_for_recovery(const ChannelId& channel);
 
    private:
     std::optional<bool> is_channel_effectively_empty(const ChannelId& channel);
     std::mutex& channel_rotation_mutex(const ChannelId& channel);
-    void mark_rekey_in_progress(const ChannelId& channel);
-    bool is_rekey_in_progress(const ChannelId& channel);
-    bool clear_rekey_if_empty(const ChannelId& channel);
+
+    // Records that `user` is (re)joining `channel` and reports whether a join-driven
+    // rotation should be debounced: true when this same user triggered a join rotation in
+    // the last `join_rotate_debounce_ttl_`. Repeated join *requests* that never land in
+    // LiveKit (no participant_joined webhook) would otherwise re-rotate the key on every
+    // retry, needlessly churning keys for the members already in the room. Always refreshes
+    // the user's timestamp so a continuing retry storm stays suppressed.
+    bool record_join_and_should_debounce_rotation(const ChannelId& channel, const UserId& user);
+    void clear_join_rotation_debounce(const ChannelId& channel);
 
     static std::string key_storage_key(const ChannelId& channel);
     static std::string index_storage_key(const ChannelId& channel);
@@ -97,16 +95,19 @@ class ChannelKeyService {
     std::array<unsigned char, 32> storage_master_key_{};
     bool storage_key_ready_ = false;
     std::chrono::seconds key_ttl_;
-    std::chrono::seconds rekey_guard_ttl_;
-    mutable std::mutex rekey_mutex_;
-    std::unordered_map<ChannelId, std::chrono::steady_clock::time_point> rekey_guard_until_;
+    std::chrono::seconds join_rotate_debounce_ttl_;
+    // Per-(channel,user) timestamp of the last join-driven rotation, used to debounce
+    // rotation on repeated/failed rejoin attempts by the same user.
+    std::mutex join_rotate_mutex_;
+    std::unordered_map<ChannelId, std::unordered_map<UserId, std::chrono::steady_clock::time_point>>
+        join_rotate_seen_;
     // Per-channel serialization of key lifecycle so the assigned index and the
     // VOICE_KEY_UPDATE fanout stay ordered, without one channel blocking another.
     std::mutex rotation_mutex_map_mutex_;
     std::unordered_map<ChannelId, std::unique_ptr<std::mutex>> channel_rotation_mutexes_;
 
     static constexpr std::chrono::seconds kDefaultKeyTtl{24 * 60 * 60};
-    static constexpr std::chrono::seconds kDefaultRekeyGuardTtl{30};
+    static constexpr std::chrono::seconds kDefaultJoinRotateDebounceTtl{15};
 };
 
 }  // namespace app::services::voice
