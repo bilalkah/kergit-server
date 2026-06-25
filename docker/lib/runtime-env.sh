@@ -212,6 +212,7 @@ runtime_env_resolve_compose_defaults() {
 
 runtime_env_export_canonical_values() {
   export WEB_DOMAIN
+  export WEB_WWW_DOMAIN
   export NUXT_PUBLIC_SUPABASE_URL
   export WEB_SOCKET_ORIGIN
   export LIVEKIT_NODES
@@ -235,6 +236,7 @@ load_runtime_env_strict() {
 
   runtime_env_check_retired_variables || return 1
   runtime_env_resolve_value WEB_DOMAIN ""
+  runtime_env_resolve_value WEB_WWW_DOMAIN ""
   runtime_env_resolve_value NUXT_PUBLIC_SUPABASE_URL ""
   runtime_env_resolve_value LIVEKIT_NODES ""
   runtime_env_resolve_value LIVEKIT_WEBHOOK_URL "http://server-node:8080/webhook"
@@ -259,6 +261,12 @@ load_runtime_env_strict() {
       return 1
       ;;
     esac
+    # conf.prod/Caddyfile references {$WEB_WWW_DOMAIN} as a site label, so prod must set it.
+    if [ -z "$WEB_WWW_DOMAIN" ]; then
+      echo "❌ Production mode requires WEB_WWW_DOMAIN (the www host that 301-redirects to WEB_DOMAIN)."
+      return 1
+    fi
+    validate_https_origin WEB_WWW_DOMAIN "$WEB_WWW_DOMAIN" || return 1
   else
     CADDY_CONF_DIR="conf.dev"
     LIVEKIT_PRODUCTION_MODE=0
@@ -272,6 +280,7 @@ load_runtime_env_strict() {
 
 load_runtime_env_for_stop() {
   runtime_env_resolve_value WEB_DOMAIN "https://localhost"
+  runtime_env_resolve_value WEB_WWW_DOMAIN ""
   runtime_env_resolve_value NUXT_PUBLIC_SUPABASE_URL "https://localhost"
   runtime_env_resolve_value LIVEKIT_NODES "[]"
   runtime_env_resolve_value LIVEKIT_PRODUCTION_MODE "0"

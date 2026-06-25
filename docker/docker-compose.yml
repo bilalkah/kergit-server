@@ -46,6 +46,9 @@ services:
       # run-server.sh validates/exports these; stop-server.sh derives/falls back for `down`.
       # Keep these as pass-through values so Compose does not depend on the user's shell.
       - WEB_DOMAIN=${WEB_DOMAIN:?WEB_DOMAIN is required}
+      # www canonical-redirect host. Prod-only and required there (load_runtime_env_strict
+      # enforces it); empty default keeps dev and `down` working since conf.dev never uses it.
+      - WEB_WWW_DOMAIN=${WEB_WWW_DOMAIN:-}
       - WEB_SOCKET_ORIGIN=${WEB_SOCKET_ORIGIN:?WEB_SOCKET_ORIGIN must be derived by docker/run-server.sh}
       - NUXT_PUBLIC_SUPABASE_URL=${NUXT_PUBLIC_SUPABASE_URL:?NUXT_PUBLIC_SUPABASE_URL is required}
       - CADDY_TLS_CERT_FILE=${CADDY_TLS_CERT_FILE:-/certs/dev/localhost.pem}
