@@ -21,14 +21,18 @@
 namespace net::connection {
 
 /**
- * State used for heartbeat management.
+ * State used for heartbeat / liveness management.
+ *
+ * Liveness is driven by the client's application-level PING (an Envelope, i.e. a
+ * WebSocket DATA frame), NOT by WebSocket protocol ping/pong control frames. Control
+ * frames can be answered by an intermediary proxy (Caddy/Cloudflare), so a pong does
+ * not prove the real client is alive — only an end-to-end app PING does. `last_seen_at`
+ * is therefore updated whenever an app PING arrives from the client; the heartbeat
+ * sweep closes connections that go silent for longer than the configured timeout.
  */
 struct HeartbeatState {
-    bool alive{false};
     std::chrono::system_clock::time_point connected_at{std::chrono::system_clock::now()};
-    std::chrono::system_clock::time_point last_ping_at{std::chrono::system_clock::now()};
-    std::chrono::system_clock::time_point last_pong_at{std::chrono::system_clock::now()};
-    std::chrono::milliseconds rtt_ms{0};
+    std::chrono::system_clock::time_point last_seen_at{std::chrono::system_clock::now()};
 };
 
 /**

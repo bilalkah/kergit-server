@@ -284,10 +284,14 @@ void TextWSServer::wire() {
                         return;
                     }
 
-                    // FAST-PATH: application-level PING (only after auth). A Ping may
-                    // carry a backstop cumulative ack for reliable delivery, so apply it
-                    // before responding.
+                    // FAST-PATH: application-level PING (only after auth). This is the
+                    // single liveness signal: it is an end-to-end app frame the real
+                    // client must send, so it can't be faked by an intermediary proxy
+                    // (unlike WS control-frame ping/pong). Mark the connection alive, apply
+                    // the optional reliable-delivery ack backstop, then PONG so the client
+                    // can measure RTT for its health display.
                     if (env.type() == sercom::protocol::Envelope::PING) {
+                        heartbeat_service_.note_seen(psd->conn_id);
                         sercom::protocol::command::Ping ping;
                         if (ping.ParseFromString(env.payload()) && ping.last_recv_seq() > 0) {
                             out_worker_.on_ack(psd->conn_id, ping.last_recv_seq());
@@ -327,15 +331,9 @@ void TextWSServer::wire() {
                     }
                 },
 
-            .pong =
-                [this](UwsSocket* ws, std::string_view data) {
-                    auto* psd = ws->getUserData();
-                    if (!psd) return;
-
-                    const auto& status = heartbeat_service_.on_pong(psd->conn_id);
-
-                    if (!status.has_value()) return;
-                },
+            // No .pong handler: the server never sends WS control-frame pings, and a
+            // proxy-answered pong would be a false liveness signal anyway. Liveness is
+            // owned by the app-level PING fast-path above.
             .close =
                 [this](UwsSocket* ws, int code, std::string_view reason) {
                     auto* psd = ws->getUserData();

@@ -6,18 +6,21 @@
 
 #include <atomic>
 #include <chrono>
-#include <fmt/format.h>
 
 struct us_timer_t;
 
 namespace net::runtime {
 
 struct HeartbeatConfig {
+    // How often the sweep runs.
     std::chrono::seconds interval{5};
-    std::chrono::seconds timeout{15};
+    // Close a connection that has not sent an app-level PING for this long. Generous on
+    // purpose: a backgrounded tab throttles its JS timers (Chrome ~1/min), so the timeout
+    // must tolerate slow background pings and only reap genuinely gone/frozen clients.
+    std::chrono::seconds timeout{75};
     std::chrono::seconds auth_pending_timeout{5};
     int close_code = 4000;
-    const char* close_reason = "Client did not respond to heartbeat PINGs";
+    const char* close_reason = "client_heartbeat_timeout";
 };
 
 class HeartbeatService {
@@ -30,7 +33,10 @@ class HeartbeatService {
     void stop();
 
     void on_open(ConnId conn_id);
-    std::expected<std::string, connection::ConnectionError> on_pong(ConnId conn_id);
+
+    // Mark a connection as alive. Called on the event-loop thread from the transport
+    // whenever an app-level PING arrives, so the liveness sweep keeps it.
+    void note_seen(const ConnId& conn_id);
 
    private:
     static void on_timer(us_timer_t* timer);
@@ -53,14 +59,6 @@ class HeartbeatService {
      */
     std::atomic<bool> running_{false};
     ::us_timer_t* timer_{nullptr};
-
-    /**
-     * Helper to make connection status message
-     */
-    inline std::string make_conn_status_msg(bool alive, int rtt_ms) const {
-        const char* status = alive ? "alive" : "stale";
-        return fmt::format(R"({{"type":"conn_status","status":"{}","rtt_ms":{}}})", status, rtt_ms);
-    };
 };
 
 }  // namespace net::runtime

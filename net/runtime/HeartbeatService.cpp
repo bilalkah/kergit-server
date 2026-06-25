@@ -56,33 +56,16 @@ void HeartbeatService::stop() {
 void HeartbeatService::on_open(ConnId conn_id) {
     conns_.mutate(conn_id, [&](net::connection::ConnectionContext& c) {
         auto now = std::chrono::system_clock::now();
-        c.heartbeat.alive = true;
         c.heartbeat.connected_at = now;
-        c.heartbeat.last_ping_at = now;
-        c.heartbeat.last_pong_at = now;
-        c.heartbeat.rtt_ms = std::chrono::milliseconds{0};
+        c.heartbeat.last_seen_at = now;
     });
 }
 
-std::expected<std::string, connection::ConnectionError> HeartbeatService::on_pong(ConnId conn_id) {
+void HeartbeatService::note_seen(const ConnId& conn_id) {
     const auto now = std::chrono::system_clock::now();
-
     conns_.mutate(conn_id, [&](net::connection::ConnectionContext& c) {
-        c.heartbeat.alive = true;
-        c.heartbeat.last_pong_at = now;
-        c.heartbeat.rtt_ms =
-            std::chrono::duration_cast<std::chrono::milliseconds>(now - c.heartbeat.last_ping_at);
-
-        // Track client RTT in metrics
-        utils::metrics::observe_client_rtt(static_cast<uint64_t>(c.heartbeat.rtt_ms.count()));
+        c.heartbeat.last_seen_at = now;
     });
-
-    auto conn = conns_.get(conn_id);
-    if (conn.has_value()) {
-        auto context = conn.value();
-        return "ok";
-    }
-    return std::unexpected(connection::ConnectionError{"Connection not found"});
 }
 
 void HeartbeatService::on_timer(us_timer_t* timer) {
@@ -92,10 +75,12 @@ void HeartbeatService::on_timer(us_timer_t* timer) {
 }
 
 /**
- * Heartbeat tick: ping all connections, check for timeouts
- * - close connections that have timed out
- * - send pings to alive connections
- * - update heartbeat state in connection registry
+ * Heartbeat sweep: a passive liveness/lifecycle reaper. It never sends WebSocket
+ * control-frame pings (those can be answered by an intermediary proxy and would be a
+ * false liveness signal). Liveness comes from the client's app-level PING via
+ * note_seen(); here we only close connections that have:
+ *   - failed/expired auth, or
+ *   - gone silent (no app PING) for longer than the timeout.
  */
 void HeartbeatService::tick() {
     if (!running_.load()) return;
@@ -148,22 +133,14 @@ void HeartbeatService::tick() {
             continue;
         }
 
-        // Liveness is measured by time since the last pong, NOT by the last
-        // measured RTT. rtt_ms only updates when a pong arrives, so on a dead
-        // connection (no pongs) it stays frozen at its last healthy value and
-        // would never exceed the timeout — leaving frozen/backgrounded clients
-        // (e.g. iOS Safari that never sends a TCP FIN) "online" forever.
-        if (now - ctx.heartbeat.last_pong_at > cfg_.timeout) {
+        // Liveness: time since the last app-level PING. A genuinely gone/frozen client
+        // stops sending app PINGs (its JS no longer runs), so last_seen_at goes stale and
+        // we reap it here. A backgrounded-but-alive tab keeps sending throttled pings,
+        // which stay within the (generous) timeout, so it is kept.
+        if (now - ctx.heartbeat.last_seen_at > cfg_.timeout) {
             ctx.handle.end(cfg_.close_code, cfg_.close_reason);
             continue;
         }
-
-        // update last_ping_at in real registry, then send ping
-        conns_.mutate(id, [&](net::connection::ConnectionContext& real) {
-            real.heartbeat.last_ping_at = now;
-        });
-
-        ctx.handle.ping();
     }
 }
 
