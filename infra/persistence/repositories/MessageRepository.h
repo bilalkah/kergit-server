@@ -2,14 +2,14 @@
 #define INFRA_PERSISTENCE_REPOSITORIES_MESSAGE_REPOSITORY_H
 
 #include "domains/Message.h"
-#include "infra/persistence/DatabaseExecutor.h"
+#include "infra/persistence/TransactionRunner.h"
 
 #include <optional>
 #include <vector>
 
 class MessageRepository {
    public:
-    explicit MessageRepository(DatabaseExecutor& db) : db_(db) {}
+    explicit MessageRepository(TransactionRunner& db) : db_(db) {}
 
     Message sendMessage(const ChannelId& channelId, const UserId& senderUuid,
                         const std::string& content, std::vector<MessageAttachment> attachments = {},
@@ -25,7 +25,7 @@ class MessageRepository {
                                            std::optional<MessageCursor> before, int limit);
 
    private:
-    DatabaseExecutor& db_;
+    TransactionRunner& db_;
 };
 
 #endif  // INFRA_PERSISTENCE_REPOSITORIES_MESSAGE_REPOSITORY_H

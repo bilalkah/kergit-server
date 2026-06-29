@@ -1,5 +1,4 @@
 #include "app/services/voice/ReconcileEvidenceTracker.h"
-
 #include "app/services/voice/VoiceSessionManager.h"
 
 #include <chrono>
@@ -181,8 +180,7 @@ TEST(VoiceReconcileCleanupTest, RoomMissingFirstObservationDoesNotClearChannel) 
 
     sessions.join(channel, user, session);
 
-    const auto observed =
-        tracker.observe_channel_missing(channel, "room_missing_in_livekit", now);
+    const auto observed = tracker.observe_channel_missing(channel, "room_missing_in_livekit", now);
 
     if (observed.confirmed) {
         sessions.clear_channel(channel);

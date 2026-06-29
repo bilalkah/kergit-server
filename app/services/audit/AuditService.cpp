@@ -1,5 +1,6 @@
 #include "app/services/audit/AuditService.h"
 
+#include "infra/persistence/PersistenceError.h"
 #include "utils/EventLogger.h"
 
 namespace app::services {
@@ -42,6 +43,11 @@ void AuditService::run() {
 
         try {
             repo_.logEvent(std::move(item.value()));
+        } catch (const TransientPersistenceError& ex) {
+            // The database was momentarily unavailable and the pool heals itself; this audit row is
+            // dropped but the server is healthy. Logged distinctly so it is not mistaken for a bug.
+            utils::EventLogger::instance().log(utils::EventCategory::SYSTEM, "",
+                                               "AUDIT_LOG_WRITE_TRANSIENT", 0, ex.what());
         } catch (const std::exception& ex) {
             utils::EventLogger::instance().log(utils::EventCategory::SYSTEM, "",
                                                "AUDIT_LOG_WRITE_FAILED", 0, ex.what());

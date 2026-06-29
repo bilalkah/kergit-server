@@ -29,6 +29,8 @@ ConnectionPool::ConnectionPool(const std::string& conninfo, std::size_t pool_siz
         " connections pre-warmed, rest lazy)");
 }
 
+ConnectionLease ConnectionPool::lease() { return ConnectionLease(*this, acquire()); }
+
 std::unique_ptr<pqxx::connection> ConnectionPool::open_connection() const {
     auto connection = std::make_unique<pqxx::connection>(conninfo_);
     if (!connection->is_open()) throw std::runtime_error("Failed to open database connection");

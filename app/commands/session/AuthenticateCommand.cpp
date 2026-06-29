@@ -105,7 +105,7 @@ std::vector<net::outbound::OutgoingMessage> AuthenticateCommand::execute(Command
             .actor_type = "user",
             .connection_id = to_string(event.conn_id),
         });
-        
+
         result.emplace_back(make_auth_update(net::outbound::Target::one(event.conn_id),
                                              net::outbound::kAuthStateFailed));
         return result;

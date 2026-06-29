@@ -3,7 +3,7 @@
 
 #include "domains/Channel.h"
 #include "domains/Hub.h"
-#include "infra/persistence/DatabaseExecutor.h"
+#include "infra/persistence/TransactionRunner.h"
 
 #include <optional>
 #include <string>
@@ -19,7 +19,7 @@ class HubRepository {
         Role role{Role::USER};
     };
 
-    explicit HubRepository(DatabaseExecutor& db) : db_(db) {}
+    explicit HubRepository(TransactionRunner& db) : db_(db) {}
 
     Hub createHub(const std::string& hubName, const UserId& ownerUuid);
     void addMember(const HubId& hubId, const UserId& userUuid, const std::string& role);
@@ -52,7 +52,7 @@ class HubRepository {
         const std::vector<HubId>& hubIds);
 
    private:
-    DatabaseExecutor& db_;
+    TransactionRunner& db_;
 };
 
 #endif  // INFRA_PERSISTENCE_REPOSITORIES_HUB_REPOSITORY_H

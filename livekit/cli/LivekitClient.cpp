@@ -93,8 +93,7 @@ std::vector<ParticipantInfo> LivekitClient::ListParticipants(const ChannelId& ro
             utils::EventCategory::VOICE, "", "livekit_list_participants_empty", 0,
             "host=" + host_ + " channel=" + room.value +
                 " has_participants_key=" + (data.contains("participants") ? "1" : "0") +
-                " is_array=" + (has_array ? "1" : "0") +
-                " raw_len=" + std::to_string(res.size()) +
+                " is_array=" + (has_array ? "1" : "0") + " raw_len=" + std::to_string(res.size()) +
                 " raw=" + summarize_error_body(res));
     }
 
@@ -148,9 +147,8 @@ std::vector<RoomInfo> LivekitClient::ListRooms() {
             info.room = ChannelId(name);
             // This LiveKit (v1.9) Twirp emits proto names (snake_case): num_participants.
             // Read snake_case first, fall back to camelCase in case a future build flips it.
-            info.num_participants = r.contains("num_participants")
-                                        ? r.value("num_participants", 0)
-                                        : r.value("numParticipants", 0);
+            info.num_participants = r.contains("num_participants") ? r.value("num_participants", 0)
+                                                                   : r.value("numParticipants", 0);
             rooms.push_back(std::move(info));
         }
     }

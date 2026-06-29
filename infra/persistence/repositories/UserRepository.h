@@ -3,7 +3,7 @@
 
 #include "domains/User.h"
 #include "domains/ids/Ids.h"
-#include "infra/persistence/DatabaseExecutor.h"
+#include "infra/persistence/TransactionRunner.h"
 
 #include <optional>
 #include <string>
@@ -12,7 +12,7 @@
 
 class UserRepository {
    public:
-    explicit UserRepository(DatabaseExecutor& db) : db_(db) {}
+    explicit UserRepository(TransactionRunner& db) : db_(db) {}
 
     std::optional<User> getUser(const UserId& userUuid);
     std::vector<User> getUsersByIds(const std::vector<UserId>& userIds);
@@ -43,7 +43,7 @@ class UserRepository {
                            const std::optional<std::string>& avatar_seed);
 
    private:
-    DatabaseExecutor& db_;
+    TransactionRunner& db_;
 };
 
 #endif  // INFRA_PERSISTENCE_REPOSITORIES_USER_REPOSITORY_H

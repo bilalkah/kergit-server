@@ -63,9 +63,8 @@ void HeartbeatService::on_open(ConnId conn_id) {
 
 void HeartbeatService::note_seen(const ConnId& conn_id) {
     const auto now = std::chrono::system_clock::now();
-    conns_.mutate(conn_id, [&](net::connection::ConnectionContext& c) {
-        c.heartbeat.last_seen_at = now;
-    });
+    conns_.mutate(conn_id,
+                  [&](net::connection::ConnectionContext& c) { c.heartbeat.last_seen_at = now; });
 }
 
 void HeartbeatService::on_timer(us_timer_t* timer) {

@@ -255,8 +255,8 @@ std::vector<net::outbound::OutgoingMessage> JoinVoiceChannelCommand::execute(
         utils::LogDest::FILE);
 
     std::string token_bytes =
-        make_voice_token_issued(issued.token, issued.livekit_url, issued.expires_in, issued.e2ee_key,
-                                issued.key_index, issued.resume_id);
+        make_voice_token_issued(issued.token, issued.livekit_url, issued.expires_in,
+                                issued.e2ee_key, issued.key_index, issued.resume_id);
     out.push_back(
         make_outgoing_message(net::outbound::Target::one(event->conn_id), std::move(token_bytes)));
 

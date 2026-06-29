@@ -4,7 +4,6 @@ cc_library(
     name = "persistence_gateway_lib",
     srcs = [
         "ConnectionPool.cpp",
-        "DatabaseExecutor.cpp",
         "PersistenceGateway.cpp",
         "repositories/HubRepository.cpp",
         "repositories/MessageRepository.cpp",
@@ -13,9 +12,9 @@ cc_library(
     ],
     hdrs = [
         "ConnectionPool.h",
-        "DatabaseExecutor.h",
+        "PersistenceError.h",
         "PersistenceGateway.h",
-        "RepositoryMux.h",
+        "TransactionRunner.h",
         "repositories/HubRepository.h",
         "repositories/MessageRepository.h",
         "repositories/RepositoryUtils.h",

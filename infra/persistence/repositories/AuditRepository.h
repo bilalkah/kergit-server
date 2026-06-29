@@ -4,7 +4,7 @@
 #define INFRA_PERSISTENCE_REPOSITORIES_AUDIT_REPOSITORY_H
 
 #include "domains/ids/Ids.h"
-#include "infra/persistence/DatabaseExecutor.h"
+#include "infra/persistence/TransactionRunner.h"
 
 #include <nlohmann/json.hpp>
 #include <optional>
@@ -30,7 +30,7 @@
 // This repository is only for operational/security/product events.
 class AuditRepository {
    public:
-    explicit AuditRepository(DatabaseExecutor& db) : db_(db) {}
+    explicit AuditRepository(TransactionRunner& db) : db_(db) {}
 
     struct Event {
         std::string category;
@@ -67,7 +67,7 @@ class AuditRepository {
     int purgeOldEvents(int limit = 5000);
 
    private:
-    DatabaseExecutor& db_;
+    TransactionRunner& db_;
 };
 
 #endif  // INFRA_PERSISTENCE_REPOSITORIES_AUDIT_REPOSITORY_H

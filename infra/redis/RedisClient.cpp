@@ -1,16 +1,16 @@
 #include "infra/redis/RedisClient.h"
 
-#include <sw/redis++/redis++.h>
-
 #include "utils/Logger.h"
+
+#include <sw/redis++/redis++.h>
 
 namespace infra::redis {
 
 namespace {
 void log_redis_failure(const char* op, const std::exception& e) {
-    utils::log_line(utils::LogLevel::WARN, std::string("RedisClient: ") + op +
-                                               " failed (redis unavailable/restarting?): " +
-                                               e.what());
+    utils::log_line(
+        utils::LogLevel::WARN,
+        std::string("RedisClient: ") + op + " failed (redis unavailable/restarting?): " + e.what());
 }
 }  // namespace
 
