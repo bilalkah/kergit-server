@@ -19,6 +19,13 @@ services:
       - REDIS_PORT=6379
       - CONTROL_HOST=${CONTROL_HOST:-0.0.0.0}
       - CONTROL_PORT=${CONTROL_PORT:-8081}
+      # Derived by docker/lib/runtime-env.sh (prod=1, dev=0) and exported before `compose up`.
+      # The server is the container's main process now, so it must come in via compose, not
+      # via the old exec-server.sh `--env` forwarding.
+      - LIVEKIT_PRODUCTION_MODE=${LIVEKIT_PRODUCTION_MODE:-0}
+      # Bazel config for the server build/run: vanilla (dev) / vanilla_opt (prod). Exported by
+      # run-container.sh before `compose up`.
+      - BAZEL_CONFIG=${BAZEL_CONFIG:-vanilla}
     ports:
       - "9001:9001"
       - "127.0.0.1:8081:8081"
@@ -29,11 +36,28 @@ services:
       - SYS_PTRACE
     security_opt:
       - seccomp:unconfined
-    command: bash -lc "sleep infinity"
-    # Container-level resilience (OOM kill / daemon or host restart). NOTE: the C++ server
-    # runs as an exec'd process (exec-server.sh), not this container's main process, so a
-    # server *crash* is not auto-recovered by this policy — see exec-server.sh for the
-    # supervised run loop that handles that.
+    # The C++ server is the container's MAIN process. If it crashes, the main process exits,
+    # the container stops, and the `restart: unless-stopped` policy below brings the container
+    # (and therefore the server) straight back. No foreground/exec session is involved, so a
+    # closed terminal or dropped SSH can no longer take the backend down. The build is
+    # cache-hot, so a restart re-runs in seconds. `bash -lc` loads the login profile so bazel
+    # is on PATH; `exec` makes bazel the pid Docker watches so the exit code propagates.
+    # The image ENTRYPOINT is the interactive dev shell (`echo ...; exec bash`), which ends in
+    # `exec bash` and therefore SWALLOWS the command below. Override it so the server command
+    # actually runs as the container's main process. `-l` loads the login profile (bazel on PATH).
+    entrypoint: ["bash", "-lc"]
+    command: ["cd /root/workspace && exec bazel run --config=${BAZEL_CONFIG:-vanilla} //server:fake_discord"]
+    # Liveness for Docker/compose: hit the control HTTP /health on CONTROL_PORT (8081).
+    # start_period covers the build+boot window on a cold cache. NOTE: a failing healthcheck
+    # only marks the container `unhealthy`; the actual auto-recovery is the process exiting +
+    # the restart policy (a hard crash exits; a hang is surfaced as unhealthy for alerting).
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:${CONTROL_PORT:-8081}/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
+    # Auto-recovers OOM kills, daemon/host restarts, AND server crashes (the main process exits).
     restart: unless-stopped
 
   caddy-node:

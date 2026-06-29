@@ -8,5 +8,6 @@ cc_library(
     deps = [
         "//third_party/hiredis",
         "//third_party/redis_plus_plus",
+        "//utils:loggable",
     ],
 )

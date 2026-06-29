@@ -108,11 +108,37 @@ void WorkerPool::worker_loop(std::size_t worker_index) {
 
         const auto start_time = std::chrono::steady_clock::now();
 
-        std::vector<net::outbound::OutgoingMessage> intents = std::visit(
-            [&](auto&& event) -> std::vector<net::outbound::OutgoingMessage> {
-                return handle_event(event);
-            },
-            event);
+        std::vector<net::outbound::OutgoingMessage> intents;
+        try {
+            intents = std::visit(
+                [&](auto&& event) -> std::vector<net::outbound::OutgoingMessage> {
+                    return handle_event(event);
+                },
+                event);
+        } catch (const std::exception& e) {
+            // A dependency being down/restarting (Postgres or Redis) — or any handler fault —
+            // must NEVER escape the worker thread: an exception leaving worker_loop terminates
+            // the process via std::terminate and takes the whole server down. Swallow it, clear
+            // the in-flight bookkeeping for this command, and keep serving; the dependency
+            // reconnects on its own and the client can retry.
+            log(utils::LogLevel::ERROR, "Worker ", worker_index,
+                " dropped event after exception: ", e.what());
+            if (std::holds_alternative<queue::MessageEvent>(event)) {
+                auto& m = std::get<queue::MessageEvent>(event);
+                unmark_executing(m.conn_id, m.payload.env.type());
+            }
+            utils::metrics::dec_active_workers();
+            continue;
+        } catch (...) {
+            log(utils::LogLevel::ERROR, "Worker ", worker_index,
+                " dropped event after unknown exception");
+            if (std::holds_alternative<queue::MessageEvent>(event)) {
+                auto& m = std::get<queue::MessageEvent>(event);
+                unmark_executing(m.conn_id, m.payload.env.type());
+            }
+            utils::metrics::dec_active_workers();
+            continue;
+        }
 
         const auto end_time = std::chrono::steady_clock::now();
         const auto duration_us =

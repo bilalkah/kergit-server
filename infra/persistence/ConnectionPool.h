@@ -21,6 +21,10 @@ class ConnectionPool : public utils::Loggable {
 
     pqxx::connection& acquire();
     void release(pqxx::connection& conn);
+    // Reconnect a currently-leased connection that broke mid-use (e.g. the database restarted),
+    // returning a reference to the fresh connection for the same slot. Throws if the database is
+    // still unreachable.
+    pqxx::connection& refresh(pqxx::connection& conn);
 
    private:
     struct Slot {
@@ -28,6 +32,10 @@ class ConnectionPool : public utils::Loggable {
         bool in_use{false};
     };
 
+    // Open a brand-new connection from conninfo_. Throws if the database is unreachable.
+    std::unique_ptr<pqxx::connection> open_connection() const;
+
+    std::string conninfo_;
     std::vector<Slot> slots_;
     std::mutex mutex_;
     std::condition_variable cv_;

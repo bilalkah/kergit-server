@@ -71,4 +71,9 @@ echo "▶ Using web domain: $WEB_DOMAIN"
 "$SCRIPT_DIR/services/caddy/run.sh" "${MODE_ARGS[@]}"
 "$SCRIPT_DIR/services/caddy/verify-upstreams.sh"
 
-exec "$SCRIPT_DIR/services/backend/exec-server.sh" "${MODE_ARGS[@]}"
+# The backend already runs detached as the server-node container's main process (started above
+# by run-container.sh via `compose up -d`, supervised by Docker's restart policy), so the whole
+# stack is up without holding this terminal. Don't block on a foreground log follow here.
+echo "[✓] Stack is up — all services run detached."
+echo "    Follow backend logs:  docker logs -f server-node   (or: docker/services/backend/exec-server.sh${MODE_ARGS:+ ${MODE_ARGS[*]}})"
+echo "    Stop everything:      docker/stop-server.sh"

@@ -10,6 +10,16 @@ parse_runtime_mode "$@" || {
   exit 1
 }
 load_runtime_env_strict "$RUNTIME_MODE"
+
+# The server runs as the container's main process (see docker-compose.yml `command:`), so the
+# bazel config must be chosen here and exported for compose interpolation. dev -> vanilla,
+# prod -> vanilla_opt. LIVEKIT_PRODUCTION_MODE was already exported by load_runtime_env_strict.
+BAZEL_CONFIG="vanilla"
+if [ "$RUNTIME_MODE" = "prod" ]; then
+  BAZEL_CONFIG="vanilla_opt"
+fi
+export BAZEL_CONFIG
+
 source "$DOCKER_DIR/lib/compose.sh"
 
 ensure_compose_network
