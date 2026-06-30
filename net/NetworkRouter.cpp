@@ -1,5 +1,9 @@
 #include "net/NetworkRouter.h"
 
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
 namespace net {
 
 void NetworkRouter::register_stack(std::unique_ptr<NetworkStack> stack) {
@@ -8,11 +12,20 @@ void NetworkRouter::register_stack(std::unique_ptr<NetworkStack> stack) {
 }
 
 outbound::PushResult NetworkRouter::push(outbound::OutgoingMessage msg) {
-    // group connections by netstack_id
-    auto grouped = group_outgoing_msg(msg);
-    outbound::PushResult overall = outbound::PushResult::Ok;
+    // Fast path: with a single stack every recipient is on it, so forward the message
+    // untouched — no per-stack regrouping map, no per-id copies, action moved not copied.
+    if (net_stacks_by_id_.size() == 1) {
+        return net_stacks_by_id_.begin()->second->outbound_sink().push(std::move(msg));
+    }
 
-    // send once per netstack
+    // Multi-stack: partition recipients by their owning stack, moving ids out of msg
+    // (rather than copying each GlobalConnId).
+    std::unordered_map<NetStackId, std::vector<GlobalConnId>> grouped;
+    for (auto& cid : msg.target.conns) {
+        grouped[cid.netstack_id].push_back(std::move(cid));
+    }
+
+    outbound::PushResult overall = outbound::PushResult::Ok;
     for (auto& [netstack_id, conns] : grouped) {
         auto it = net_stacks_by_id_.find(netstack_id);
         if (it == net_stacks_by_id_.end()) continue;
@@ -55,16 +68,6 @@ void NetworkRouter::start_all() {
             log(utils::LogLevel::WARN, "Started NetworkStack " + id.value);
         }
     }
-}
-
-std::unordered_map<NetStackId, std::vector<GlobalConnId>> NetworkRouter::group_outgoing_msg(
-    const outbound::OutgoingMessage& msg) {
-    std::unordered_map<NetStackId, std::vector<GlobalConnId>> grouped;
-
-    for (const auto& cid : msg.target.conns) {
-        grouped[cid.netstack_id].push_back(cid);
-    }
-    return grouped;
 }
 
 }  // namespace net

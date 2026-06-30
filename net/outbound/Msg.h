@@ -91,5 +91,14 @@ struct OutgoingMessage {
     Action action;
 };
 
+// A single queued outbound action for one connection. It lives in that connection's outbox
+// (already keyed by ConnId in the registry), so unlike OutgoingMessage it carries no Target —
+// storing one would heap-allocate a 1-element vector per fan-out recipient that the flush
+// path never reads. Only priority (for overflow eviction) and action are needed.
+struct OutboundItem {
+    OutboundPriority priority{OutboundPriority::High};
+    Action action;
+};
+
 }  // namespace net::outbound
 #endif  // NET_CONNECTION_OUTBOUND_MSG_H

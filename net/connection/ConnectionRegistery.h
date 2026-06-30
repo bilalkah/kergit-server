@@ -77,7 +77,7 @@ struct ConnectionContext {
     std::deque<std::pair<std::string, uWS::OpCode>> pending;
 
     struct PerConnectionOutbox {
-        std::deque<net::outbound::OutgoingMessage> q;
+        std::deque<net::outbound::OutboundItem> q;
         std::size_t capacity{128};
         uint32_t slow_hits{0};
         bool drop_pending{false};

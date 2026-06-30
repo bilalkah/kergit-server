@@ -139,34 +139,33 @@ void OutgoingWorker::distribute(const OutgoingMessage& msg, std::unordered_set<C
 
 void OutgoingWorker::enqueue_to_outbox(const GlobalConnId& global_id, const OutgoingMessage& msg,
                                        std::unordered_set<ConnId>& touched) {
-    OutgoingMessage per_conn;
-    per_conn.priority = msg.priority;
-    per_conn.target = Target::one(global_id);
-    per_conn.action = msg.action;
+    // No Target: the outbox is keyed by connection, so a per-item Target::one() would only
+    // heap-allocate a 1-element vector per fan-out recipient that the flush path never reads.
+    OutboundItem item{.priority = msg.priority, .action = msg.action};
 
     auto result = conns_.mutate(global_id.conn_id, [&](auto& ctx) {
         auto& ob = ctx.outbox;
         if (ob.q.size() < ob.capacity) {
-            ob.q.push_back(std::move(per_conn));
+            ob.q.push_back(std::move(item));
             utils::metrics::counters().per_conn_queue_enqueued_total.fetch_add(
                 1, std::memory_order_relaxed);
             return;
         }
 
-        if (per_conn.priority == OutboundPriority::Low) {
+        if (item.priority == OutboundPriority::Low) {
             utils::metrics::counters().per_conn_queue_dropped_low_total.fetch_add(
                 1, std::memory_order_relaxed);
             return;
         }
 
-        auto rit = std::find_if(ob.q.rbegin(), ob.q.rend(), [](const OutgoingMessage& m) {
+        auto rit = std::find_if(ob.q.rbegin(), ob.q.rend(), [](const OutboundItem& m) {
             return m.priority == OutboundPriority::Low;
         });
         if (rit != ob.q.rend()) {
             ob.q.erase(std::next(rit).base());
             utils::metrics::counters().per_conn_queue_dropped_low_total.fetch_add(
                 1, std::memory_order_relaxed);
-            ob.q.push_back(std::move(per_conn));
+            ob.q.push_back(std::move(item));
             utils::metrics::counters().per_conn_queue_enqueued_total.fetch_add(
                 1, std::memory_order_relaxed);
             return;
@@ -184,11 +183,9 @@ void OutgoingWorker::enqueue_to_outbox(const GlobalConnId& global_id, const Outg
             ob.q.clear();
             ob.slow_hits = 0;
             ob.drop_pending = true;
-            OutgoingMessage drop;
-            drop.priority = OutboundPriority::High;
-            drop.target = Target::one(global_id);
-            drop.action = Action{std::in_place_type<DropConnection>, 4409,
-                                 std::string("slow_outbox_overflow")};
+            OutboundItem drop{.priority = OutboundPriority::High,
+                              .action = Action{std::in_place_type<DropConnection>, 4409,
+                                               std::string("slow_outbox_overflow")}};
             ob.q.push_back(std::move(drop));
             utils::metrics::counters().slow_connection_dropped_total.fetch_add(
                 1, std::memory_order_relaxed);

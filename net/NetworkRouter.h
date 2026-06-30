@@ -21,8 +21,6 @@ class NetworkRouter : public utils::Loggable, public outbound::IOutboundSink {
     void start_all();
 
    private:
-    std::unordered_map<NetStackId, std::vector<GlobalConnId>> group_outgoing_msg(
-        const outbound::OutgoingMessage& msg);
     /**
      * Network stacks by id
      */
