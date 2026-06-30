@@ -1,6 +1,7 @@
 #include "infra/security/token/SupabaseVerifier.h"
 
 #include "utils/EnvLoader.h"
+#include "utils/Logger.h"
 
 #include <array>
 #include <chrono>
@@ -129,19 +130,23 @@ std::expected<SupabaseVerifier, JwtVerifyError> SupabaseVerifier::create(
     std::string expected_issuer) {
     auto current = utils::EnvLoader::get_env("SUPABASE_JWT_CURRENT_KEY", "");
     if (current.empty()) {
-        std::cout << "Supabase current JWK not found in environment variables." << std::endl;
+        utils::log_line(
+            utils::LogLevel::ERROR,
+            "SupabaseVerifier: Supabase current JWK not found in environment variables.");
         return std::unexpected(JwtVerifyError::KeyNotFound);
     }
     auto current_jwk = parse_jwk_json(current);
     if (!current_jwk || current_jwk->kid.empty()) {
-        std::cout << "Failed to parse Supabase current JWK." << std::endl;
+        utils::log_line(utils::LogLevel::ERROR,
+                        "SupabaseVerifier: Failed to parse Supabase current JWK.");
         return std::unexpected(JwtVerifyError::JwkParseError);
     }
     std::unordered_map<std::string, KeyMaterial, StringHash, StringEq> keys;
     std::vector<std::string> key_order;
     auto current_key = build_public_key(*current_jwk);
     if (!current_key) {
-        std::cout << "Failed to build public key from current JWK." << std::endl;
+        utils::log_line(utils::LogLevel::ERROR,
+                        "SupabaseVerifier: Failed to build public key from current JWK.");
         return std::unexpected(JwtVerifyError::JwkParseError);
     }
     keys.emplace(current_jwk->kid, KeyMaterial{*current_jwk, std::move(current_key)});
@@ -150,12 +155,14 @@ std::expected<SupabaseVerifier, JwtVerifyError> SupabaseVerifier::create(
     if (!standby.empty()) {
         auto standby_jwk = parse_jwk_json(standby);
         if (!standby_jwk || standby_jwk->kid.empty()) {
-            std::cout << "Failed to parse Supabase standby JWK." << std::endl;
+            utils::log_line(utils::LogLevel::ERROR,
+                            "SupabaseVerifier: Failed to parse Supabase standby JWK.");
             return std::unexpected(JwtVerifyError::JwkParseError);
         }
         auto standby_key = build_public_key(*standby_jwk);
         if (!standby_key) {
-            std::cout << "Failed to build public key from standby JWK." << std::endl;
+            utils::log_line(utils::LogLevel::ERROR,
+                            "SupabaseVerifier: Failed to build public key from standby JWK.");
             return std::unexpected(JwtVerifyError::JwkParseError);
         }
         keys.emplace(standby_jwk->kid, KeyMaterial{*standby_jwk, std::move(standby_key)});
@@ -187,22 +194,25 @@ std::optional<SupabaseJWK> SupabaseVerifier::parse_jwk_json(const std::string& j
 }
 std::shared_ptr<evp_pkey_st> SupabaseVerifier::build_public_key(const SupabaseJWK& jwk) {
     if (jwk.x.empty() || jwk.y.empty()) {
-        std::cout << "JWK missing x/y coordinates." << std::endl;
+        utils::log_line(utils::LogLevel::ERROR, "SupabaseVerifier: JWK missing x/y coordinates.");
         return {};
     }
     std::string x_bytes;
     std::string y_bytes;
     if (!decode_b64url(jwk.x, x_bytes) || !decode_b64url(jwk.y, y_bytes)) {
-        std::cout << "Failed to decode base64url x/y." << std::endl;
+        utils::log_line(utils::LogLevel::ERROR,
+                        "SupabaseVerifier: Failed to decode base64url x/y.");
         return {};
     }
     if (x_bytes.size() != 32 || y_bytes.size() != 32) {
-        std::cout << "Unexpected x/y size for P-256 key." << std::endl;
+        utils::log_line(utils::LogLevel::ERROR,
+                        "SupabaseVerifier: Unexpected x/y size for P-256 key.");
         return {};
     }
     EC_KEY* ec_key = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
     if (!ec_key) {
-        std::cout << "EC_KEY_new_by_curve_name failed." << std::endl;
+        utils::log_line(utils::LogLevel::ERROR,
+                        "SupabaseVerifier: EC_KEY_new_by_curve_name failed.");
         return {};
     }
     BIGNUM* x = BN_bin2bn(reinterpret_cast<const unsigned char*>(x_bytes.data()),
@@ -210,7 +220,7 @@ std::shared_ptr<evp_pkey_st> SupabaseVerifier::build_public_key(const SupabaseJW
     BIGNUM* y = BN_bin2bn(reinterpret_cast<const unsigned char*>(y_bytes.data()),
                           static_cast<int>(y_bytes.size()), nullptr);
     if (!x || !y) {
-        std::cout << "BN_bin2bn failed for x/y." << std::endl;
+        utils::log_line(utils::LogLevel::ERROR, "SupabaseVerifier: BN_bin2bn failed for x/y.");
         BN_free(x);
         BN_free(y);
         EC_KEY_free(ec_key);
@@ -220,18 +230,19 @@ std::shared_ptr<evp_pkey_st> SupabaseVerifier::build_public_key(const SupabaseJW
     BN_free(x);
     BN_free(y);
     if (set_result != 1) {
-        std::cout << "EC_KEY_set_public_key_affine_coordinates failed." << std::endl;
+        utils::log_line(utils::LogLevel::ERROR,
+                        "SupabaseVerifier: EC_KEY_set_public_key_affine_coordinates failed.");
         EC_KEY_free(ec_key);
         return {};
     }
     EVP_PKEY* pkey = EVP_PKEY_new();
     if (!pkey) {
-        std::cout << "EVP_PKEY_new failed." << std::endl;
+        utils::log_line(utils::LogLevel::ERROR, "SupabaseVerifier: EVP_PKEY_new failed.");
         EC_KEY_free(ec_key);
         return {};
     }
     if (EVP_PKEY_assign_EC_KEY(pkey, ec_key) != 1) {
-        std::cout << "EVP_PKEY_assign_EC_KEY failed." << std::endl;
+        utils::log_line(utils::LogLevel::ERROR, "SupabaseVerifier: EVP_PKEY_assign_EC_KEY failed.");
         EVP_PKEY_free(pkey);
         EC_KEY_free(ec_key);
         return {};

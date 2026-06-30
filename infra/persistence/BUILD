@@ -22,6 +22,14 @@ cc_library(
         "repositories/RepositorySchema.h",
         "repositories/AuditRepository.h",
     ],
+    copts = [
+        # libpqxx's pqxx::params::append (params.hxx) trips a GCC-13 -Wmaybe-uninitialized
+        # false positive on its internal std::variant when inlined at -O2 (opt builds only).
+        # The flagged code is in the third-party header, not ours, and the warning cannot be
+        # suppressed at the call site (it is anchored to the libpqxx header post-inlining), so
+        # disable it for this library — the only consumer of libpqxx's param binding.
+        "-Wno-maybe-uninitialized",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         "//domains:channel_domain",

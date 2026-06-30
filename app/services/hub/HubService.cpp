@@ -4,9 +4,6 @@
 
 #include <algorithm>
 #include <cctype>
-#include <chrono>
-#include <mutex>
-#include <sstream>
 #include <unordered_set>
 
 namespace app::services {
@@ -38,52 +35,25 @@ Hub to_hub(const HubSnapshot& snapshot) {
     return hub;
 }
 
-long long elapsed_ms(const std::chrono::steady_clock::time_point start) {
-    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() -
-                                                                 start)
-        .count();
-}
-
-void log_hub_cache(const std::string& op, const std::string& details) {
-    (void)op;
-    (void)details;
-}
-
 }  // namespace
 
 HubService::HubService(HubRepository& repo) : repo_(repo), cache_(std::make_unique<HubCache>()) {}
 
 std::optional<Hub> HubService::getHub(const HubId& hubId) {
-    const auto started_at = std::chrono::steady_clock::now();
     auto cached_snapshot = cache_->get(hubId);
     if (cached_snapshot.has_value()) {
-        std::ostringstream details;
-        details << "hub_id=" << hubId.value
-                << " hit=1 db=0 found=1 total_ms=" << elapsed_ms(started_at);
-        log_hub_cache("getHub", details.str());
         return to_hub(cached_snapshot.value());
     }
     if (cached_snapshot.error() == HubCacheError::CorruptedEntry) {
         cache_->invalidate(hubId);
     }
     // Metadata fallback path.
-    const auto db_started_at = std::chrono::steady_clock::now();
-    const auto hub = repo_.getHub(hubId);
-    const auto db_ms = elapsed_ms(db_started_at);
-    std::ostringstream details;
-    details << "hub_id=" << hubId.value << " hit=0 db=1 db_ms=" << db_ms
-            << " found=" << (hub.has_value() ? 1 : 0) << " corrupted_cache_entry="
-            << (cached_snapshot.error() == HubCacheError::CorruptedEntry)
-            << " total_ms=" << elapsed_ms(started_at);
-    log_hub_cache("getHub", details.str());
-    return hub;
+    return repo_.getHub(hubId);
 }
 
 std::unordered_map<HubId, Hub> HubService::getHubsByIds(const std::vector<HubId>& hubIds) {
-    const auto started_at = std::chrono::steady_clock::now();
     std::unordered_map<HubId, Hub> hubs_by_id;
     if (hubIds.empty()) {
-        log_hub_cache("getHubsByIds", "input=0 unique=0 cache_hits=0 db=0 total_ms=0");
         return hubs_by_id;
     }
 
@@ -92,8 +62,6 @@ std::unordered_map<HubId, Hub> HubService::getHubsByIds(const std::vector<HubId>
     seen_ids.reserve(hubIds.size());
     std::vector<HubId> misses;
     misses.reserve(hubIds.size());
-    size_t cache_hits = 0;
-    size_t corrupted_entries = 0;
 
     for (const auto& hub_id : hubIds) {
         if (hub_id.value.empty()) {
@@ -106,27 +74,19 @@ std::unordered_map<HubId, Hub> HubService::getHubsByIds(const std::vector<HubId>
         auto cached_snapshot = cache_->get(hub_id);
         if (cached_snapshot.has_value()) {
             hubs_by_id.insert_or_assign(hub_id, to_hub(cached_snapshot.value()));
-            ++cache_hits;
             continue;
         }
 
         if (cached_snapshot.error() == HubCacheError::CorruptedEntry) {
             cache_->invalidate(hub_id);
-            ++corrupted_entries;
         }
         misses.push_back(hub_id);
     }
 
     if (misses.empty()) {
-        std::ostringstream details;
-        details << "input=" << hubIds.size() << " unique=" << seen_ids.size()
-                << " cache_hits=" << cache_hits << " corrupted=" << corrupted_entries
-                << " db=0 total_ms=" << elapsed_ms(started_at);
-        log_hub_cache("getHubsByIds", details.str());
         return hubs_by_id;
     }
 
-    const auto db_started_at = std::chrono::steady_clock::now();
     const auto fetched_hubs = repo_.getHubsByIds(misses);
     std::vector<HubId> fetched_hub_ids;
     fetched_hub_ids.reserve(fetched_hubs.size());
@@ -135,7 +95,6 @@ std::unordered_map<HubId, Hub> HubService::getHubsByIds(const std::vector<HubId>
     }
     const auto channels_by_hub = repo_.getHubChannelsByHubIds(fetched_hub_ids);
     const auto member_roles_by_hub = repo_.getHubMemberRolesByHubIds(fetched_hub_ids);
-    const auto db_ms = elapsed_ms(db_started_at);
     for (const auto& hub : fetched_hubs) {
         hubs_by_id.insert_or_assign(hub.id, hub);
 
@@ -149,7 +108,7 @@ std::unordered_map<HubId, Hub> HubService::getHubsByIds(const std::vector<HubId>
             snapshot.channel_ids.reserve(channels_it->second.size());
             for (const auto& channel : channels_it->second) {
                 snapshot.channel_ids.push_back(channel.id);
-                upsertChannelCache(channel);
+                channel_cache_.put(channel);
             }
         }
 
@@ -164,46 +123,25 @@ std::unordered_map<HubId, Hub> HubService::getHubsByIds(const std::vector<HubId>
         cache_->put(snapshot);
     }
 
-    std::ostringstream details;
-    details << "input=" << hubIds.size() << " unique=" << seen_ids.size()
-            << " cache_hits=" << cache_hits << " corrupted=" << corrupted_entries
-            << " misses=" << misses.size() << " db=1 db_ms=" << db_ms
-            << " fetched=" << fetched_hubs.size() << " total_ms=" << elapsed_ms(started_at);
-    log_hub_cache("getHubsByIds", details.str());
-
     return hubs_by_id;
 }
 
 std::optional<Channel> HubService::getChannel(const ChannelId& channelId) {
-    const auto started_at = std::chrono::steady_clock::now();
-    if (const auto cached = readChannelCache(channelId); cached.has_value()) {
-        std::ostringstream details;
-        details << "channel_id=" << channelId.value
-                << " hit=1 db=0 found=1 total_ms=" << elapsed_ms(started_at);
-        log_hub_cache("getChannel", details.str());
+    if (const auto cached = channel_cache_.get(channelId); cached.has_value()) {
         return cached;
     }
 
-    const auto db_started_at = std::chrono::steady_clock::now();
     const auto channel = repo_.getChannel(channelId);
-    const auto db_ms = elapsed_ms(db_started_at);
     if (channel.has_value()) {
-        upsertChannelCache(*channel);
+        channel_cache_.put(*channel);
     }
-
-    std::ostringstream details;
-    details << "channel_id=" << channelId.value << " hit=0 db=1 db_ms=" << db_ms
-            << " found=" << (channel.has_value() ? 1 : 0) << " total_ms=" << elapsed_ms(started_at);
-    log_hub_cache("getChannel", details.str());
     return channel;
 }
 
 std::unordered_map<ChannelId, Channel> HubService::getChannelsByIds(
     const std::vector<ChannelId>& channelIds) {
-    const auto started_at = std::chrono::steady_clock::now();
     std::unordered_map<ChannelId, Channel> channels;
     if (channelIds.empty()) {
-        log_hub_cache("getChannelsByIds", "input=0 unique=0 cache_hits=0 db=0 total_ms=0");
         return channels;
     }
 
@@ -212,7 +150,6 @@ std::unordered_map<ChannelId, Channel> HubService::getChannelsByIds(
     seen_ids.reserve(channelIds.size());
     std::vector<ChannelId> misses;
     misses.reserve(channelIds.size());
-    size_t cache_hits = 0;
 
     for (const auto& channel_id : channelIds) {
         if (channel_id.value.empty()) {
@@ -222,36 +159,21 @@ std::unordered_map<ChannelId, Channel> HubService::getChannelsByIds(
             continue;
         }
 
-        if (const auto cached = readChannelCache(channel_id); cached.has_value()) {
+        if (const auto cached = channel_cache_.get(channel_id); cached.has_value()) {
             channels.insert_or_assign(channel_id, *cached);
-            ++cache_hits;
             continue;
         }
         misses.push_back(channel_id);
     }
 
     if (!misses.empty()) {
-        const auto db_started_at = std::chrono::steady_clock::now();
         const auto fetched_channels = repo_.getChannelsByIds(misses);
-        const auto db_ms = elapsed_ms(db_started_at);
         for (const auto& channel : fetched_channels) {
-            upsertChannelCache(channel);
+            channel_cache_.put(channel);
             channels.insert_or_assign(channel.id, channel);
         }
-
-        std::ostringstream details;
-        details << "input=" << channelIds.size() << " unique=" << seen_ids.size()
-                << " cache_hits=" << cache_hits << " misses=" << misses.size()
-                << " db=1 db_ms=" << db_ms << " fetched=" << fetched_channels.size()
-                << " total_ms=" << elapsed_ms(started_at);
-        log_hub_cache("getChannelsByIds", details.str());
-        return channels;
     }
 
-    std::ostringstream details;
-    details << "input=" << channelIds.size() << " unique=" << seen_ids.size()
-            << " cache_hits=" << cache_hits << " db=0 total_ms=" << elapsed_ms(started_at);
-    log_hub_cache("getChannelsByIds", details.str());
     return channels;
 }
 
@@ -279,9 +201,7 @@ std::vector<Hub> HubService::getUserHubs(const UserId& userId) {
 }
 
 void HubService::warmSnapshotsForHubs(const std::vector<Hub>& hubs) {
-    const auto started_at = std::chrono::steady_clock::now();
     if (hubs.empty()) {
-        log_hub_cache("warmSnapshotsForHubs", "input=0 warmed=0 cache_hits=0 db=0 total_ms=0");
         return;
     }
 
@@ -291,9 +211,6 @@ void HubService::warmSnapshotsForHubs(const std::vector<Hub>& hubs) {
     hubs_by_id.reserve(hubs.size());
     std::vector<HubId> all_hub_ids;
     all_hub_ids.reserve(hubs.size());
-    size_t cache_hits = 0;
-    size_t missing_entries = 0;
-    size_t corrupted_entries = 0;
     bool requires_db_refresh = false;
 
     for (const auto& hub : hubs) {
@@ -309,34 +226,23 @@ void HubService::warmSnapshotsForHubs(const std::vector<Hub>& hubs) {
 
         auto cached_snapshot = cache_->get(hub.id);
         if (cached_snapshot.has_value()) {
-            ++cache_hits;
             continue;
         }
 
-        ++missing_entries;
         requires_db_refresh = true;
         if (cached_snapshot.error() == HubCacheError::CorruptedEntry) {
             cache_->invalidate(hub.id);
-            ++corrupted_entries;
         }
     }
 
     if (!requires_db_refresh) {
-        std::ostringstream details;
-        details << "input=" << hubs.size() << " unique=" << seen_ids.size()
-                << " warmed=0 cache_hits=" << cache_hits
-                << " missing=0 corrupted=0 db=0 total_ms=" << elapsed_ms(started_at);
-        log_hub_cache("warmSnapshotsForHubs", details.str());
         return;
     }
 
-    const auto db_started_at = std::chrono::steady_clock::now();
     // If we touch DB for topology warmup, refresh the whole requested hub set in one pass.
     const auto channels_by_hub = repo_.getHubChannelsByHubIds(all_hub_ids);
     const auto member_roles_by_hub = repo_.getHubMemberRolesByHubIds(all_hub_ids);
-    const auto db_ms = elapsed_ms(db_started_at);
 
-    size_t warmed = 0;
     for (const auto& hub_id : all_hub_ids) {
         const auto hub_it = hubs_by_id.find(hub_id);
         if (hub_it == hubs_by_id.end()) {
@@ -354,7 +260,7 @@ void HubService::warmSnapshotsForHubs(const std::vector<Hub>& hubs) {
             snapshot.channel_ids.reserve(channels_it->second.size());
             for (const auto& channel : channels_it->second) {
                 snapshot.channel_ids.push_back(channel.id);
-                upsertChannelCache(channel);
+                channel_cache_.put(channel);
             }
         }
 
@@ -367,15 +273,7 @@ void HubService::warmSnapshotsForHubs(const std::vector<Hub>& hubs) {
         }
 
         cache_->put(snapshot);
-        ++warmed;
     }
-
-    std::ostringstream details;
-    details << "input=" << hubs.size() << " unique=" << seen_ids.size() << " warmed=" << warmed
-            << " cache_hits=" << cache_hits << " missing=" << missing_entries
-            << " corrupted=" << corrupted_entries << " refresh_scope=" << all_hub_ids.size()
-            << " db=1 db_ms=" << db_ms << " total_ms=" << elapsed_ms(started_at);
-    log_hub_cache("warmSnapshotsForHubs", details.str());
 }
 
 HubTopology HubService::getHubTopology(const HubId& hubId) {
@@ -444,7 +342,7 @@ ChannelId HubService::createChannel(const HubId& hubId, const std::string& name,
                                     const std::string& type, const UserId& created_by) {
     const auto channel_id = repo_.createChannel(hubId, name, type, created_by);
     const auto channel_type = channel_type_from_storage(type);
-    upsertChannelCache(Channel{name, channel_id, hubId, channel_type});
+    channel_cache_.put(Channel{name, channel_id, hubId, channel_type});
 
     auto cached_snapshot = cache_->get(hubId);
     if (cached_snapshot.has_value()) {
@@ -466,11 +364,14 @@ bool HubService::renameChannel(const ChannelId& channelId, const std::string& ne
         return false;
     }
 
-    if (auto channel = getChannel(channelId); channel.has_value()) {
-        channel->name = newName;
-        upsertChannelCache(*channel);
+    // A rename only changes the name we already hold, so update the cached Channel in place
+    // instead of re-reading it (which could hit the DB on a cache miss). On a miss, drop any
+    // stale entry and let the next read repopulate it.
+    if (auto cached = channel_cache_.get(channelId); cached.has_value()) {
+        cached->name = newName;
+        channel_cache_.put(*cached);
     } else {
-        invalidateChannelCache(channelId);
+        channel_cache_.invalidate(channelId);
     }
     return true;
 }
@@ -481,7 +382,7 @@ bool HubService::deleteChannel(const ChannelId& channelId, const HubId& hubId) {
         return false;
     }
 
-    invalidateChannelCache(channelId);
+    channel_cache_.invalidate(channelId);
 
     auto cached_snapshot = cache_->get(hubId);
     if (cached_snapshot.has_value()) {
@@ -518,7 +419,7 @@ bool HubService::deleteHub(const HubId& hubId, const UserId& owner) {
     if (result) {
         invalidateHubCaches(hubId);
         for (const auto& channel_id : channel_ids) {
-            invalidateChannelCache(channel_id);
+            channel_cache_.invalidate(channel_id);
         }
     }
     return result;
@@ -534,13 +435,8 @@ void HubService::removeMember(const HubId& hubId, const UserId& userId) {
 }
 
 std::optional<HubSnapshot> HubService::buildSnapshot(const HubId& hubId) {
-    const auto started_at = std::chrono::steady_clock::now();
     const auto hub = repo_.getHub(hubId);
     if (!hub.has_value()) {
-        std::ostringstream details;
-        details << "hub_id=" << hubId.value
-                << " built=0 found=0 total_ms=" << elapsed_ms(started_at);
-        log_hub_cache("buildSnapshot", details.str());
         return std::nullopt;
     }
 
@@ -559,53 +455,18 @@ std::optional<HubSnapshot> HubService::buildSnapshot(const HubId& hubId) {
     }
 
     cache_->put(snapshot);
-    std::ostringstream details;
-    details << "hub_id=" << hubId.value
-            << " built=1 found=1 channels=" << snapshot.channel_ids.size()
-            << " members=" << snapshot.member_roles.size()
-            << " total_ms=" << elapsed_ms(started_at);
-    log_hub_cache("buildSnapshot", details.str());
     return std::optional<HubSnapshot>{snapshot};
 }
 
 std::optional<HubSnapshot> HubService::loadSnapshot(const HubId& hubId) {
-    const auto started_at = std::chrono::steady_clock::now();
     auto cached = cache_->get(hubId);
     if (cached.has_value()) {
-        std::ostringstream details;
-        details << "hub_id=" << hubId.value << " hit=1 built=0 total_ms=" << elapsed_ms(started_at);
-        log_hub_cache("loadSnapshot", details.str());
         return std::optional<HubSnapshot>{cached.value()};
     }
     if (cached.error() == HubCacheError::CorruptedEntry) {
         cache_->invalidate(hubId);
     }
-    auto built = buildSnapshot(hubId);
-    std::ostringstream details;
-    details << "hub_id=" << hubId.value << " hit=0 built=" << (built.has_value() ? 1 : 0)
-            << " corrupted_cache_entry=" << (cached.error() == HubCacheError::CorruptedEntry)
-            << " total_ms=" << elapsed_ms(started_at);
-    log_hub_cache("loadSnapshot", details.str());
-    return built;
-}
-
-std::optional<Channel> HubService::readChannelCache(const ChannelId& channelId) const {
-    std::shared_lock lock(channel_cache_mutex_);
-    const auto it = channel_cache_.find(channelId);
-    if (it == channel_cache_.end()) {
-        return std::nullopt;
-    }
-    return it->second;
-}
-
-void HubService::upsertChannelCache(const Channel& channel) {
-    std::unique_lock lock(channel_cache_mutex_);
-    channel_cache_.insert_or_assign(channel.id, channel);
-}
-
-void HubService::invalidateChannelCache(const ChannelId& channelId) {
-    std::unique_lock lock(channel_cache_mutex_);
-    channel_cache_.erase(channelId);
+    return buildSnapshot(hubId);
 }
 
 void HubService::invalidateSnapshot(const HubId& hubId) { cache_->invalidate(hubId); }

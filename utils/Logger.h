@@ -1,11 +1,13 @@
 #ifndef UTILS_LOGGER_H
 #define UTILS_LOGGER_H
 
+#include <atomic>
 #include <ctime>
 #include <fmt/format.h>
-#include <iomanip>
 #include <iostream>
+#include <mutex>
 #include <string>
+#include <string_view>
 
 namespace utils {
 
@@ -31,12 +33,42 @@ inline constexpr const char* CYAN = "\033[36m";
 inline constexpr const char* WHITE = "\033[97m";
 }  // namespace Color
 
+namespace detail {
+// Single mutex serializing every write to the diagnostic stdout sink. The backend logs from many
+// threads (workers, loops, the EventLogger writer thread); without this, concurrent `std::cout <<`
+// interleaves and lines tear. All terminal diagnostics MUST go through write_stdout_line() so they
+// share this one lock.
+inline std::mutex& stdout_mutex() {
+    static std::mutex m;
+    return m;
+}
+
+inline std::atomic<LogLevel>& min_level() {
+    static std::atomic<LogLevel> level{LogLevel::DEBUG};
+    return level;
+}
+}  // namespace detail
+
+// Runtime minimum level for log_line(); messages below it are dropped. Defaults to DEBUG (log all).
+inline void set_log_level(LogLevel level) {
+    detail::min_level().store(level, std::memory_order_relaxed);
+}
+inline LogLevel get_log_level() { return detail::min_level().load(std::memory_order_relaxed); }
+
+// The single synchronized stdout sink. Writes exactly one line (a trailing newline is appended)
+// under the shared lock. This is the one place the process writes diagnostics to the terminal.
+inline void write_stdout_line(std::string_view line) {
+    std::lock_guard<std::mutex> lock(detail::stdout_mutex());
+    std::cout << line << '\n';
+}
+
 inline std::string timestamp() {
     std::time_t t = std::time(nullptr);
-    std::tm tm = *std::localtime(&t);
-    std::ostringstream oss;
-    oss << std::put_time(&tm, "%H:%M:%S");
-    return oss.str();
+    std::tm tm{};
+    localtime_r(&t, &tm);  // thread-safe; std::localtime shares a static tm (data race)
+    char buf[16];
+    std::strftime(buf, sizeof(buf), "%H:%M:%S", &tm);
+    return std::string(buf);
 }
 
 inline const char* level_to_string(LogLevel lvl) {
@@ -70,11 +102,15 @@ inline const char* level_to_color(LogLevel lvl) {
 }
 
 /**
- * Print a log line to terminal (for backward compatibility)
+ * Print a diagnostic log line to the terminal. Thread-safe and level-filtered; the actual write
+ * goes through the shared write_stdout_line() sink.
  */
 inline void log_line(LogLevel lvl, const std::string& msg) {
-    std::cout << fmt::format("{}[{}] [{}] {}{}\n", level_to_color(lvl), timestamp(),
-                             level_to_string(lvl), msg, Color::RESET);
+    if (static_cast<int>(lvl) < static_cast<int>(get_log_level())) {
+        return;
+    }
+    write_stdout_line(fmt::format("{}[{}] [{}] {}{}", level_to_color(lvl), timestamp(),
+                                  level_to_string(lvl), msg, Color::RESET));
 }
 
 }  // namespace utils

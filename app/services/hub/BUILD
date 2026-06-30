@@ -19,6 +19,7 @@ cc_library(
     name = "hub_service",
     srcs = ["HubService.cpp"],
     hdrs = [
+        "ChannelCache.h",
         "HubService.h",
         "HubSnapshot.h",
     ],

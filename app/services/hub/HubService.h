@@ -1,13 +1,13 @@
 #ifndef APP_SERVICES_HUB_HUBSERVICE_H
 #define APP_SERVICES_HUB_HUBSERVICE_H
 
+#include "app/services/hub/ChannelCache.h"
 #include "app/services/hub/HubCache.h"
 #include "app/services/hub/HubSnapshot.h"
 #include "infra/persistence/repositories/HubRepository.h"
 
 #include <memory>
 #include <optional>
-#include <shared_mutex>
 #include <unordered_map>
 #include <vector>
 
@@ -65,13 +65,9 @@ class HubService {
 
     std::optional<HubSnapshot> loadSnapshot(const HubId& hubId);
     std::optional<HubSnapshot> buildSnapshot(const HubId& hubId);
-    std::optional<Channel> readChannelCache(const ChannelId& channelId) const;
-    void upsertChannelCache(const Channel& channel);
-    void invalidateChannelCache(const ChannelId& channelId);
     void invalidateHubCaches(const HubId& hubId);
 
-    mutable std::shared_mutex channel_cache_mutex_;
-    std::unordered_map<ChannelId, Channel> channel_cache_;
+    ChannelCache channel_cache_;
 };
 
 }  // namespace app::services

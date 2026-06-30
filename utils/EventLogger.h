@@ -2,13 +2,13 @@
 #define UTILS_EVENT_LOGGER_H
 
 #include "core/base/ThreadSafeQueue.h"
+#include "utils/Logger.h"
 
 #include <chrono>
 #include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
-#include <iostream>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -59,8 +59,9 @@ class EventLogger {
                 std::filesystem::create_directories(log_dir);
             }
         } catch (const std::filesystem::filesystem_error& e) {
-            std::cerr << "[ERROR] EventLogger: Failed to create log directory: " << e.what()
-                      << "\n";
+            // Startup/infra failure — report via the process logger (EventLogger isn't up yet).
+            log_line(LogLevel::ERROR,
+                     std::string("EventLogger: Failed to create log directory: ") + e.what());
             return;
         }
 
@@ -83,7 +84,8 @@ class EventLogger {
 
             log(EventCategory::SYSTEM, "", "SERVER_START", 0, "Log file: " + log_path_.string());
         } else {
-            std::cerr << "[ERROR] EventLogger: Failed to open log file: " << log_path_ << "\n";
+            log_line(LogLevel::ERROR,
+                     "EventLogger: Failed to open log file: " + log_path_.string());
         }
     }
 
@@ -176,7 +178,9 @@ class EventLogger {
             oss << e.event;
             if (e.duration_ms > 0) oss << " \033[90m(" << e.duration_ms << "ms)\033[0m";
             if (!e.details.empty()) oss << " " << e.details;
-            std::cout << oss.str() << "\n";
+            // Share the one synchronized stdout sink so EventLogger's terminal output never
+            // interleaves with utils::Logger lines from other threads.
+            write_stdout_line(oss.str());
         }
 
         if ((static_cast<int>(e.dest) & static_cast<int>(LogDest::FILE)) && file_.is_open()) {

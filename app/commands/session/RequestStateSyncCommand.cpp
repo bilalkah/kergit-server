@@ -35,7 +35,8 @@ std::vector<net::outbound::OutgoingMessage> RequestStateSyncCommand::execute(
     auto user_exp = ctx.session_manager.sessionOfConnection(event->conn_id);
     if (!user_exp.has_value()) {
         out.emplace_back(make_drop_connection(
-            event->conn_id, sercom::protocol::event::CommandErrorCode::CommandErrorCode_UNAUTHORIZED,
+            event->conn_id,
+            sercom::protocol::event::CommandErrorCode::CommandErrorCode_UNAUTHORIZED,
             "Authenticate first"));
         return out;
     }

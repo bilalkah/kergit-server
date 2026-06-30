@@ -9,6 +9,7 @@
 #include "net/transport/websocket/WebSocketTransport.h"
 #include "utils/Loggable.h"
 
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -67,8 +68,16 @@ class NetworkStack : utils::Loggable {
      * Server thread
      */
     std::jthread server_thread_;
+    // Guards against a second start() while one is in flight.
+    std::atomic<bool> start_requested_{false};
+    // `started_` means the transport's listen socket actually bound (gated on the transport's
+    // is_started(), which only flips true in the listen callback) — not merely that the thread
+    // spun up. `stopped_` means run_server has exited.
     std::atomic<bool> started_{false};
     std::atomic<bool> stopped_{false};
+    // Published by run_server once the transport exists so start() can poll its real bind status
+    // from the caller thread without racing on the transport_layer_ unique_ptr.
+    std::atomic<transport::ITransportServer*> running_transport_{nullptr};
     void run_server();
     void wire_components();
 

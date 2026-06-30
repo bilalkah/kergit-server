@@ -87,48 +87,37 @@ void HeartbeatService::tick() {
     const auto conn_ids = conns_.get_ids();
 
     for (const auto& id : conn_ids) {
-        auto conn = conns_.get(id);
-        if (!conn.has_value()) continue;
-        auto ctx = conn.value();
-        if (!ctx.handle.valid()) continue;
+        // Hot path: read a no-copy view rather than a full ConnectionContext (which
+        // would deep-copy the outbox/reliable/pending deques on every sweep). The
+        // heartbeat timer and every registry mutation run on the same per-stack loop
+        // thread, so this snapshot cannot change underneath us mid-iteration — no
+        // re-read guard is needed before acting.
+        auto view = conns_.get_view(id);
+        if (!view.has_value()) continue;
+        if (!view->handle.valid()) continue;
 
-        if (ctx.auth_state == connection::AuthState::AUTH_FAILED) {
-            auto latest = conns_.get_view(id);
-            if (!latest.has_value() || latest->auth_state != connection::AuthState::AUTH_FAILED) {
-                continue;
-            }
-            const char* reason = "auth_failed";
-            ctx.handle.end(4401, reason);
+        if (view->auth_state == connection::AuthState::AUTH_FAILED) {
+            view->handle.end(4401, "auth_failed");
             continue;
         }
 
-        if (ctx.auth_state == connection::AuthState::AUTH_PENDING) {
-            if (now - ctx.heartbeat.connected_at >= cfg_.auth_pending_timeout) {
-                auto latest = conns_.get_view(id);
-                if (!latest.has_value() ||
-                    latest->auth_state != connection::AuthState::AUTH_PENDING) {
-                    continue;
-                }
+        if (view->auth_state == connection::AuthState::AUTH_PENDING) {
+            if (now - view->connected_at >= cfg_.auth_pending_timeout) {
                 conns_.mutate(id, [&](net::connection::ConnectionContext& real) {
                     real.auth_state = connection::AuthState::AUTH_FAILED;
                 });
-                const char* reason = "auth_timeout";
-                ctx.handle.end(4403, reason);
+                view->handle.end(4403, "auth_timeout");
             }
             continue;
         }
 
         // Only check token expiry for fully authenticated connections.
-        if (ctx.auth_state == connection::AuthState::AUTHENTICATED && now >= ctx.auth_expires_at) {
-            auto latest = conns_.get_view(id);
-            if (!latest.has_value() || latest->auth_state != connection::AuthState::AUTHENTICATED) {
-                continue;
-            }
+        if (view->auth_state == connection::AuthState::AUTHENTICATED &&
+            now >= view->auth_expires_at) {
             conns_.mutate(id, [&](net::connection::ConnectionContext& real) {
                 real.auth_state = connection::AuthState::AUTH_FAILED;
             });
-            const char* reason = "auth_token_expired";
-            ctx.handle.end(4402, reason);
+            view->handle.end(4402, "auth_token_expired");
             continue;
         }
 
@@ -136,8 +125,8 @@ void HeartbeatService::tick() {
         // stops sending app PINGs (its JS no longer runs), so last_seen_at goes stale and
         // we reap it here. A backgrounded-but-alive tab keeps sending throttled pings,
         // which stay within the (generous) timeout, so it is kept.
-        if (now - ctx.heartbeat.last_seen_at > cfg_.timeout) {
-            ctx.handle.end(cfg_.close_code, cfg_.close_reason);
+        if (now - view->last_seen_at > cfg_.timeout) {
+            view->handle.end(cfg_.close_code, cfg_.close_reason);
             continue;
         }
     }

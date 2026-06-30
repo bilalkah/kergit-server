@@ -46,22 +46,32 @@ bool NetworkStack::start() {
         return false;
     }
 
-    if (started_.exchange(true)) return true;  // already started
+    if (start_requested_.exchange(true)) return started_.load();  // already started
 
     log(utils::LogLevel::WARN, "Starting server thread for stack_id " + id_.value + " ...");
     server_thread_ = std::jthread(&NetworkStack::run_server, this);
 
-    // Wait for server to start
+    // Wait for the transport to ACTUALLY bind its listen socket, not just for the thread to spin
+    // up. The transport flips is_started() true only from its listen callback on a successful
+    // bind, so polling it here means start() reports success iff the port is really accepting.
     auto start_time = std::chrono::system_clock::now();
-    while (!started_.load()) {
+    while (true) {
+        if (auto* transport = running_transport_.load(std::memory_order_acquire);
+            transport != nullptr && transport->is_started()) {
+            started_.store(true, std::memory_order_release);
+            return true;
+        }
+        // run_server exited before binding (e.g. bind failed / no transport) — don't wait it out.
+        if (stopped_.load(std::memory_order_acquire)) {
+            return false;
+        }
         if (std::chrono::system_clock::now() - start_time > timeout) {
-            started_.store(false);
+            log(utils::LogLevel::ERROR,
+                "Timeout waiting for listen socket to bind for stack_id " + id_.value);
             return false;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
-
-    return true;
 }
 
 bool NetworkStack::stop() {
@@ -94,6 +104,7 @@ bool NetworkStack::stop() {
         server_thread_.join();
     }
     started_.store(false, std::memory_order_release);
+    start_requested_.store(false, std::memory_order_release);
     log(utils::LogLevel::WARN, "Stop NetworkStack is completed for stack_id " + id_.value);
     return stopped_.load(std::memory_order_acquire);
 }
@@ -106,14 +117,20 @@ void NetworkStack::run_server() {
     if (!transport_layer_) {
         log(utils::LogLevel::ERROR, "No transport server configured.");
         started_.store(false);
+        stopped_.store(true, std::memory_order_release);  // let start() stop waiting
         return;
     }
-    started_.store(true);
+
+    // Publish the transport so start() (caller thread) can observe its real bind status. Do NOT
+    // mark started_ here: binding happens asynchronously inside start()'s listen callback, so
+    // the truth lives in transport_layer_->is_started(), which start() now polls.
+    running_transport_.store(transport_layer_.get(), std::memory_order_release);
     transport_layer_->start();  // Program will block here until stop is called
 
     log(utils::LogLevel::WARN, "Exiting run_server for stack_id " + id_.value);
+    running_transport_.store(nullptr, std::memory_order_release);
     started_.store(false);
-    stopped_.store(true);
+    stopped_.store(true, std::memory_order_release);
 }
 
 void NetworkStack::wire_components() {

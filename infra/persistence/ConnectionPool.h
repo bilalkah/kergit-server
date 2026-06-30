@@ -5,11 +5,13 @@
 
 #include <chrono>
 #include <condition_variable>
+#include <cstddef>
 #include <memory>
 #include <mutex>
 #include <pqxx/pqxx>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 class ConnectionLease;
@@ -34,16 +36,22 @@ class ConnectionPool : public utils::Loggable {
     pqxx::connection& refresh(pqxx::connection& conn);
 
    private:
-    struct Slot {
-        std::unique_ptr<pqxx::connection> conn;
-        bool in_use{false};
-    };
-
     // Open a brand-new connection from conninfo_. Throws if the database is unreachable.
     std::unique_ptr<pqxx::connection> open_connection() const;
 
     std::string conninfo_;
-    std::vector<Slot> slots_;
+
+    // Slot storage is fixed at construction (never resized), so slot indices and the connection
+    // pointers they hold stay stable for the pool's lifetime.
+    std::vector<std::unique_ptr<pqxx::connection>> slots_;
+    // Indices of slots not currently leased, used as a LIFO stack: acquire pops the back, release
+    // pushes it back — both O(1), replacing the old linear scan for a free slot.
+    std::vector<std::size_t> free_slots_;
+    // Live connection pointer -> its slot index, so release()/refresh() locate a leased
+    // connection's slot in O(1) instead of scanning every slot. Kept in lockstep with slots_:
+    // whenever a slot's connection is (re)opened, the old pointer is erased and the new one added.
+    std::unordered_map<const pqxx::connection*, std::size_t> conn_index_;
+
     std::mutex mutex_;
     std::condition_variable cv_;
     std::chrono::milliseconds wait_timeout_;

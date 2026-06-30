@@ -39,18 +39,20 @@ void RedisClient::setex(const std::string& key, std::chrono::seconds ttl,
     }
 }
 
-bool RedisClient::setnxex(const std::string& key, std::chrono::seconds ttl,
-                          const std::string& value) {
+std::optional<bool> RedisClient::setnxex(const std::string& key, std::chrono::seconds ttl,
+                                         const std::string& value) {
     try {
         if (!redis_->setnx(key, value)) {
-            return false;
+            return false;  // key already existed -> a real duplicate
         }
         redis_->expire(key, ttl.count());
-        return true;
+        return true;  // newly set -> caller is the first writer
     } catch (const std::exception& e) {
-        // Treat as "could not acquire" so callers fall back to the safe path during an outage.
+        // Do NOT collapse an outage into "already exists"/"could not acquire": that hides the
+        // failure and forces every caller into the same implicit policy. Return nullopt so the
+        // caller decides fail-open vs fail-closed for its own correctness needs.
         log_redis_failure("setnxex", e);
-        return false;
+        return std::nullopt;
     }
 }
 

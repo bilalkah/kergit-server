@@ -6,7 +6,6 @@
 #include "utils/Metrics.h"
 
 #include <deque>
-#include <memory>
 #include <mutex>
 #include <type_traits>
 #include <utility>
@@ -30,15 +29,11 @@ class OutgoingQueue : public IOutboundSink {
         if (size_ == 0) {
             return false;
         }
-        OutgoingMessage tmp = !high_.empty() ? std::move(high_.front()) : std::move(low_.front());
-        if (!high_.empty()) {
-            high_.pop_front();
-        } else {
-            low_.pop_front();
-        }
+        // High priority drains first; pick the source deque once, then move-assign out of it.
+        auto& src = high_.empty() ? low_ : high_;
+        out = std::move(src.front());
+        src.pop_front();
         --size_;
-        std::destroy_at(std::addressof(out));
-        std::construct_at(std::addressof(out), std::move(tmp));
         return true;
     }
 

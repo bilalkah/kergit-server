@@ -5,6 +5,7 @@
 #include "app/queue/Msg.h"
 #include "utils/Metrics.h"
 
+#include <condition_variable>
 #include <cstddef>
 #include <deque>
 #include <mutex>
@@ -33,14 +34,21 @@ class EventQueue : public IEventSink {
         if (size_ == 0) {
             return false;
         }
-        if (!high_.empty()) {
-            out = std::move(high_.front());
-            high_.pop_front();
-        } else {
-            out = std::move(low_.front());
-            low_.pop_front();
+        pop_front_locked(out);
+        return true;
+    }
+
+    // Blocking pop: parks the caller on the condition variable until an event is
+    // available or the queue is stopped. Returns false only when woken for
+    // shutdown with nothing left to hand back. This is how workers wait, so an
+    // idle worker sleeps instead of spinning and churning mu_.
+    [[nodiscard]] bool wait_pop(Event& out) {
+        std::unique_lock<std::mutex> lock(mu_);
+        cv_.wait(lock, [this] { return size_ > 0 || stopped_; });
+        if (size_ == 0) {
+            return false;  // stopped and drained
         }
-        --size_;
+        pop_front_locked(out);
         return true;
     }
 
@@ -49,36 +57,61 @@ class EventQueue : public IEventSink {
         return size_;
     }
 
-    void stop() noexcept {}
+    // Permanently wake every blocked waiter for shutdown. Idempotent.
+    void stop() noexcept {
+        {
+            std::lock_guard<std::mutex> lock(mu_);
+            stopped_ = true;
+        }
+        cv_.notify_all();
+    }
 
    private:
     template <typename Ev>
     PushResult push_impl(Ev&& event) {
         const auto priority = classify_event(event);
-        std::lock_guard<std::mutex> lock(mu_);
-        if (capacity_ > 0 && size_ >= capacity_) {
-            if (priority == EventPriority::Low) {
-                record_drop_low_overflow();
-                return PushResult::DroppedLow;
+        {
+            std::lock_guard<std::mutex> lock(mu_);
+            if (capacity_ > 0 && size_ >= capacity_) {
+                if (priority == EventPriority::Low) {
+                    record_drop_low_overflow();
+                    return PushResult::DroppedLow;
+                }
+                if (!low_.empty()) {
+                    low_.pop_back();
+                    --size_;
+                    record_evict_low_for_high();
+                } else {
+                    record_drop_high_overflow();
+                    return PushResult::DroppedHigh;
+                }
             }
-            if (!low_.empty()) {
-                low_.pop_back();
-                --size_;
-                record_evict_low_for_high();
-            } else {
-                record_drop_high_overflow();
-                return PushResult::DroppedHigh;
-            }
-        }
 
-        if (priority == EventPriority::Low) {
-            low_.push_back(std::forward<Ev>(event));
-        } else {
-            high_.push_back(std::forward<Ev>(event));
+            if (priority == EventPriority::Low) {
+                low_.push_back(std::forward<Ev>(event));
+            } else {
+                high_.push_back(std::forward<Ev>(event));
+            }
+            ++size_;
+            utils::metrics::update_highwater(utils::metrics::counters().event_queue_highwater,
+                                             size_);
         }
-        ++size_;
-        utils::metrics::update_highwater(utils::metrics::counters().event_queue_highwater, size_);
+        // Wake one parked worker. Notifying outside the lock avoids the woken
+        // thread immediately contending on mu_.
+        cv_.notify_one();
         return PushResult::Ok;
+    }
+
+    // Pop the highest-priority event. Caller must hold mu_ and ensure size_ > 0.
+    void pop_front_locked(Event& out) {
+        if (!high_.empty()) {
+            out = std::move(high_.front());
+            high_.pop_front();
+        } else {
+            out = std::move(low_.front());
+            low_.pop_front();
+        }
+        --size_;
     }
 
     void record_drop_low_overflow() {
@@ -100,10 +133,12 @@ class EventQueue : public IEventSink {
     }
 
     mutable std::mutex mu_;
+    std::condition_variable cv_;
     std::deque<Event> high_;
     std::deque<Event> low_;
     std::size_t capacity_{0};
     std::size_t size_{0};
+    bool stopped_{false};
 };
 
 }  // namespace app::queue

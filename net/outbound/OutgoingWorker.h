@@ -46,8 +46,24 @@ class OutgoingWorker : public utils::Loggable {
 
    private:
     static void on_timer(us_timer_t* timer);
-    void flush_connection_outbox(connection::ConnectionContext& ctx);
+
+    // tick() orchestrates one pass; the steps below are its pieces:
     void tick();
+    // Drain the shared queue (bounded by max_per_tick / time budget), fanning each message into the
+    // target connections' outboxes. Returns how many queue messages were processed.
+    std::size_t drain_queue(std::unordered_set<ConnId>& touched);
+    // Fan one message out to all of its target connections.
+    void distribute(const OutgoingMessage& msg, std::unordered_set<ConnId>& touched);
+    // Append one message to a single connection's bounded outbox (with overflow/drop policy).
+    void enqueue_to_outbox(const GlobalConnId& global_id, const OutgoingMessage& msg,
+                           std::unordered_set<ConnId>& touched);
+    // Flush one connection's queued outbox to the socket, deferring any DropConnection until after
+    // the registry lock is released (handle.end() re-enters the registry via the close callback).
+    void flush_connection_outbox(const ConnId& conn_id);
+    // Send a single SendPayload action (reliable seq-stamp+buffer, or plain send). Returns whether
+    // the action was consumed; false means "backpressured / send raced — retry next tick".
+    bool send_payload(connection::ConnectionContext& ctx, const ConnId& conn_id,
+                      const SendPayload& action);
     // Resend reliable frames whose ack is overdue; drop connections that exhaust retries.
     void retransmit_sweep();
 

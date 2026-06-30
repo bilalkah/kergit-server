@@ -15,6 +15,27 @@ using namespace sercom::protocol;
 namespace app::worker {
 namespace {
 thread_local std::size_t worker_index_tls = std::numeric_limits<std::size_t>::max();
+
+// Whether a command type participates in the (conn,type) in-flight dedup guard.
+//
+// The guard exists to stop a double-submit of a one-shot / state-changing
+// control command (join voice twice, create the same hub twice, etc.) from
+// being processed concurrently. But for inherently-repeatable commands a second
+// in-flight command of the same type is usually a *distinct* request, and
+// dropping it is wrong: a non-idempotent MESSAGE_SEND would be lost silently, a
+// different MESSAGE_FETCH_BEFORE page would never load, and TYPING /
+// VOICE_ACTIVITY are last-writer-wins toggles. Those bypass the guard.
+bool command_uses_inflight_dedup(sercom::protocol::Envelope::Type type) {
+    switch (type) {
+        case sercom::protocol::Envelope::MESSAGE_SEND:
+        case sercom::protocol::Envelope::MESSAGE_FETCH_BEFORE:
+        case sercom::protocol::Envelope::TYPING:
+        case sercom::protocol::Envelope::VOICE_ACTIVITY:
+            return false;
+        default:
+            return true;
+    }
+}
 }  // namespace
 
 WorkerPool::WorkerPool(queue::EventQueue& in_queue, net::outbound::IOutboundSink& out_queue,
@@ -80,28 +101,19 @@ void WorkerPool::worker_loop(std::size_t worker_index) {
     worker_index_tls = worker_index;
     log(utils::LogLevel::INFO, "Worker ", worker_index, " started.");
     while (running_) {
-        // For worker
         wait_if_paused();
         if (!running_) break;
-        static thread_local uint32_t empty_polls = 0;
+
         app::queue::Event event;
-
-        // Update queue depth metric periodically
-        utils::metrics::set_queue_depth(in_queue_.size());
-
-        if (!in_queue_.try_pop(event)) {
-            constexpr uint32_t kYieldSpins = 16;
-            constexpr auto kSleepDuration = std::chrono::microseconds(100);
-            if (empty_polls < kYieldSpins) {
-                ++empty_polls;
-                std::this_thread::yield();
-            } else {
-                std::this_thread::sleep_for(kSleepDuration);
-            }
-            continue;
+        // Block until an event is available or the queue is stopped (shutdown).
+        // No busy-polling: an idle worker parks on the queue's condition variable
+        // instead of spinning and repeatedly locking the queue.
+        if (!in_queue_.wait_pop(event)) {
+            continue;  // woken for shutdown; loop re-checks running_
         }
-        empty_polls = 0;
-        // For worker
+
+        // Update queue depth metric.
+        utils::metrics::set_queue_depth(in_queue_.size());
 
         // Mark worker as active
         utils::metrics::inc_active_workers();
@@ -258,7 +270,11 @@ std::vector<net::outbound::OutgoingMessage> WorkerPool::handle_event(queue::Mess
     msg_evt.payload.parsed = std::move(parsed.value());
     assert(!std::holds_alternative<std::monostate>(msg_evt.payload.parsed));
 
-    if (!try_mark_executing(msg_evt.conn_id, env.type())) {
+    // Inherently-repeatable commands (sends, pagination, typing, voice toggles)
+    // bypass the in-flight dedup guard so a legitimate second command of the
+    // same type isn't silently dropped. See command_uses_inflight_dedup().
+    const bool dedup = command_uses_inflight_dedup(env.type());
+    if (dedup && !try_mark_executing(msg_evt.conn_id, env.type())) {
         utils::metrics::counters().dropped_inbound_total.fetch_add(1, std::memory_order_relaxed);
 #if defined(SERCOM_DEBUG_LOGS)
         log(utils::LogLevel::WARN, "Dropping duplicate in-flight command of type ",
@@ -274,7 +290,9 @@ std::vector<net::outbound::OutgoingMessage> WorkerPool::handle_event(queue::Mess
 
     result = dispatcher_.dispatch(env.type(), cmd_ctx_, msg_evt);
 
-    unmark_executing(msg_evt.conn_id, env.type());
+    if (dedup) {
+        unmark_executing(msg_evt.conn_id, env.type());
+    }
     return result;
 }
 

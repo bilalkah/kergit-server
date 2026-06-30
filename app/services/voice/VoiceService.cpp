@@ -193,16 +193,22 @@ std::optional<std::string> VoiceService::resolve_participant_node_assignment(
 }
 
 bool VoiceService::mark_webhook_event_seen(const std::string& event_id) {
-    if (event_id.empty()) return true;
+    if (event_id.empty()) return true;  // no id to dedup on -> process it
 
-    try {
-        return redis_.setnxex(webhook_seen_key(event_id), kWebhookDedupTtl, "1");
-    } catch (const std::exception& ex) {
-        utils::EventLogger::instance().log(
-            utils::EventCategory::VOICE, "", "webhook_dedup_failed", 0,
-            std::string("event_id=") + event_id + " error=" + ex.what());
+    const auto first_seen = redis_.setnxex(webhook_seen_key(event_id), kWebhookDedupTtl, "1");
+    if (!first_seen.has_value()) {
+        // Redis is unavailable, so we genuinely cannot tell a first delivery from a
+        // redelivery. Fail OPEN (process the event) on purpose: the voice handlers are
+        // convergent — a re-join short-circuits as already-owner, a re-leave is ignored,
+        // and the reconcile loop reconciles truth — so a rare duplicate is cheap, whereas
+        // dropping a genuine first delivery would strand ghost membership until the next
+        // reconcile. Logged distinctly so the outage (not a "duplicate") is visible.
+        utils::EventLogger::instance().log(utils::EventCategory::VOICE, "",
+                                           "webhook_dedup_unavailable", 0,
+                                           "event_id=" + event_id + " action=fail_open_process");
         return true;
     }
+    return *first_seen;  // true = first time (process), false = duplicate (skip)
 }
 
 bool VoiceService::verified_kick_user(const ChannelId& channel, const UserId& target) {

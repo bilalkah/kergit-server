@@ -68,6 +68,8 @@ std::optional<ConnectionView> ConnectionRegistery::get_view(const ConnId& conn_i
                           .kind = ctx.kind,
                           .auth_state = ctx.auth_state,
                           .auth_expires_at = ctx.auth_expires_at,
+                          .connected_at = ctx.heartbeat.connected_at,
+                          .last_seen_at = ctx.heartbeat.last_seen_at,
                           .user_id = ctx.user_id};
 }
 

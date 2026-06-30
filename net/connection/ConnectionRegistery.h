@@ -130,11 +130,25 @@ struct ConnectionView {
     TransportKind kind{TransportKind::TextWebSocket};
     AuthState auth_state{AuthState::AUTH_PENDING};
     std::chrono::system_clock::time_point auth_expires_at{};
+    // Heartbeat snapshot, so the liveness/auth sweep can run off a no-copy view.
+    std::chrono::system_clock::time_point connected_at{};
+    std::chrono::system_clock::time_point last_seen_at{};
     std::optional<UserId> user_id{};
 };
 
 /**
  * Registry managing active connections.
+ *
+ * Threading contract: in normal operation a registry instance is owned by exactly one
+ * NetworkStack and is touched only by that stack's event-loop thread — transport callbacks
+ * (attach/detach), the OutgoingWorker flush, the heartbeat sweep, and ACK handling all run on
+ * that single loop. Under that invariant no locking is strictly required.
+ *
+ * The internal `shared_mutex` is kept as defence-in-depth so a stray cross-thread access (a
+ * future caller, a test harness, a diagnostic) cannot corrupt the map — it is intentionally
+ * conservative, not evidence that concurrent access is expected. Do NOT take this as licence to
+ * call the registry from other threads: the per-connection state mutated under `mutate()` (outbox,
+ * reliable buffer) is only consistent when serialized on the owning loop thread.
  */
 class ConnectionRegistery {
    public:
@@ -170,8 +184,8 @@ class ConnectionRegistery {
 
    private:
     /**
-     * Mutex to protect access to the connection map.
-     * Readers-writer lock could be used here for better read performance if needed.
+     * Guards the connection map. See the class-level threading contract: in normal operation the
+     * registry is single-threaded (owning loop), so this lock is defensive rather than a hot path.
      */
     mutable std::shared_mutex mutex_;
 
