@@ -63,8 +63,8 @@ class HubService {
     HubRepository& repo_;
     std::unique_ptr<IHubCache> cache_;
 
-    std::optional<HubSnapshot> loadSnapshot(const HubId& hubId);
-    std::optional<HubSnapshot> buildSnapshot(const HubId& hubId);
+    std::shared_ptr<const HubSnapshot> loadSnapshot(const HubId& hubId);
+    std::shared_ptr<const HubSnapshot> buildSnapshot(const HubId& hubId);
     void invalidateHubCaches(const HubId& hubId);
 
     ChannelCache channel_cache_;

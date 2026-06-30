@@ -42,7 +42,7 @@ HubService::HubService(HubRepository& repo) : repo_(repo), cache_(std::make_uniq
 std::optional<Hub> HubService::getHub(const HubId& hubId) {
     auto cached_snapshot = cache_->get(hubId);
     if (cached_snapshot.has_value()) {
-        return to_hub(cached_snapshot.value());
+        return to_hub(*cached_snapshot.value());
     }
     if (cached_snapshot.error() == HubCacheError::CorruptedEntry) {
         cache_->invalidate(hubId);
@@ -73,7 +73,7 @@ std::unordered_map<HubId, Hub> HubService::getHubsByIds(const std::vector<HubId>
 
         auto cached_snapshot = cache_->get(hub_id);
         if (cached_snapshot.has_value()) {
-            hubs_by_id.insert_or_assign(hub_id, to_hub(cached_snapshot.value()));
+            hubs_by_id.insert_or_assign(hub_id, to_hub(*cached_snapshot.value()));
             continue;
         }
 
@@ -120,7 +120,7 @@ std::unordered_map<HubId, Hub> HubService::getHubsByIds(const std::vector<HubId>
             }
         }
 
-        cache_->put(snapshot);
+        cache_->put(std::make_shared<const HubSnapshot>(std::move(snapshot)));
     }
 
     return hubs_by_id;
@@ -272,14 +272,14 @@ void HubService::warmSnapshotsForHubs(const std::vector<Hub>& hubs) {
             }
         }
 
-        cache_->put(snapshot);
+        cache_->put(std::make_shared<const HubSnapshot>(std::move(snapshot)));
     }
 }
 
 HubTopology HubService::getHubTopology(const HubId& hubId) {
     const auto snapshot = loadSnapshot(hubId);
     HubTopology topology;
-    if (!snapshot.has_value()) {
+    if (!snapshot) {
         return topology;
     }
 
@@ -317,7 +317,7 @@ bool HubService::isHubMember(const HubId& hubId, const UserId& userId) {
 
 std::optional<Role> HubService::resolveMembershipRole(const HubId& hubId, const UserId& userId) {
     const auto snapshot = loadSnapshot(hubId);
-    if (!snapshot.has_value()) {
+    if (!snapshot) {
         return std::nullopt;
     }
 
@@ -346,11 +346,11 @@ ChannelId HubService::createChannel(const HubId& hubId, const std::string& name,
 
     auto cached_snapshot = cache_->get(hubId);
     if (cached_snapshot.has_value()) {
-        auto snapshot = cached_snapshot.value();
+        auto snapshot = *cached_snapshot.value();
         if (std::find(snapshot.channel_ids.begin(), snapshot.channel_ids.end(), channel_id) ==
             snapshot.channel_ids.end()) {
             snapshot.channel_ids.push_back(channel_id);
-            cache_->put(snapshot);
+            cache_->put(std::make_shared<const HubSnapshot>(std::move(snapshot)));
         }
     } else if (cached_snapshot.error() == HubCacheError::CorruptedEntry) {
         cache_->invalidate(hubId);
@@ -386,11 +386,11 @@ bool HubService::deleteChannel(const ChannelId& channelId, const HubId& hubId) {
 
     auto cached_snapshot = cache_->get(hubId);
     if (cached_snapshot.has_value()) {
-        auto snapshot = cached_snapshot.value();
+        auto snapshot = *cached_snapshot.value();
         snapshot.channel_ids.erase(
             std::remove(snapshot.channel_ids.begin(), snapshot.channel_ids.end(), channelId),
             snapshot.channel_ids.end());
-        cache_->put(snapshot);
+        cache_->put(std::make_shared<const HubSnapshot>(std::move(snapshot)));
     } else if (cached_snapshot.error() == HubCacheError::CorruptedEntry) {
         cache_->invalidate(hubId);
     }
@@ -434,10 +434,10 @@ void HubService::removeMember(const HubId& hubId, const UserId& userId) {
     invalidateHubCaches(hubId);
 }
 
-std::optional<HubSnapshot> HubService::buildSnapshot(const HubId& hubId) {
+std::shared_ptr<const HubSnapshot> HubService::buildSnapshot(const HubId& hubId) {
     const auto hub = repo_.getHub(hubId);
     if (!hub.has_value()) {
-        return std::nullopt;
+        return nullptr;
     }
 
     HubSnapshot snapshot;
@@ -454,14 +454,15 @@ std::optional<HubSnapshot> HubService::buildSnapshot(const HubId& hubId) {
         snapshot.member_roles.insert_or_assign(member.user_id, member.role);
     }
 
-    cache_->put(snapshot);
-    return std::optional<HubSnapshot>{snapshot};
+    auto shared = std::make_shared<const HubSnapshot>(std::move(snapshot));
+    cache_->put(shared);
+    return shared;
 }
 
-std::optional<HubSnapshot> HubService::loadSnapshot(const HubId& hubId) {
+std::shared_ptr<const HubSnapshot> HubService::loadSnapshot(const HubId& hubId) {
     auto cached = cache_->get(hubId);
     if (cached.has_value()) {
-        return std::optional<HubSnapshot>{cached.value()};
+        return cached.value();
     }
     if (cached.error() == HubCacheError::CorruptedEntry) {
         cache_->invalidate(hubId);

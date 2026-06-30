@@ -16,9 +16,12 @@ class IHubCache {
    public:
     virtual ~IHubCache() = default;
 
-    virtual std::expected<HubSnapshot, HubCacheError> get(const HubId& hubId) = 0;
+    // Snapshots are served as shared_ptr<const> so the per-message membership/role
+    // reads (resolveMembershipRole/isHubMember) never deep-copy the member map.
+    virtual std::expected<std::shared_ptr<const HubSnapshot>, HubCacheError> get(
+        const HubId& hubId) = 0;
 
-    virtual void put(const HubSnapshot& snapshot) = 0;
+    virtual void put(std::shared_ptr<const HubSnapshot> snapshot) = 0;
     virtual void invalidate(const HubId& hubId) = 0;
 };
 
@@ -27,9 +30,10 @@ class HubCache final : public IHubCache {
     explicit HubCache();
     ~HubCache() override = default;
 
-    std::expected<HubSnapshot, HubCacheError> get(const HubId& hubId) override;
+    std::expected<std::shared_ptr<const HubSnapshot>, HubCacheError> get(
+        const HubId& hubId) override;
 
-    void put(const HubSnapshot& snapshot) override;
+    void put(std::shared_ptr<const HubSnapshot> snapshot) override;
 
     void invalidate(const HubId& hubId) override;
 
