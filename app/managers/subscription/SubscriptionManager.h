@@ -7,6 +7,8 @@
 #include <mutex>
 #include <shared_mutex>
 #include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 namespace app {
 class SubscriptionManager final : public ISubscriptionManager {
@@ -16,7 +18,7 @@ class SubscriptionManager final : public ISubscriptionManager {
 
     bool isSubscribed(const GlobalConnId& conn, const Topic& topic) const override;
 
-    std::shared_ptr<const std::unordered_set<GlobalConnId>> getSubscribers(
+    std::shared_ptr<const std::vector<GlobalConnId>> getSubscribers(
         const Topic& topic) const override;
     std::expected<std::unordered_set<Topic>, SubscriptionError> getSubscriptionsForConnection(
         const GlobalConnId& conn) const override;
@@ -25,14 +27,15 @@ class SubscriptionManager final : public ISubscriptionManager {
     void removeAllForTopic(const Topic& topic) override;
 
    private:
-    using SubscriberSet = std::unordered_set<GlobalConnId>;
-    using SubscriberSetPtr = std::shared_ptr<SubscriberSet>;
+    // Subscribers are kept as a copy-on-write vector so readers get a cheap, contiguous
+    // snapshot to fan out over. The conn->topics reverse index is the authoritative
+    // membership set: it gives O(1) dedup on subscribe and O(1) isSubscribed without
+    // scanning the subscriber vector. Subscription is connection-scoped (a user may have
+    // several active connections); user-level aggregation lives elsewhere.
+    using SubscriberVec = std::vector<GlobalConnId>;
+    using SubscriberVecPtr = std::shared_ptr<SubscriberVec>;
 
-    // Subscriptions are connection-scoped.
-    // Each subscription represents a single active connection.
-    // A single user may have multiple simultaneous active connections.
-    // User-level aggregation (presence, UI) is handled elsewhere.
-    std::unordered_map<Topic, SubscriberSetPtr> topic_to_conns_;
+    std::unordered_map<Topic, SubscriberVecPtr> topic_to_conns_;
     std::unordered_map<GlobalConnId, std::unordered_set<Topic>> conn_to_topics_;
     mutable std::shared_mutex mu_;
 };

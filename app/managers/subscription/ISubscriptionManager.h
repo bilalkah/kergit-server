@@ -8,6 +8,7 @@
 #include <memory>
 #include <string>
 #include <unordered_set>
+#include <vector>
 
 namespace app {
 
@@ -21,7 +22,10 @@ struct ISubscriptionManager {
 
     virtual bool isSubscribed(const GlobalConnId& conn, const Topic& topic) const = 0;
 
-    virtual std::shared_ptr<const std::unordered_set<GlobalConnId>> getSubscribers(
+    // Subscribers are stored and served as a contiguous vector: every caller iterates the
+    // whole set (almost always to build a Target's recipient vector), so a vector is both
+    // cache-friendlier to traverse and a direct copy rather than a bucket walk.
+    virtual std::shared_ptr<const std::vector<GlobalConnId>> getSubscribers(
         const Topic& topic) const = 0;
     virtual std::expected<std::unordered_set<Topic>, SubscriptionError>
     getSubscriptionsForConnection(const GlobalConnId& conn) const = 0;

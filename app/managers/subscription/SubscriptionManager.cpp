@@ -1,69 +1,79 @@
 #include "app/managers/subscription/SubscriptionManager.h"
 
-#include "utils/Metrics.h"
+#include <algorithm>
 
 namespace app {
+namespace {
+
+// Remove `conn` from a COW subscriber vector, copying first if a reader still holds the
+// current snapshot. Order is irrelevant to fan-out, so erase is O(1) swap-with-last.
+// Returns true if the vector became empty (caller drops the topic entry).
+bool eraseConnFromTopic(std::shared_ptr<std::vector<GlobalConnId>>& vec_ptr,
+                        const GlobalConnId& conn) {
+    if (vec_ptr.use_count() > 1) {
+        vec_ptr = std::make_shared<std::vector<GlobalConnId>>(*vec_ptr);
+    }
+    auto& vec = *vec_ptr;
+    auto it = std::find(vec.begin(), vec.end(), conn);
+    if (it != vec.end()) {
+        *it = std::move(vec.back());
+        vec.pop_back();
+    }
+    return vec.empty();
+}
+
+}  // namespace
+
 bool SubscriptionManager::subscribeConnection(const GlobalConnId& conn, const Topic& topic) {
     std::unique_lock lock(mu_);
-    auto& conns_ptr = topic_to_conns_[topic];
-    if (!conns_ptr) {
-        conns_ptr = std::make_shared<SubscriberSet>();
-    } else if (!conns_ptr.unique()) {
-        conns_ptr = std::make_shared<SubscriberSet>(*conns_ptr);
-    }
-    auto& conns = *conns_ptr;
+    // Dedup via the reverse index (O(1)); only touch the subscriber vector on a real insert.
     auto& topics = conn_to_topics_[conn];
-    bool inserted = conns.insert(conn).second;
-    topics.insert(topic);
-    return inserted;
+    if (!topics.insert(topic).second) {
+        return false;  // already subscribed
+    }
+
+    auto& vec_ptr = topic_to_conns_[topic];
+    if (!vec_ptr) {
+        vec_ptr = std::make_shared<SubscriberVec>();
+    } else if (vec_ptr.use_count() > 1) {
+        // A reader is holding this snapshot — copy before mutating (COW).
+        vec_ptr = std::make_shared<SubscriberVec>(*vec_ptr);
+    }
+    vec_ptr->push_back(conn);
+    return true;
 }
 
 bool SubscriptionManager::unsubscribeConnection(const GlobalConnId& conn, const Topic& topic) {
     std::unique_lock lock(mu_);
+    auto conn_it = conn_to_topics_.find(conn);
+    if (conn_it == conn_to_topics_.end() || conn_it->second.erase(topic) == 0) {
+        return false;  // was not subscribed
+    }
+    if (conn_it->second.empty()) {
+        conn_to_topics_.erase(conn_it);
+    }
+
     auto topic_it = topic_to_conns_.find(topic);
-    if (topic_it == topic_to_conns_.end()) {
-        return false;
-    }
-    auto& conns_ptr = topic_it->second;
-    if (!conns_ptr.unique()) {
-        conns_ptr = std::make_shared<SubscriberSet>(*conns_ptr);
-    }
-    auto& conns = *conns_ptr;
-    size_t erased = conns.erase(conn);
-    if (conns.empty()) {
+    if (topic_it != topic_to_conns_.end() && eraseConnFromTopic(topic_it->second, conn)) {
         topic_to_conns_.erase(topic_it);
     }
-
-    auto conn_it = conn_to_topics_.find(conn);
-    if (conn_it != conn_to_topics_.end()) {
-        auto& topics = conn_it->second;
-        topics.erase(topic);
-        if (topics.empty()) {
-            conn_to_topics_.erase(conn_it);
-        }
-    }
-
-    return erased > 0;
+    return true;
 }
 
 bool SubscriptionManager::isSubscribed(const GlobalConnId& conn, const Topic& topic) const {
     std::shared_lock lock(mu_);
-    auto topic_it = topic_to_conns_.find(topic);
-    if (topic_it == topic_to_conns_.end()) {
-        return false;
-    }
-    const auto& conns = *topic_it->second;
-    return conns.find(conn) != conns.end();
+    auto conn_it = conn_to_topics_.find(conn);
+    return conn_it != conn_to_topics_.end() && conn_it->second.contains(topic);
 }
 
-std::shared_ptr<const std::unordered_set<GlobalConnId>> SubscriptionManager::getSubscribers(
+std::shared_ptr<const std::vector<GlobalConnId>> SubscriptionManager::getSubscribers(
     const Topic& topic) const {
     std::shared_lock lock(mu_);
     auto topic_it = topic_to_conns_.find(topic);
     if (topic_it == topic_to_conns_.end()) {
         return nullptr;
     }
-    return topic_it->second;
+    return topic_it->second;  // shared_ptr<SubscriberVec> -> shared_ptr<const SubscriberVec>
 }
 
 std::expected<std::unordered_set<Topic>, SubscriptionError>
@@ -84,16 +94,8 @@ void SubscriptionManager::removeAllForConnection(const GlobalConnId& conn) {
     }
     for (const auto& topic : conn_it->second) {
         auto topic_it = topic_to_conns_.find(topic);
-        if (topic_it != topic_to_conns_.end()) {
-            auto& conns_ptr = topic_it->second;
-            if (!conns_ptr.unique()) {
-                conns_ptr = std::make_shared<SubscriberSet>(*conns_ptr);
-            }
-            auto& conns = *conns_ptr;
-            conns.erase(conn);
-            if (conns.empty()) {
-                topic_to_conns_.erase(topic_it);
-            }
+        if (topic_it != topic_to_conns_.end() && eraseConnFromTopic(topic_it->second, conn)) {
+            topic_to_conns_.erase(topic_it);
         }
     }
     conn_to_topics_.erase(conn_it);
@@ -108,9 +110,8 @@ void SubscriptionManager::removeAllForTopic(const Topic& topic) {
     for (const auto& conn : *topic_it->second) {
         auto conn_it = conn_to_topics_.find(conn);
         if (conn_it != conn_to_topics_.end()) {
-            auto& topics = conn_it->second;
-            topics.erase(topic);
-            if (topics.empty()) {
+            conn_it->second.erase(topic);
+            if (conn_it->second.empty()) {
                 conn_to_topics_.erase(conn_it);
             }
         }

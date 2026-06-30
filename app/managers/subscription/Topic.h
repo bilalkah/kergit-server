@@ -4,7 +4,6 @@
 #include "domains/ids/Ids.h"
 
 #include <cstdint>
-#include <fmt/format.h>
 #include <functional>
 #include <string>
 
@@ -12,67 +11,46 @@ namespace app {
 
 enum class TopicKind : uint8_t { Hub = 0, Channel, User };
 
+// Topic is keyed on the typed ids directly, not on a formatted "hub:<id>:channel:<id>"
+// string. That avoids an fmt::format allocation on every construction (topics are built
+// per fan-out / per subscribe-unsubscribe) and lets the id accessors below return the
+// ids without re-parsing a string.
+//   - Hub:     primary = hub id
+//   - Channel: primary = hub id, secondary = channel id
+//   - User:    primary = user id
 struct Topic {
-    TopicKind kind;
-    std::string topic_id;
+    TopicKind kind{TopicKind::Hub};
+    std::string primary;
+    std::string secondary;
 
     bool operator==(const Topic& other) const noexcept {
-        return kind == other.kind && topic_id == other.topic_id;
+        return kind == other.kind && primary == other.primary && secondary == other.secondary;
     }
 
-    static Topic HubTopic(const HubId& hub) {
-        return {TopicKind::Hub, fmt::format("hub:{}", hub.value)};
-    }
+    static Topic HubTopic(const HubId& hub) { return {TopicKind::Hub, hub.value, {}}; }
 
     static Topic ChannelTopic(const HubId& hub, const ChannelId& channel) {
-        return {TopicKind::Channel, fmt::format("hub:{}:channel:{}", hub.value, channel.value)};
+        return {TopicKind::Channel, hub.value, channel.value};
     }
 
-    static Topic UserTopic(const UserId& user) {
-        return {TopicKind::User, fmt::format("user:{}", user.value)};
-    }
+    static Topic UserTopic(const UserId& user) { return {TopicKind::User, user.value, {}}; }
 };
 
 namespace topic_utils {
 
 inline HubId extractHubId(const Topic& topic) {
-    // Expect: hub:<hubId> or hub:<hubId>:channel:<channelId>
-    if (topic.kind != TopicKind::Hub) return {};
-
-    const std::string& s = topic.topic_id;
-
-    constexpr std::string_view hubPrefix = "hub:";
-    constexpr std::string_view channelPart = ":channel:";
-
-    auto start = hubPrefix.size();
-    auto end = (topic.kind == TopicKind::Channel) ? s.find(channelPart) : s.size();
-
-    return HubId{s.substr(start, end - start)};
+    if (topic.kind == TopicKind::Hub || topic.kind == TopicKind::Channel) {
+        return HubId{topic.primary};
+    }
+    return {};
 }
 
 inline ChannelId extractChannelId(const Topic& topic) {
-    // Expect: hub:<hubId>:channel:<channelId>
-    if (topic.kind != TopicKind::Channel) return {};
-
-    constexpr std::string_view kChannelPart = ":channel:";
-
-    const std::string& s = topic.topic_id;
-    auto pos = s.find(kChannelPart);
-    if (pos == std::string::npos) return {};
-
-    return ChannelId{s.substr(pos + kChannelPart.size())};
+    return topic.kind == TopicKind::Channel ? ChannelId{topic.secondary} : ChannelId{};
 }
 
 inline UserId extractUserId(const Topic& topic) {
-    // Expect: user:<userId>
-    if (topic.kind != TopicKind::User) return {};
-
-    constexpr std::string_view kUserPrefix = "user:";
-
-    const std::string& s = topic.topic_id;
-    if (!s.starts_with(kUserPrefix)) return {};
-
-    return UserId{s.substr(kUserPrefix.size())};
+    return topic.kind == TopicKind::User ? UserId{topic.primary} : UserId{};
 }
 
 }  // namespace topic_utils
@@ -84,7 +62,8 @@ template <>
 struct hash<app::Topic> {
     size_t operator()(const app::Topic& t) const noexcept {
         size_t h = static_cast<size_t>(t.kind);
-        h ^= std::hash<std::string>{}(t.topic_id) << 1;
+        h ^= std::hash<std::string>{}(t.primary) + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
+        h ^= std::hash<std::string>{}(t.secondary) + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
         return h;
     }
 };
