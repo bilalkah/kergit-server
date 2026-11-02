@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Kergit is a real-time text and voice platform with a C++ signaling core, protobuf over WebSocket, and LiveKit media.">
+  <meta name="theme-color" content="#101815">
+  <meta property="og:title" content="Kergit — Real-time communication systems project">
+  <meta property="og:description" content="A Discord-like text and voice platform built around a C++ signaling core and a server-authoritative LiveKit integration.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://bilalkah.github.io/kergit-server/">
+  <title>Kergit — Real-time communication systems project</title>
+  <link rel="canonical" href="https://bilalkah.github.io/kergit-server/">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to main content</a>
+
+  <header class="site-header">
+    <a class="brand" href="https://bilalkah.github.io/" aria-label="Bilal Kahraman project index">
+      <span class="brand-mark" aria-hidden="true">KG</span>
+      <span>Kergit</span>
+    </a>
+    <nav aria-label="Main navigation">
+      <a href="#architecture">Architecture</a>
+      <a href="#decisions">Design</a>
+      <a href="https://github.com/bilalkah/kergit-server">Source <span aria-hidden="true">↗</span></a>
+    </nav>
+  </header>
+
+  <main id="main">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <p class="eyebrow">C++ / real-time systems / voice</p>
+        <h1 id="hero-title">A communication platform built below the UI.</h1>
+        <p class="hero-intro">
+          Kergit is a Discord-like text and voice project with a C++ signaling
+          core, protobuf over WebSocket, and LiveKit as its media plane.
+          The interesting work is in the boundary between them: sessions,
+          state, backpressure, reconnects, and voice ownership.
+        </p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="https://github.com/bilalkah/kergit-server">Explore the source <span aria-hidden="true">↗</span></a>
+          <a class="text-link" href="#architecture">See the system shape <span aria-hidden="true">↓</span></a>
+        </div>
+        <dl class="hero-facts">
+          <div>
+            <dt>Status</dt>
+            <dd>Advanced prototype</dd>
+          </div>
+          <div>
+            <dt>Core</dt>
+            <dd>C++ / Bazel</dd>
+          </div>
+          <div>
+            <dt>Protocol</dt>
+            <dd>Protobuf / WSS</dd>
+          </div>
+        </dl>
+      </div>
+
+      <figure class="trace-card">
+        <figcaption>
+          <span>session_trace</span>
+          <span class="trace-live"><i aria-hidden="true"></i> connected</span>
+        </figcaption>
+        <div class="trace-line">
+          <span class="trace-time">00.000</span>
+          <span class="trace-direction trace-out">→</span>
+          <code>AUTH</code>
+          <span class="trace-note">token</span>
+        </div>
+        <div class="trace-line">
+          <span class="trace-time">00.014</span>
+          <span class="trace-direction trace-in">←</span>
+          <code>AUTH_OK</code>
+          <span class="trace-note">session 7f2a</span>
+        </div>
+        <div class="trace-line">
+          <span class="trace-time">00.017</span>
+          <span class="trace-direction trace-in">←</span>
+          <code>STATE_SYNC</code>
+          <span class="trace-note">hubs · channels</span>
+        </div>
+        <div class="trace-line trace-emphasis">
+          <span class="trace-time">04.821</span>
+          <span class="trace-direction trace-out">→</span>
+          <code>VOICE_JOIN</code>
+          <span class="trace-note">channel alpha</span>
+        </div>
+        <div class="trace-line">
+          <span class="trace-time">04.834</span>
+          <span class="trace-direction trace-in">←</span>
+          <code>VOICE_TOKEN</code>
+          <span class="trace-note">node · key · resume</span>
+        </div>
+        <div class="trace-route" aria-label="The C++ server authorizes a voice request before the client connects to LiveKit.">
+          <span>client</span>
+          <b aria-hidden="true">→</b>
+          <span class="route-core">C++ core</span>
+          <b aria-hidden="true">→</b>
+          <span>LiveKit</span>
+        </div>
+      </figure>
+    </section>
+
+    <section class="premise" aria-labelledby="premise-title">
+      <p class="eyebrow">The premise</p>
+      <div>
+        <h2 id="premise-title">Media can be delegated.<br>Authority cannot.</h2>
+        <p>
+          LiveKit moves audio and video. Kergit's backend still decides who may
+          join, which session owns voice, which node to use, what a token may do,
+          and how reconnects and webhook events change application state.
+        </p>
+      </div>
+    </section>
+
+    <section class="architecture" id="architecture" aria-labelledby="architecture-title">
+      <div class="section-heading">
+        <p class="eyebrow">Runtime architecture</p>
+        <h2 id="architecture-title">One control path, distinct kinds of state.</h2>
+        <p>The C++ service sits between transport, application state, and the media plane.</p>
+      </div>
+
+      <div class="system-map" role="img" aria-label="Browser clients connect through Caddy to the C++ signaling core. The core uses PostgreSQL for durable state, Redis for ephemeral coordination, and LiveKit for media.">
+        <div class="map-column map-clients">
+          <span class="map-label">Clients</span>
+          <div class="map-node"><small>Nuxt 4 / Vue 3</small><strong>Web client</strong></div>
+          <div class="map-node"><small>Operator only</small><strong>Admin client</strong></div>
+        </div>
+        <div class="map-arrow" aria-hidden="true"><span>WSS / HTTPS</span><i>→</i></div>
+        <div class="map-column">
+          <span class="map-label">Edge</span>
+          <div class="map-node map-edge"><small>TLS + routing</small><strong>Caddy</strong></div>
+        </div>
+        <div class="map-arrow" aria-hidden="true"><span>protobuf</span><i>→</i></div>
+        <div class="map-column">
+          <span class="map-label">Authority</span>
+          <div class="map-node map-core"><small>signaling + state</small><strong>C++ core</strong><em>queues · workers · services</em></div>
+        </div>
+        <div class="map-arrow map-arrow-split" aria-hidden="true"><span>state / control</span><i>→</i></div>
+        <div class="map-column map-services">
+          <span class="map-label">Data + media</span>
+          <div class="map-node"><small>Durable</small><strong>PostgreSQL</strong></div>
+          <div class="map-node"><small>Ephemeral</small><strong>Redis</strong></div>
+          <div class="map-node map-media"><small>Media plane</small><strong>LiveKit</strong></div>
+        </div>
+      </div>
+
+      <div class="state-legend">
+        <article>
+          <span class="legend-number">01</span>
+          <h3>Durable state</h3>
+          <p>Messages, hubs, channels, membership, and application records belong in PostgreSQL.</p>
+        </article>
+        <article>
+          <span class="legend-number">02</span>
+          <h3>Ephemeral coordination</h3>
+          <p>Invite links, pending joins, and short-lived session helpers use Redis.</p>
+        </article>
+        <article>
+          <span class="legend-number">03</span>
+          <h3>Media state</h3>
+          <p>LiveKit carries media; webhook observations are reconciled against server-owned state.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="decisions" id="decisions" aria-labelledby="decisions-title">
+      <div class="section-heading compact">
+        <p class="eyebrow">Engineering decisions</p>
+        <h2 id="decisions-title">The difficult paths are explicit.</h2>
+      </div>
+      <div class="decision-grid">
+        <article>
+          <span>01 / transport</span>
+          <h3>Protobuf inside a stable envelope</h3>
+          <p>Commands, snapshots, deltas, and transient signals share one versioned outer protocol without sharing recovery semantics.</p>
+        </article>
+        <article>
+          <span>02 / load</span>
+          <h3>Backpressure is policy</h3>
+          <p>Priority queues and per-connection outboxes isolate slow consumers. Repairable signals may be dropped; authoritative mutations may not.</p>
+        </article>
+        <article>
+          <span>03 / voice</span>
+          <h3>Ownership belongs to a session</h3>
+          <p>A user may have several tabs, but one session owns voice. Resume and takeover paths can revoke the previous owner deliberately.</p>
+        </article>
+        <article>
+          <span>04 / recovery</span>
+          <h3>Reconciliation before cleanup</h3>
+          <p>A WebSocket drop does not immediately remove a healthy media connection. Confirmed evidence and grace periods drive convergence.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="protocol" aria-labelledby="protocol-title">
+      <div class="protocol-copy">
+        <p class="eyebrow">Protocol surface</p>
+        <h2 id="protocol-title">A small outer shape for an evolving system.</h2>
+        <p>
+          Transport stays predictable while application messages evolve. Durable
+          deltas can be repaired through state sync; typing and presence signals
+          are intentionally treated as transient.
+        </p>
+        <a class="text-link" href="https://github.com/bilalkah/kergit-server/blob/master/proto/envelope.proto">Read the protocol <span aria-hidden="true">↗</span></a>
+      </div>
+      <pre aria-label="Simplified protobuf envelope"><code><span>message</span> Envelope {
+  uint32 version = 1;
+  Type   type    = 3;
+  bytes  payload = 100;
+}
+
+AUTH          → session bootstrap
+STATE_DELTA   → durable mutation
+RT_SIGNAL     → ephemeral event
+VOICE_JOIN    → authorized media entry</code></pre>
+    </section>
+
+    <section class="boundary" aria-labelledby="boundary-title">
+      <div class="boundary-heading">
+        <p class="eyebrow">Current boundary</p>
+        <h2 id="boundary-title">Advanced prototype, documented honestly.</h2>
+        <p>Kergit demonstrates the architecture and core flows. It is not presented as a production-ready service.</p>
+      </div>
+      <div class="boundary-columns">
+        <article>
+          <h3><span class="status status-ready" aria-hidden="true"></span>Implemented</h3>
+          <ul>
+            <li>Authenticated sessions and initial state sync</li>
+            <li>Hub, channel, text chat, and invite flows</li>
+            <li>Priority queues and per-connection output buffering</li>
+            <li>Voice join, revoke, takeover, and resume paths</li>
+            <li>Health, metrics, and operator control surfaces</li>
+          </ul>
+        </article>
+        <article>
+          <h3><span class="status status-active" aria-hidden="true"></span>Still being hardened</h3>
+          <ul>
+            <li>Voice and video user experience</li>
+            <li>Dynamic multi-node LiveKit validation</li>
+            <li>Production deployment and operational cleanup</li>
+            <li>Consistent C++ standard settings across all build targets</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section class="stack" aria-labelledby="stack-title">
+      <div>
+        <p class="eyebrow">System stack</p>
+        <h2 id="stack-title">Built across the boundary.</h2>
+      </div>
+      <ul aria-label="Technologies used by Kergit">
+        <li>C++</li>
+        <li>Bazel</li>
+        <li>WebSocket</li>
+        <li>Protocol Buffers</li>
+        <li>Nuxt 4</li>
+        <li>Vue 3</li>
+        <li>LiveKit</li>
+        <li>PostgreSQL</li>
+        <li>Redis</li>
+        <li>Caddy</li>
+        <li>Docker</li>
+      </ul>
+    </section>
+
+    <section class="source-cta" aria-labelledby="source-title">
+      <p class="eyebrow">Open source</p>
+      <h2 id="source-title">Follow the implementation.</h2>
+      <p>The repository includes the backend, clients, deployment stack, architecture notes, and detailed voice lifecycle documentation.</p>
+      <div>
+        <a class="button button-light" href="https://github.com/bilalkah/kergit-server">View Kergit on GitHub <span aria-hidden="true">↗</span></a>
+        <a class="text-link" href="https://github.com/bilalkah/kergit-server/blob/master/docs/ARCHITECTURE.md">Architecture notes <span aria-hidden="true">↗</span></a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>Kergit <span aria-hidden="true">/</span> a project by Bilal Kahraman</p>
+    <div>
+      <a href="https://bilalkah.github.io/">Project index</a>
+      <a href="https://github.com/bilalkah/kergit-server">Source</a>
+    </div>
+  </footer>
+</body>
+</html>

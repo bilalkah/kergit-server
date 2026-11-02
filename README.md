@@ -2,6 +2,8 @@
 
 Kergit is a realtime chat and voice system built around a C++ backend, protobuf over WebSocket, a Nuxt web client, and LiveKit for media.
 
+[Project page](https://bilalkah.github.io/kergit-server/) · [Architecture](docs/ARCHITECTURE.md) · [Voice lifecycle](docs/VOICE.md)
+
 ## Status
 
 Kergit is an advanced prototype / personal systems project. It is not production-ready. The core text and state-sync paths are usable, but setup, operations, and some voice flows still need cleanup.
