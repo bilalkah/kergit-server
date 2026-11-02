@@ -12,17 +12,21 @@ parse_runtime_mode "$@" || {
 }
 load_runtime_env_strict "$RUNTIME_MODE"
 
-MODE_ARGS=()
+MODE_ARG=""
 if [ "$RUNTIME_MODE" = "prod" ]; then
-  MODE_ARGS=(--prod)
+  MODE_ARG="--prod"
 fi
 
 if ! livekit_compose_matches_mode "$RUNTIME_MODE"; then
-  "$SCRIPT_DIR/render.sh" "${MODE_ARGS[@]}" >/dev/null
+  "$SCRIPT_DIR/render.sh" ${MODE_ARG:+"$MODE_ARG"} >/dev/null
 fi
 
 source "$DOCKER_DIR/lib/compose.sh"
-mapfile -t LIVEKIT_SERVICES < <(livekit_service_names)
+LIVEKIT_SERVICES=()
+while IFS= read -r service; do
+  [ -n "$service" ] || continue
+  LIVEKIT_SERVICES[${#LIVEKIT_SERVICES[@]}]="$service"
+done < <(livekit_service_names)
 if [ "${#LIVEKIT_SERVICES[@]}" -eq 0 ]; then
   echo "❌ No generated LiveKit services found in $GENERATED_COMPOSE_FILE"
   exit 1

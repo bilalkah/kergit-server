@@ -9,8 +9,17 @@ source "$DOCKER_DIR/lib/livekit-runtime.sh"
 load_runtime_env_for_stop
 source "$DOCKER_DIR/lib/compose.sh"
 
-mapfile -t LIVEKIT_SERVICES < <(livekit_service_names)
-mapfile -t LIVEKIT_CONTAINERS < <(livekit_container_names)
+LIVEKIT_SERVICES=()
+while IFS= read -r service; do
+  [ -n "$service" ] || continue
+  LIVEKIT_SERVICES[${#LIVEKIT_SERVICES[@]}]="$service"
+done < <(livekit_service_names)
+
+LIVEKIT_CONTAINERS=()
+while IFS= read -r container; do
+  [ -n "$container" ] || continue
+  LIVEKIT_CONTAINERS[${#LIVEKIT_CONTAINERS[@]}]="$container"
+done < <(livekit_container_names)
 
 echo "[+] Stopping LiveKit services..."
 if [ "${#LIVEKIT_SERVICES[@]}" -gt 0 ]; then

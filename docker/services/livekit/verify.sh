@@ -11,7 +11,11 @@ parse_runtime_mode "$@" || {
 }
 load_runtime_env_strict "$RUNTIME_MODE"
 
-mapfile -t LIVEKIT_ENDPOINTS < <(
+LIVEKIT_ENDPOINTS=()
+while IFS= read -r endpoint; do
+  [ -n "$endpoint" ] || continue
+  LIVEKIT_ENDPOINTS[${#LIVEKIT_ENDPOINTS[@]}]="$endpoint"
+done < <(
   python3 - "$LIVEKIT_NODES" <<'PY'
 import json
 import sys

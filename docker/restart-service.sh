@@ -54,10 +54,10 @@ if [ "${#SERVICES[@]}" -eq 0 ]; then
   exit 1
 fi
 
-MODE_ARGS=()
+MODE_ARG=""
 WEB_RUN_ARGS=(--detached)
 if [ "$PROD" -eq 1 ]; then
-  MODE_ARGS=(--prod)
+  MODE_ARG="--prod"
   WEB_RUN_ARGS=(--detached --prod)
 fi
 
@@ -68,16 +68,16 @@ restart_one() {
   case "$svc" in
   caddy)
     "$SCRIPT_DIR/services/caddy/stop.sh" || true
-    "$SCRIPT_DIR/services/caddy/run.sh" "${MODE_ARGS[@]}"
+    "$SCRIPT_DIR/services/caddy/run.sh" ${MODE_ARG:+"$MODE_ARG"}
     ;;
   redis)
     "$SCRIPT_DIR/services/redis/stop.sh" || true
-    "$SCRIPT_DIR/services/redis/run.sh" "${MODE_ARGS[@]}"
+    "$SCRIPT_DIR/services/redis/run.sh" ${MODE_ARG:+"$MODE_ARG"}
     ;;
   livekit)
     "$SCRIPT_DIR/services/livekit/stop.sh" || true
-    "$SCRIPT_DIR/services/livekit/render.sh" "${MODE_ARGS[@]}" >/dev/null
-    "$SCRIPT_DIR/services/livekit/run.sh" "${MODE_ARGS[@]}"
+    "$SCRIPT_DIR/services/livekit/render.sh" ${MODE_ARG:+"$MODE_ARG"} >/dev/null
+    "$SCRIPT_DIR/services/livekit/run.sh" ${MODE_ARG:+"$MODE_ARG"}
     ;;
   web)
     "$REPO_ROOT/clients/web/docker/stop-app.sh" || true
@@ -105,8 +105,8 @@ done
 if [ "$RESTART_SERVER" -eq 1 ]; then
   echo "▶ Restarting server (foreground build+run; Ctrl-C to stop)..."
   "$SCRIPT_DIR/services/backend/stop.sh" || true
-  "$SCRIPT_DIR/services/backend/run-container.sh" "${MODE_ARGS[@]}"
-  exec "$SCRIPT_DIR/services/backend/exec-server.sh" "${MODE_ARGS[@]}"
+  "$SCRIPT_DIR/services/backend/run-container.sh" ${MODE_ARG:+"$MODE_ARG"}
+  exec "$SCRIPT_DIR/services/backend/exec-server.sh" ${MODE_ARG:+"$MODE_ARG"}
 fi
 
 echo "[✓] Restarted: ${SERVICES[*]}"
