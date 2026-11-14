@@ -49,6 +49,11 @@ jobs:
           echo "WEB_SOCKET_ORIGIN=wss://${WEB_DOMAIN#https://}" >> "$GITHUB_ENV"
           echo "NUXT_PUBLIC_SUPABASE_URL=$NUXT_PUBLIC_SUPABASE_URL" >> "$GITHUB_ENV"
 
+      - name: Prepare generated Caddy include
+        run: |
+          mkdir -p docker/caddy/generated
+          touch docker/caddy/generated/livekit_routes.caddy
+
       - name: Render root Docker Compose config
         run: docker compose -f docker/docker-compose.yml config > /tmp/docker-compose.root.yml
 
@@ -76,9 +81,15 @@ jobs:
 
       - name: Adapt Caddy configs
         run: |
-          docker run --rm -e WEB_DOMAIN -e WEB_SOCKET_ORIGIN -e NUXT_PUBLIC_SUPABASE_URL -v "$PWD/docker/caddy/conf.dev/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2 caddy adapt --config /etc/caddy/Caddyfile >/dev/null
-          docker run --rm -e WEB_DOMAIN -e WEB_SOCKET_ORIGIN -e NUXT_PUBLIC_SUPABASE_URL -v "$PWD/docker/caddy/conf.prod/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2 caddy adapt --config /etc/caddy/Caddyfile >/dev/null
-          docker run --rm -e WEB_DOMAIN -e WEB_SOCKET_ORIGIN -e NUXT_PUBLIC_SUPABASE_URL -v "$PWD/docker/caddy/conf.example/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2 caddy adapt --config /etc/caddy/Caddyfile >/dev/null
+          for config_dir in conf.dev conf.prod; do
+            docker run --rm \
+              -e WEB_DOMAIN \
+              -e WEB_SOCKET_ORIGIN \
+              -e NUXT_PUBLIC_SUPABASE_URL \
+              -v "$PWD/docker/caddy/$config_dir/Caddyfile:/etc/caddy/Caddyfile:ro" \
+              -v "$PWD/docker/caddy/generated/livekit_routes.caddy:/etc/caddy-generated/livekit_routes.caddy:ro" \
+              caddy:2 caddy adapt --config /etc/caddy/Caddyfile >/dev/null
+          done
 
       - name: Explain scope
         run: |
