@@ -20,6 +20,9 @@ configure_make(
     copts = [
         "-fPIC",
     ],
+    env = {
+        "CXX": "/usr/bin/g++",
+    },
     linkopts = [
         "-lpq",
     ],
