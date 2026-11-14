@@ -10,7 +10,7 @@ Required:
 
 - Docker
 - Docker Compose v2
-- a populated local `.env` copied from `.env.example`
+- the tracked, non-secret `.env.dev`, copied to `.env`
 
 Recommended:
 
@@ -34,13 +34,15 @@ Initialize the client submodules after cloning:
 git submodule update --init --recursive
 ```
 
-Copy the example file and replace placeholder values:
+Start from the committed, non-secret development defaults:
 
 ```bash
-cp .env.example .env
+cp .env.dev .env
 ```
 
-Then fill in your own:
+That is enough for builds, tests, Compose rendering, and the local services that do
+not depend on external identity or persistence. To exercise the complete product,
+fill the ignored `.env` with your own:
 
 - PostgreSQL / Supabase DB values
 - your database provider's CA certificate path when `DB_SSL=1`

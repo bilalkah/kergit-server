@@ -46,7 +46,7 @@ Core docs:
 
 ```bash
 git submodule update --init --recursive
-cp .env.example .env
+cp .env.dev .env
 ./docker/run-server.sh
 ```
 
@@ -69,8 +69,10 @@ For backend-only operation, use the independent scripts:
 ./docker/services/backend/exec-server.sh
 ```
 
-Replace the placeholders in `.env` before starting the stack. See `docs/SETUP.md` for
-prerequisites, production-mode requirements, and client-only workflows.
+The committed `.env.dev` contains public, non-secret defaults and does not connect
+PostgreSQL or Supabase. Put real local credentials only in the ignored `.env` when
+testing persistence, authentication, or storage. See `docs/SETUP.md` for prerequisites,
+production-mode requirements, and client-only workflows.
 
 ## Experimental / Current Limits
 
@@ -81,11 +83,11 @@ prerequisites, production-mode requirements, and client-only workflows.
 
 ## Build and Test
 
-The default full backend build currently fails because some targets still compile
-as C++17 while shared code requires C++20/23. This is a known limitation, not a
-working release check.
+Create the ignored environment file from the safe tracked defaults before invoking
+Bazel directly. CI performs the same copy.
 
 ```bash
+cp .env.dev .env
 bazel build //...
 bazel test //...
 cd clients/web && pnpm test

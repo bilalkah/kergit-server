@@ -41,7 +41,7 @@ jobs:
 
       - name: Prepare canonical root environment
         run: |
-          cp .env.example .env
+          cp .env.dev .env
           set -a
           source .env
           set +a

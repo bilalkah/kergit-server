@@ -10,7 +10,8 @@ The tracked tree must not contain:
 - Supabase service-role keys
 - internal production hostnames or IP addresses
 
-Use `.env.example` as a template and keep your real values in a local `.env`, which is gitignored.
+The tracked `.env.dev` contains only public local defaults. Keep real values in a
+local `.env`, which is gitignored. Never add a credential to `.env.dev).
 
 Before publishing a repository or fork, scan its full Git history and remove
 previously committed credentials or personal data. Rotate or revoke any affected
@@ -18,12 +19,14 @@ credential even after removing it from history.
 
 ## Local Secret Configuration
 
-1. Copy `.env.example` to `.env`.
+1. Copy `.env.dev` to `.env`.
 2. Replace every placeholder value with your own credentials.
 3. Generate or place local TLS certificates under:
    - `certs/dev/`
    - `certs/prod/`
 4. Never commit those files.
+
+`.env.example` remains a reference template for every supported variable.
 
 ## Admin and Control-Plane Exposure Warning
 

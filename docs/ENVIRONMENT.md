@@ -1,6 +1,9 @@
 # Environment Variables
 
-Copy `.env.example` to `.env` and replace the placeholders with values for your own environment.
+Copy the tracked, non-secret `.env.dev` to `.env`. Builds and tests work with
+those public defaults; persistence, Supabase authentication/storage, and real
+deployments require values for your own environment in the ignored `.env).
+`.env.example` remains the exhaustive placeholder reference.
 
 This document focuses on the runtime variables that matter for a basic local or public deployment path. All example values below are placeholders only.
 
@@ -122,6 +125,7 @@ be overridden from `.env`, preventing stale service names from breaking Docker D
 Never commit:
 
 - your real `.env`
+- credentials or private infrastructure details in the public `.env.dev`
 - private keys or generated certs under `certs/`
 - your database provider's CA certificate under `certs/database/`
 - production-only Caddy or LiveKit overrides
