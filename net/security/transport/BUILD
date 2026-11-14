@@ -15,8 +15,8 @@ cc_library(
 cc_test(
     name = "ws_origin_policy_test",
     srcs = ["WsOriginPolicy_test.cc"],
-    data = ["//config:ws_origin_policy.yaml"],
     copts = ["-std=gnu++23"],
+    data = ["//config:ws_origin_policy.yaml"],
     deps = [
         ":ws_origin_policy",
         "@googletest//:gtest_main",

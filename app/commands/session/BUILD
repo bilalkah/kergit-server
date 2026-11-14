@@ -26,10 +26,10 @@ cc_library(
     copts = ["-std=gnu++23"],
     visibility = ["//visibility:public"],
     deps = [
+        ":state_sync_builder",
         "//app/commands:i_command",
         "//app/dispatcher:command_context",
         "//app/managers/subscription:topic",
-        ":state_sync_builder",
         "//proto:envelope_cc_proto",
         "//proto/event:activity_cc_proto",
         "//proto/event:error_cc_proto",
@@ -84,8 +84,8 @@ cc_library(
     copts = ["-std=gnu++23"],
     visibility = ["//visibility:public"],
     deps = [
-        "//app/commands:i_command",
         ":state_sync_builder",
+        "//app/commands:i_command",
         "//app/dispatcher:command_context",
         "//proto:envelope_cc_proto",
         "//proto/command:session_cc_proto",

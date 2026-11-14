@@ -24,7 +24,7 @@ cc_library(
     visibility = ["//app:__subpackages__"],
     deps = [
         ":topic",
-        "@fmt",
         "//utils:metrics",
+        "@fmt",
     ],
 )

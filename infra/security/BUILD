@@ -9,8 +9,8 @@ cc_library(
     hdrs = [
         "token/ITokenVerifier.h",
         "token/JwtJsonUtils.h",
-        "token/SupabaseVerifier.h",
         "token/JwtTypes.h",
+        "token/SupabaseVerifier.h",
     ],
     copts = ["-std=gnu++23"],
     linkopts = ["-lcrypto"],  # OpenSSL crypto library

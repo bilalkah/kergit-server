@@ -1,6 +1,5 @@
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 
-
 # cc_test(
 #     name = "thread_safe_queue",
 #     srcs = ["thread_safe_queue.cc"],
@@ -10,4 +9,3 @@ load("@rules_cc//cc:cc_test.bzl", "cc_test")
 #         "@googletest//:gtest_main",
 #     ],
 # )
-

@@ -5,10 +5,10 @@ cc_library(
     name = "livekit_node_registry",
     srcs = ["LivekitNodeRegistry.cpp"],
     hdrs = ["LivekitNodeRegistry.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "//domains/ids:domain_ids",
     ],
-    visibility = ["//visibility:public"],
 )
 
 cc_test(

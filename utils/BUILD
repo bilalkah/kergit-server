@@ -6,10 +6,10 @@ cc_library(
     hdrs = [
         "EnvLoader.h",
     ],
+    copts = ["-std=gnu++23"],
     data = [
         "//:.env",
     ],
-    copts = ["-std=gnu++23"],
     visibility = ["//visibility:public"],
     deps = [
         ":loggable",

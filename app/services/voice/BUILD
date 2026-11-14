@@ -3,8 +3,8 @@ load("@rules_cc//cc:cc_test.bzl", "cc_test")
 
 cc_library(
     name = "reconcile_evidence_tracker",
-    hdrs = ["ReconcileEvidenceTracker.h"],
     srcs = ["ReconcileEvidenceTracker.cpp"],
+    hdrs = ["ReconcileEvidenceTracker.h"],
     copts = ["-std=gnu++23"],
     visibility = ["//visibility:public"],
     deps = ["//domains/ids:domain_ids"],
@@ -23,8 +23,8 @@ cc_test(
 
 cc_library(
     name = "voice_session_manager",
-    hdrs = ["VoiceSessionManager.h"],
     srcs = ["VoiceSessionManager.cpp"],
+    hdrs = ["VoiceSessionManager.h"],
     copts = ["-std=gnu++23"],
     visibility = ["//visibility:public"],
     deps = [
@@ -42,8 +42,8 @@ cc_library(
 
 cc_library(
     name = "pending_join_intent_store",
-    hdrs = ["PendingJoinIntentStore.h"],
     srcs = ["PendingJoinIntentStore.cpp"],
+    hdrs = ["PendingJoinIntentStore.h"],
     copts = ["-std=gnu++23"],
     visibility = ["//visibility:public"],
     deps = [
@@ -57,8 +57,8 @@ cc_library(
 
 cc_library(
     name = "voice_resume_registry",
-    hdrs = ["VoiceResumeRegistry.h"],
     srcs = ["VoiceResumeRegistry.cpp"],
+    hdrs = ["VoiceResumeRegistry.h"],
     copts = ["-std=gnu++23"],
     visibility = ["//visibility:public"],
     deps = [
@@ -71,8 +71,8 @@ cc_library(
 
 cc_library(
     name = "voice_publisher",
-    hdrs = ["VoicePublisher.h"],
     srcs = ["VoicePublisher.cpp"],
+    hdrs = ["VoicePublisher.h"],
     copts = ["-std=gnu++23"],
     visibility = ["//visibility:public"],
     deps = [
@@ -93,8 +93,8 @@ cc_library(
 
 cc_library(
     name = "voice_reconciler",
-    hdrs = ["VoiceReconciler.h"],
     srcs = ["VoiceReconciler.cpp"],
+    hdrs = ["VoiceReconciler.h"],
     copts = ["-std=gnu++23"],
     visibility = ["//visibility:public"],
     deps = [
@@ -107,8 +107,8 @@ cc_library(
 
 cc_library(
     name = "channel_key_service",
-    hdrs = ["ChannelKeyService.h"],
     srcs = ["ChannelKeyService.cpp"],
+    hdrs = ["ChannelKeyService.h"],
     copts = ["-std=gnu++23"],
     linkopts = ["-lcrypto"],
     visibility = ["//visibility:public"],
@@ -129,33 +129,34 @@ cc_library(
 
 cc_library(
     name = "voice_service",
+    srcs = [
+        "VoiceService.cpp",
+    ],
     hdrs = [
         "VoiceService.h",
         "VoiceSessionManager.h",
     ],
-    srcs = [
-        "VoiceService.cpp",
-    ],
     copts = ["-std=gnu++23"],
+    visibility = ["//visibility:public"],
     deps = [
+        ":channel_key_service",
+        ":pending_join_intent_store",
+        ":voice_nonce",
+        ":voice_publisher",
+        ":voice_reconciler",
+        ":voice_resume_registry",
+        ":voice_session_manager",
         "//app/commands:utils",
-        "//domains/ids:domain_ids",
-        "//infra/persistence:persistence_gateway_lib",
-        "//infra/redis:redis_client",
         "//app/managers/session:session_manager",
         "//app/managers/subscription:subscription_manager",
         "//app/services/hub:hub_service",
         "//core:livekit_cluster_config",
-        ":voice_session_manager",
-        ":voice_nonce",
-        ":pending_join_intent_store",
-        ":voice_resume_registry",
-        ":voice_publisher",
-        ":channel_key_service",
-        ":voice_reconciler",
-        "//livekit/token:livekit_token_service",
-        "//livekit/routing:livekit_node_registry",
+        "//domains/ids:domain_ids",
+        "//infra/persistence:persistence_gateway_lib",
+        "//infra/redis:redis_client",
         "//livekit/cli:livekit_client",
+        "//livekit/routing:livekit_node_registry",
+        "//livekit/token:livekit_token_service",
         "//livekit/webhook:livekit_webhook_server",
         "//net/outbound:i_outbound_sink",
         "//utils:env_loader",
@@ -163,5 +164,4 @@ cc_library(
         "//utils:metrics",
         "@nlohmann_json",
     ],
-    visibility = ["//visibility:public"],
 )

@@ -8,15 +8,15 @@ cc_library(
     deps = [
         "//app/dispatcher",
         "//app/queue:event_queue",
-        "//app/worker:worker_pool",
         "//app/services/invite:invite_service",
         "//app/services/voice:voice_service",
+        "//app/worker:worker_pool",
         "//core:server_config",
         "//infra/persistence:persistence_gateway_lib",
         "//infra/redis:redis_client",
+        "//livekit/webhook:livekit_webhook_server",
         "//net/outbound:i_outbound_sink",
         "//utils:env_loader",
         "//utils:loggable",
-        "//livekit/webhook:livekit_webhook_server",
     ],
 )
