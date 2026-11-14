@@ -47,6 +47,7 @@ logs/
 !.env.example
 
 *.svg
+!site/favicon.svg
 
 tmp/
 
