@@ -58,13 +58,29 @@
       <path d="M18 19h1a2 2 0 0 0 2-2v-2a2 2 0 0 0-2-2h-1v6ZM6 19H5a2 2 0 0 1-2-2v-2a2 2 0 0 1 2-2h1v6Z"></path>
     </symbol>
     <symbol id="icon-phone-off" viewBox="0 0 24 24">
-      <path d="m3 5 18 14M8.2 8.2A15.8 15.8 0 0 0 3 10l3 5 3.6-1.8M14 11.1l1-3.1 6 1v5a15.6 15.6 0 0 1-2.2.9"></path>
+      <path d="M20 4l-4 4M16 4l4 4"></path>
+      <path d="M4.01 7.93c-.07 1.91.41 5.15 3.66 8.4.78.78 1.57 1.41 2.33 1.9M5.54 4.94c1.39-1.39 3.61-1.21 4.5.38l.65 1.16c.58 1.05.34 2.43-.59 3.35 0 0-1.12 1.12.91 3.15 2.03 2.03 3.15.91 3.15.91.92-.92 2.3-1.16 3.35-.59l1.16.65c1.59.89 1.77 3.11.38 4.5-.84.84-1.87 1.49-3 1.53-.81.03-1.87-.04-3.06-.38"></path>
     </symbol>
     <symbol id="icon-camera" viewBox="0 0 24 24">
-      <path d="M14 8h5l3-3v14l-3-3h-5M2 6h12v12H2z"></path>
+      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle>
+    </symbol>
+    <symbol id="icon-camera-off" viewBox="0 0 24 24">
+      <path d="M1 1l22 22M21 21H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3m3-3h6l2 3h4a2 2 0 0 1 2 2v9.34M15 13a3 3 0 1 1-6 0"></path>
     </symbol>
     <symbol id="icon-screen" viewBox="0 0 24 24">
       <rect x="2" y="3" width="20" height="14" rx="2"></rect><path d="M8 21h8M12 17v4M8 9l4-3 4 3M12 6v7"></path>
+    </symbol>
+    <symbol id="icon-screen-off" viewBox="0 0 24 24">
+      <path d="M1 1l22 22M17 17H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v7M8 21h8M12 17v4"></path>
+    </symbol>
+    <symbol id="icon-fullscreen" viewBox="0 0 24 24">
+      <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"></path>
+    </symbol>
+    <symbol id="icon-fullscreen-exit" viewBox="0 0 24 24">
+      <path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"></path>
+    </symbol>
+    <symbol id="icon-headphones-off" viewBox="0 0 24 24">
+      <path d="m3 3 18 18M4 14v-2a8 8 0 0 1 12.9-6.3M20 12v2M18 19h1a2 2 0 0 0 2-2v-2M6 19H5a2 2 0 0 1-2-2v-2a2 2 0 0 1 2-2h1v6Z"></path>
     </symbol>
     <symbol id="icon-plus" viewBox="0 0 24 24">
       <path d="M12 5v14M5 12h14"></path>
@@ -172,9 +188,10 @@
         </div>
         <div class="section-intro-copy">
           <p>
-            Switch channels, send a local message, join a voice room, mute
-            yourself, and inspect the member list. It behaves like the product
-            while staying entirely inside this page.
+            Switch channels, send a local message, join a voice room to open
+            the call grid, spotlight a participant, toggle a simulated camera or
+            screen share, and inspect the member list. It behaves like the
+            product while staying entirely inside this page.
           </p>
           <p class="demo-disclaimer">
             <svg class="icon" aria-hidden="true"><use href="#icon-info"></use></svg>
@@ -229,11 +246,11 @@
               <div class="channel-scroll" id="channel-list"></div>
 
               <div class="voice-dock" id="voice-dock" hidden>
-                <div class="voice-dock-copy">
-                  <span class="voice-state"><i></i> Voice connected</span>
+                <button type="button" class="voice-dock-copy" id="voice-dock-open" aria-label="Open voice grid">
+                  <span class="voice-state"><i></i> <span id="voice-dock-status">Voice connected</span></span>
                   <strong id="voice-dock-channel">Build room</strong>
-                  <small>Simulated connection</small>
-                </div>
+                  <small id="voice-dock-detail">Simulated connection</small>
+                </button>
                 <div class="voice-dock-actions">
                   <button type="button" class="dock-action" id="demo-camera" aria-label="Toggle camera preview" aria-pressed="false">
                     <svg class="icon" aria-hidden="true"><use href="#icon-camera"></use></svg>
@@ -265,7 +282,7 @@
                   <button type="button" class="mobile-panel-button" id="channels-toggle" aria-label="Open channels" aria-expanded="false">
                     <svg class="icon" aria-hidden="true"><use href="#icon-menu"></use></svg>
                   </button>
-                  <span class="channel-symbol" aria-hidden="true">#</span>
+                  <span class="channel-symbol" id="channel-symbol" aria-hidden="true">#</span>
                   <div>
                     <strong id="channel-name">genel</strong>
                     <span id="channel-topic">Kergit için ortak alan</span>
@@ -288,6 +305,28 @@
                   </button>
                 </div>
               </header>
+
+              <div class="voice-grid-root" id="voice-grid" hidden>
+                <div class="voice-grid-body" id="voice-grid-body" aria-label="Voice participants"></div>
+                <button type="button" class="strip-toggle-btn" id="voice-strip-toggle" hidden>Hide members</button>
+                <div class="voice-toolbar" role="toolbar" aria-label="Voice controls">
+                  <button type="button" class="toolbar-btn" id="grid-mic" aria-pressed="false" aria-label="Mute microphone" title="Microphone">
+                    <svg class="icon" aria-hidden="true"><use href="#icon-mic"></use></svg>
+                  </button>
+                  <button type="button" class="toolbar-btn" id="grid-camera" aria-pressed="false" aria-label="Turn camera on" title="Camera">
+                    <svg class="icon" aria-hidden="true"><use href="#icon-camera-off"></use></svg>
+                  </button>
+                  <button type="button" class="toolbar-btn" id="grid-screen" aria-pressed="false" aria-label="Share screen" title="Share screen">
+                    <svg class="icon" aria-hidden="true"><use href="#icon-screen"></use></svg>
+                  </button>
+                  <button type="button" class="toolbar-btn toolbar-btn-disconnect" id="grid-leave" aria-label="Disconnect from voice" title="Disconnect">
+                    <svg class="icon" aria-hidden="true"><use href="#icon-phone-off"></use></svg>
+                  </button>
+                </div>
+                <button type="button" class="fullscreen-btn" id="grid-fullscreen" aria-label="Enter fullscreen" title="Fullscreen">
+                  <svg class="icon" aria-hidden="true"><use href="#icon-fullscreen"></use></svg>
+                </button>
+              </div>
 
               <div class="message-list" id="message-list" aria-live="polite"></div>
               <div class="typing-row" id="typing-row" hidden>
@@ -321,7 +360,7 @@
         </div>
         <div class="demo-caption">
           <span><i></i> Interactive browser simulation</span>
-          <span>Try <strong>#cpp-core</strong>, join <strong>Build room</strong>, then send a message.</span>
+          <span>Try <strong>#cpp-core</strong>, then join <strong>Build room</strong> and click a tile to spotlight it.</span>
         </div>
       </div>
     </section>
