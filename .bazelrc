@@ -9,6 +9,8 @@ build:gcc13_cpp23 --host_cxxopt=-std=gnu++23
 
 # === Global defaults ===
 build --@@curl+//:ssl_lib=openssl
+build --cxxopt=-std=gnu++23
+build --host_cxxopt=-std=gnu++23
 
 # === opt mode ===
 build:opt

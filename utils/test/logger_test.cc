@@ -23,11 +23,11 @@ TEST(Logger, DifferentLevels) {
     auto* old = std::cout.rdbuf(capture.rdbuf());
 
     log_line(LogLevel::WARN, "warn");
-    log_line(LogLevel::ERROR, "crit");
+    log_line(LogLevel::ERROR, "error");
     std::cout.rdbuf(old);
 
     std::string out = capture.str();
     EXPECT_NE(out.find("[WARN]"), std::string::npos);
-    EXPECT_NE(out.find("[CRIT]"), std::string::npos);
+    EXPECT_NE(out.find("[ERROR]"), std::string::npos);
 }
 

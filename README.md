@@ -79,7 +79,6 @@ production-mode requirements, and client-only workflows.
 - voice/video UX and dynamic multi-node LiveKit behavior still need more validation
 - admin and control-plane routes are operator-only, not public endpoints
 - some internal protocol and build identifiers still use legacy `sercom` names for compatibility
-- some full backend targets still need C++ standard/build-setting cleanup
 
 ## Build and Test
 
