@@ -79,9 +79,10 @@ jobs:
       - name: Render admin Docker Compose config
         run: docker compose -f clients/admin/docker/docker-compose.yml config > /tmp/docker-compose.admin.yml
 
-      - name: Adapt Caddy configs
+      # Only the dev Caddyfile is public; the prod one lives in kergit-secrets.
+      - name: Adapt Caddy config
         run: |
-          for config_dir in conf.dev conf.prod; do
+          for config_dir in conf.dev; do
             docker run --rm \
               -e WEB_DOMAIN \
               -e WEB_SOCKET_ORIGIN \

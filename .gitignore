@@ -65,7 +65,6 @@ docker/caddy/conf.dev/**
 !docker/caddy/conf.dev/Caddyfile
 docker/caddy/conf.prod/**
 !docker/caddy/conf.prod/.gitkeep
-!docker/caddy/conf.prod/Caddyfile
 livekit/conf/example/**
 livekit/conf/dev/**
 !livekit/conf/dev/.gitkeep
