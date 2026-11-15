@@ -28,13 +28,21 @@
   box-sizing: border-box;
 }
 
+/*
+ * Decorative layers (hero divider, orbits) run past the content edges. Clip
+ * them on <body> instead of hiding overflow on the viewport: "hidden" still
+ * leaves a sideways-scrollable page (trackpad, find-in-page, translate), which
+ * shifts the whole layout left. The root keeps x hidden so body's clip is not
+ * propagated to the viewport.
+ */
 html {
+  overflow-x: hidden;
   scroll-behavior: smooth;
 }
 
 body {
   margin: 0;
-  overflow-x: hidden;
+  overflow-x: clip;
   background:
     radial-gradient(circle at 74% 9%, rgba(89, 50, 190, 0.14), transparent 27rem),
     var(--bg);
@@ -316,6 +324,43 @@ dd {
 .source-cta h2 {
   letter-spacing: -0.058em;
   line-height: 0.98;
+}
+
+/*
+ * Fitted display headings. Each .hl is an intended line; each .sub is a unit
+ * that is never split. headings.js shrinks the font (never above the design
+ * size set below) so whole lines fit, or, when that would get too small,
+ * lets lines break between their .sub units instead. Without JS, lines still
+ * break as blocks and wrap balanced, so a lone last word cannot appear.
+ */
+.fit-heading {
+  /* Keep whole lines only while the font stays >= floor x design size. */
+  --fit-floor: 0.65;
+  contain: inline-size;
+}
+
+#hero-title {
+  --fit-floor: 0.85;
+}
+
+@media (max-width: 760px) {
+  .fit-heading {
+    --fit-floor: 0.85;
+  }
+}
+
+.fit-heading .hl {
+  display: block;
+  text-wrap: balance;
+}
+
+.fit-heading .sub {
+  white-space: nowrap;
+}
+
+.fit-heading[data-fit-level="1"] .hl,
+.fit-heading.fit-measuring .hl {
+  white-space: nowrap;
 }
 
 .hero h1 {
@@ -3319,12 +3364,12 @@ button.voice-dock-copy:focus-visible {
   background: rgba(139, 92, 246, 0.06);
 }
 
-.stack-section strong {
+.stack-section li strong {
   color: #dfe2ec;
   font-size: 0.83rem;
 }
 
-.stack-section span {
+.stack-section li span {
   color: #646d82;
   font-family: var(--font-mono);
   font-size: 0.53rem;
