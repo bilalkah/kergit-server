@@ -62,7 +62,6 @@ clients/web/src/generated/
 docker/caddy/conf.example/**
 docker/caddy/conf.dev/**
 !docker/caddy/conf.dev/.gitkeep
-!docker/caddy/conf.dev/Caddyfile
 docker/caddy/conf.prod/**
 !docker/caddy/conf.prod/.gitkeep
 livekit/conf/example/**

@@ -79,20 +79,8 @@ jobs:
       - name: Render admin Docker Compose config
         run: docker compose -f clients/admin/docker/docker-compose.yml config > /tmp/docker-compose.admin.yml
 
-      # Only the dev Caddyfile is public; the prod one lives in kergit-secrets.
-      - name: Adapt Caddy config
-        run: |
-          for config_dir in conf.dev; do
-            docker run --rm \
-              -e WEB_DOMAIN \
-              -e WEB_SOCKET_ORIGIN \
-              -e NUXT_PUBLIC_SUPABASE_URL \
-              -v "$PWD/docker/caddy/$config_dir/Caddyfile:/etc/caddy/Caddyfile:ro" \
-              -v "$PWD/docker/caddy/generated/livekit_routes.caddy:/etc/caddy-generated/livekit_routes.caddy:ro" \
-              caddy:2 caddy adapt --config /etc/caddy/Caddyfile >/dev/null
-          done
-
       - name: Explain scope
         run: |
-          echo "Validated shell syntax and rendered Docker/Caddy config."
+          echo "Validated shell syntax and rendered Docker Compose config."
+          echo "Caddy and LiveKit configs live in kergit-secrets, so they are not validated here."
           echo "This workflow does not boot the full stack because the public repo no longer carries real secrets or TLS material."
