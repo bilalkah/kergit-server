@@ -73,7 +73,7 @@
             text: "The outbound path now keeps authoritative state ahead of repairable real-time signals.",
             badge: "owner",
             color: ["#7c3aed", "#2563eb"],
-            codeBlock: "P0  state mutation   → never drop\nP1  message delta    → preserve order\nP2  presence update  → repair via sync\nP3  typing signal    → drop under load",
+            codeBlock: "HIGH  state, membership → never silently dropped\nLOW   typing, activity  → dropped first under load\nfull outbox, no LOW    → close 4409\nclient on 4409         → reconnect + resync",
             reactions: ["🧠 5", "⚙️ 3"],
           },
           {
